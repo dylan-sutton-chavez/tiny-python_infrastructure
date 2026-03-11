@@ -2,14 +2,22 @@
 name = "tinypy-infra"
 version = "0.1.0"
 edition = "2024"
+description = "Infrastructure deployment tool for managing GCP services and cloudflare DNS configurations."
+repository = "https://github.com/dylan-sutton-chavez/tinypy-infra/"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
 
 [lib]
-name = "tinypy_infra"
+name = "deployment"
 path = "src/lib.rs"
 
 [[bin]]
-name = "tinypy-infra"
+name = "deploy"
 path = "src/main.rs"
+
+[[test]]
+name = "integration_test"
+path = "tests/integration_test.rs"
 
 [dependencies]
 # Google Cloud
