@@ -1,0 +1,25 @@
+name: integration-tests
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+      
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: cargo build
+      - run: cargo test -- --nocapture
+
+      - if: failure()
+        run: |
+          git config user.email "integration-tests@github.com"
+          git config user.name "Integration Tests"
+          git revert HEAD --no-edit
+          git push
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
