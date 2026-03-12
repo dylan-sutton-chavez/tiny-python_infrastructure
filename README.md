@@ -15,8 +15,8 @@ Infrastructure deployment tool for managing Cloudflare CDN and DNS configuration
 ## Usage
 
 ```bash
-git clone https://github.com/dylan-sutton-chavez/tinypy-infra.git
-cd tinypy-infra
+git clone https://github.com/dylan-sutton-chavez/tiny-python_infrastructure.git
+cd tiny-python_infrastructure
 cargo build --release
 ```
 
