@@ -1,6 +1,6 @@
 ## Tiny Python Infrastructure
 
-Infrastructure deployment tool for managing GCP services and Cloudflare DNS configurations.
+Infrastructure deployment tool for managing Cloudflare CDN and DNS configurations.
 
 ## Features
 
