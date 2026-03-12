@@ -25,7 +25,6 @@ cloudflare-r2-rs = "0.7"
 
 # HTTP & Async
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
-tokio = { version = "1.0", features = ["full"] }
 
 # Utilities
 serde_json = "1"
@@ -34,3 +33,4 @@ simple_logger = "5.0"
 
 [dev-dependencies]
 mockito = "1"
+tokio = { version = "1.0", features = ["full"] }
