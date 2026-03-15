@@ -19,8 +19,7 @@
 
 ```bash
 compiler.rs
-  Walks the AST and emits opcodes in a single pass.
-  Knows nothing about execution — only about code generation.
+  Tokenizes Python source into a stream of TokenType variants.
 
 lexer.rs
   Reads raw bytes, emits tokens with start/end positions.
