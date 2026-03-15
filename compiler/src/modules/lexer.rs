@@ -15,13 +15,13 @@ const MAX_FSTRING_DEPTH: usize = 200;
 #[derive(Default)]
 pub struct LexerState {
 
-  /*
-  Data structure for: pending token queue, indentation stack, bracket nesting depth.
-  */
+    /*
+    Data structure for: pending token queue, indentation stack, bracket nesting depth.
+    */
 
-  pending: VecDeque<TokenType>,
-  indent_stack: Vec<usize>,
-  nesting: u32
+    pending: VecDeque<TokenType>,
+    indent_stack: Vec<usize>,
+    nesting: u32
 
 }
 
