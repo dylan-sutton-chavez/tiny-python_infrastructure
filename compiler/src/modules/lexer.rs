@@ -109,7 +109,7 @@ fn handle_indent (lex: &mut Lexer<TokenType>) -> logos::Skip {
 
 }
 
-fn lex_fstring_body (lex: &mut Lexer<TokenType>, quote: u8, triple: bool) {
+fn lex_fstring_body(lex: &mut Lexer<TokenType>, quote: u8, triple: bool, body_start: usize) {
 
     /*
     Lex f-string body, pushing FstringMiddle and FstringEnd to pending.
@@ -132,13 +132,18 @@ fn lex_fstring_body (lex: &mut Lexer<TokenType>, quote: u8, triple: bool) {
         };
 
         if closes {
-            if had_expr { lex.extras.pending.push_back((TokenType::FstringMiddle, lex.extras.line, s.start, s.end)); }
+            let quote_len = if triple { 3 } else { 1 };
+            let body_end = body_start + pos;
+            let end = body_end + quote_len;
 
-            lex.bump(pos + if triple { 3 } else { 1 });
-            lex.extras.pending.push_back((TokenType::FstringEnd, lex.extras.line, s.start, s.end));
-            
+            if had_expr {
+                lex.extras.pending.push_back((TokenType::FstringMiddle, lex.extras.line, body_start, body_end));
+            }
+
+            lex.bump(pos + quote_len);
+            lex.extras.pending.push_back((TokenType::FstringEnd, lex.extras.line, body_end, end));
+                    
             return;
-        
         }
 
         match bytes[pos] {
@@ -167,16 +172,19 @@ fn lex_name_or_fstring(lex: &mut Lexer<TokenType>) -> Option<()> {
 
     let triple = lex.remainder().as_bytes().get(1) == Some(&q);
 
-    lex.bump(if triple { 3 } else { 1 });
-    lex.extras.pending.push_back((TokenType::FstringStart, lex.extras.line, s.start, s.end));
-    
-    lex_fstring_body(lex, q, triple);
+    let quote_len = if triple { 3 } else { 1 };
+
+    lex.bump(quote_len);
+    let body_start = s.end + quote_len;
+    lex.extras.pending.push_back((TokenType::FstringStart, lex.extras.line, s.start, body_start));
+
+    lex_fstring_body(lex, q, triple, body_start);
 
     None
 
 }
 
-#[derive(Logos, Debug, PartialEq)]
+#[derive(Logos, Debug, PartialEq, Clone)]
 #[logos(extras = LexerState)]
 #[logos(skip r"[ \t\r]+")]
 pub enum TokenType {

@@ -16,6 +16,11 @@ fn initialize_logger () {
 
 }
 
+mod modules {
+    pub mod lexer;
+    pub mod parser;
+}
+
 fn main() {
 
     /*

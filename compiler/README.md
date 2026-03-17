@@ -30,8 +30,7 @@ opcodes.rs
   Shared by compiler.rs (emit) and vm.rs (execute). Nothing else.
 
 parser.rs
-  Consumes tokens, understands grammar (expressions, statements, blocks).
-  Produces a minimal AST or feeds directly into compiler.rs.
+  Consumes the token stream from lexer.rs and emits bytecode directly. Single pass: no AST is built, opcodes are written as tokens are read.
 
 vm.rs
   Executes bytecode instruction by instruction.

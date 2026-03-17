@@ -1,0 +1,8 @@
+[
+  [
+    "name: str = 'Dylan'\nprint(f'Hey, I am: {name}.')",
+    ["Dylan", "Hey, I am: ", "."],
+    ["name", "print"],
+    [["LoadConst",0],["StoreName",0],["PopTop",0],["LoadName",1],["LoadConst",1],["LoadName",0],["LoadConst",2],["BuildString",3],["Call",1],["PopTop",0],["ReturnValue",0]]
+  ]
+]
