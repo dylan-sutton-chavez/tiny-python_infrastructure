@@ -29,4 +29,22 @@ fn main() {
 
     initialize_logger();
 
+    let source = "value: int = range(4)";
+
+    let chunk = modules::parser::Parser::new(source, modules::lexer::lexer(source)).parse();
+
+    // Instructions.
+    for (i, ins) in chunk.instructions.iter().enumerate() {
+        info!("{:03} {:?} {}", i, ins.opcode, ins.operand);
+    }
+
+    let tokens: Vec<String> = modules::lexer::lexer(source)
+        .map(|t| format!("{:?} [{}-{}]", t.kind, t.start, t.end))
+        .collect();
+
+    info!("{:?}", tokens);
+
+    info!("constants: {:?}", chunk.constants);
+    info!("names: {:?}", chunk.names);
+
 }

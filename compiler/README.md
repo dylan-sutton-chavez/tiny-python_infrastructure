@@ -19,23 +19,19 @@
 
 ```bash
 compiler.rs
-  Tokenizes Python source into a stream of spanned Token variants.
+  n/A
 
 lexer.rs
-  Reads raw bytes, emits tokens with start/end positions.
-  No strings, no copies — offsets into the original buffer only.
+  Tokenizes Python source into a stream of spanned Token variants.
 
 opcodes.rs
-  One enum with every opcode: ADD_INT, LOAD, STORE, JUMP, etc.
-  Shared by compiler.rs (emit) and vm.rs (execute). Nothing else.
+  n/A
 
 parser.rs
-  Consumes the token stream from lexer.rs and emits bytecode directly. Single pass: no AST is built, opcodes are written as tokens are read.
+  Single pass: consumes lexer tokens and emits bytecode directly. No abstract syntax tree built, fast and minimal memory.
 
 vm.rs
-  Executes bytecode instruction by instruction.
-  Owns the call stack, local variables, inline cache, and quickening.
-  The only file that runs at runtime.
+  n/A
 ```
 
 *upx packer*

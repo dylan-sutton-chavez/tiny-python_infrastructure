@@ -72,13 +72,13 @@ fn handle_indent (lex: &mut Lexer<TokenType>) -> logos::Skip {
 
     let src = lex.remainder();
     let indent: Vec<u8> = src.bytes().take_while(|&b| b == b' ' || b == b'\t').collect();
-    let level   = indent.len();
+    let level = indent.len();
     let line = s.end + level;
 
     let current_line = lex.extras.line;
     lex.extras.line += 1;
 
-    let next   = src[indent.len()..].chars().next();
+    let next = src[indent.len()..].chars().next();
     
     if lex.extras.nesting > 0 { lex.extras.pending.push_back((TokenType::Nl, current_line, s.start, s.end)); return logos::Skip; }
     if indent.contains(&b' ') && indent.contains(&b'\t') { lex.extras.pending.push_back((TokenType::Newline, current_line, s.start, s.end)); lex.extras.pending.push_back((TokenType::Endmarker, current_line, s.start, s.end)); return logos::Skip; }
@@ -349,7 +349,7 @@ pub fn lexer(source: &str) -> impl Iterator<Item = Token> + '_ {
     Tokenizes Python source into a parser-ready stream, handling indentation and soft keywords.
     */
 
-    let mut lex  = TokenType::lexer(source);
+    let mut lex = TokenType::lexer(source);
     let mut done = false;
 
     let mut stream = std::iter::from_fn(move || {
@@ -360,7 +360,7 @@ pub fn lexer(source: &str) -> impl Iterator<Item = Token> + '_ {
 
         let result = match lex.next() {
             Some(Ok(tok)) => { let s = lex.span(); Some((tok, lex.extras.line, s.start, s.end)) },
-            Some(Err(_))  => lex.extras.pending.is_empty().then_some((TokenType::Endmarker, lex.extras.line, s.start, s.end)),
+            Some(Err(_)) => lex.extras.pending.is_empty().then_some((TokenType::Endmarker, lex.extras.line, s.start, s.end)),
             None if !done => { done = true; Some((TokenType::Endmarker, lex.extras.line, s.start, s.end)) }
             _ => None,
         };
