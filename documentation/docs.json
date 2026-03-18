@@ -12,7 +12,8 @@
         "group": "Implementation",
         "pages": [
           "implementation/design",
-          "implementation/lexical-reference"
+          "implementation/reference",
+          "implementation/syntax"
         ]
       }
     ]

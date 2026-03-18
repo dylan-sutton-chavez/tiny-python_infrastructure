@@ -35,3 +35,22 @@ vm.rs
 ```
 
 *upx packer*
+
+```bash
+F-String Implementation
+
+RustPython — fstring.rs
+https://github.com/RustPython/RustPython/blob/main/compiler/parser/src/fstring.rs
+
+Ruff — string.rs
+https://github.com/astral-sh/ruff/blob/main/crates/ruff_python_parser/src/string.rs
+```
+
+Cap 27 — Classes and Instances
+https://craftinginterpreters.com/classes-and-instances.html
+
+Cap 28 — Methods and Initializers
+https://craftinginterpreters.com/methods-and-initializers.html
+
+Cap 29 — Inheritance (opcional)
+https://craftinginterpreters.com/superclasses.html
