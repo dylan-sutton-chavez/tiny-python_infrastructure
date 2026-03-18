@@ -1,5 +1,5 @@
 ---
-title: "design"
+title: "Design"
 description: "Explanation of edge python design"
 ---
 
