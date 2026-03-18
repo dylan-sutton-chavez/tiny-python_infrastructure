@@ -9,17 +9,10 @@
   "navigation": {
     "groups": [
       {
-        "group": "First steps",
+        "group": "Implementation",
         "pages": [
-          "first-steps/intro",
-          "first-steps/quickstart"
-        ]
-      },
-      {
-        "group": "Resources",
-        "pages": [
-          "resources/architecture",
-          "resources/lexical-reference"
+          "implementation/design",
+          "implementation/lexical-reference"
         ]
       }
     ]
