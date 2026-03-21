@@ -40,7 +40,8 @@ pub struct LexerState {
     pending: VecDeque<(TokenType, usize, usize, usize)>,
     indent_stack: Vec<usize>,
     nesting: u32,
-    line: usize
+    line: usize,
+    fstring_stack: Vec<(u8, bool, usize)>
 
 }
 
@@ -110,51 +111,53 @@ fn handle_indent (lex: &mut Lexer<TokenType>) -> logos::Skip {
 }
 
 fn lex_fstring_body(lex: &mut Lexer<TokenType>, quote: u8, triple: bool, body_start: usize) {
-
-    /*
-    Lex f-string body, pushing FstringMiddle and FstringEnd to pending.
+    /* 
+    Scans f-string bytes, suspending at `{` to let the main lexer resume.
     */
-
-    let s = lex.span();
-
-    let mut depth = 0usize;
-    let mut had_expr = false;
-    let mut pos = 0usize;
-    
     let bytes = lex.remainder().as_bytes();
+    let mut pos = 0usize;
 
     while pos < bytes.len() {
-        
         let closes = if triple {
             bytes.get(pos..pos + 3) == Some(&[quote, quote, quote])
         } else {
-            bytes[pos] == quote && depth == 0
+            bytes[pos] == quote
         };
 
         if closes {
-            let quote_len = if triple { 3 } else { 1 };
-            let body_end = body_start + pos;
-            let end = body_end + quote_len;
-
-            if had_expr {
-                lex.extras.pending.push_back((TokenType::FstringMiddle, lex.extras.line, body_start, body_end));
+            if pos > 0 {
+                lex.extras.pending.push_back((TokenType::FstringMiddle, lex.extras.line, body_start, body_start + pos));
             }
-
+            let quote_len = if triple { 3 } else { 1 };
             lex.bump(pos + quote_len);
-            lex.extras.pending.push_back((TokenType::FstringEnd, lex.extras.line, body_end, end));
-                    
+            lex.extras.pending.push_back((TokenType::FstringEnd, lex.extras.line, body_start + pos, body_start + pos + quote_len));
             return;
         }
 
         match bytes[pos] {
             b'\\' => pos += 2,
-            b'{' => { had_expr = true; depth = (depth + 1).min(MAX_FSTRING_DEPTH); pos += 1; }
-            b'}' => { depth = depth.saturating_sub(1); pos += 1; }
-            _ => pos += 1
+            b'{' if bytes.get(pos + 1) != Some(&b'{') => {
+                // Emite texto previo
+                if pos > 0 {
+                    lex.extras.pending.push_back((TokenType::FstringMiddle, lex.extras.line, body_start, body_start + pos));
+                }
+
+                if lex.extras.fstring_stack.len() >= MAX_FSTRING_DEPTH {
+                    lex.extras.pending.push_back((TokenType::Endmarker, lex.extras.line, body_start + pos, body_start + pos));
+                    lex.bump(pos + 1);
+                    return;
+                }
+                // Emite Lbrace
+                lex.extras.pending.push_back((TokenType::Lbrace, lex.extras.line, body_start + pos, body_start + pos + 1));
+                // Guarda estado fstring para reanudar después del '}'
+                lex.extras.fstring_stack.push((quote, triple, body_start + pos + 1));
+                // Avanza el lexer hasta después del '{' — logos retoma control
+                lex.bump(pos + 1);
+                return; // ← PARA aquí, logos tokeniza la expresión
+            }
+            _ => pos += 1,
         }
-
     }
-
 }
 
 fn lex_name_or_fstring(lex: &mut Lexer<TokenType>) -> Option<()> {
@@ -182,6 +185,21 @@ fn lex_name_or_fstring(lex: &mut Lexer<TokenType>) -> Option<()> {
 
     None
 
+}
+
+fn close_fstring_expr(lex: &mut Lexer<TokenType>) -> logos::Skip {
+    /* Saves correct Rbrace span before resuming f-string body scan. */
+    let span = lex.span(); // ← span correcto ANTES de cualquier bump
+    if let Some((quote, triple, _)) = lex.extras.fstring_stack.pop() {
+        // Empuja Rbrace con span correcto al pending
+        lex.extras.pending.push_back((TokenType::Rbrace, lex.extras.line, span.start, span.end));
+        // Reanuda fstring — puede hacer bump, ya no importa
+        lex_fstring_body(lex, quote, triple, span.end);
+    } else {
+        lex.extras.nesting = lex.extras.nesting.saturating_sub(1);
+        lex.extras.pending.push_back((TokenType::Rbrace, lex.extras.line, span.start, span.end));
+    }
+    logos::Skip // ← logos no emite nada, pending lo maneja
 }
 
 #[derive(Logos, Debug, PartialEq, Clone)]
@@ -296,7 +314,7 @@ pub enum TokenType {
     #[token("[", open_bracket)]  Lsqb,
     #[token("]", close_bracket)] Rsqb,
     #[token("{", open_bracket)]  Lbrace,
-    #[token("}", close_bracket)] Rbrace,
+    #[token("}", close_fstring_expr)] Rbrace,
 
     /*
     Token names
@@ -346,9 +364,10 @@ pub enum TokenType {
 pub fn lexer(source: &str) -> impl Iterator<Item = Token> + '_ {
 
     /* 
-    Tokenizes Python source into a parser-ready stream, handling indentation and soft keywords.
+    Tokenizes Python source into a parser-ready stream, resolving indentation, soft keywords, and f-string expression boundaries.
     */
 
+    let source_len = source.len(); // ← longitud real del source
     let mut lex = TokenType::lexer(source);
     let mut done = false;
 
@@ -356,17 +375,15 @@ pub fn lexer(source: &str) -> impl Iterator<Item = Token> + '_ {
 
         if let Some(tok) = lex.extras.pending.pop_front() { return Some(tok); }
 
-        let s = lex.span();
-
         let result = match lex.next() {
             Some(Ok(tok)) => { let s = lex.span(); Some((tok, lex.extras.line, s.start, s.end)) },
-            Some(Err(_)) => lex.extras.pending.is_empty().then_some((TokenType::Endmarker, lex.extras.line, s.start, s.end)),
-            None if !done => { done = true; Some((TokenType::Endmarker, lex.extras.line, s.start, s.end)) }
+            Some(Err(_)) => lex.extras.pending.is_empty().then_some((TokenType::Endmarker, lex.extras.line, source_len, source_len)),
+            None if !done => { done = true; Some((TokenType::Endmarker, lex.extras.line, source_len, source_len)) }
             _ => None,
         };
-        
+
         if let Some(t) = result { lex.extras.pending.push_back(t); }
-        
+
         lex.extras.pending.pop_front()
 
     }).peekable();

@@ -49,7 +49,10 @@ use std::collections::HashMap;
 pub enum OpCode {
     LoadConst, LoadName, StoreName, Call, PopTop, ReturnValue,
     BuildString, CallPrint, CallLen, FormatValue, CallAbs, Minus,
-    CallStr, CallInt, CallRange, Phi, Add
+    CallStr, CallInt, CallRange, Phi, Add, CallType,
+    CallFloat, CallBool, CallRound, CallMin, CallMax, CallSum,
+    CallSorted, CallEnumerate, CallZip, CallList, CallTuple, CallDict,
+    CallIsInstance, CallSet, CallInput, CallChr, CallOrd
 }
 
 #[derive(Debug)] pub struct Instruction { pub opcode: OpCode, pub operand: u16 }
@@ -86,14 +89,14 @@ pub struct Parser<'src, I: Iterator<Item = Token>> {
     join_stack: Vec<JoinNode>,
 }
 
-fn parse_string(s: &str) -> String { /* igual que antes */ 
+fn parse_string(s: &str) -> String { 
     let is_raw = s.contains('r') || s.contains('R');
     let s = s.trim_start_matches(|c: char| "bBrRuU".contains(c));
     let inner = if s.starts_with("\"\"\"") || s.starts_with("'''") { &s[3..s.len()-3] } else { &s[1..s.len()-1] };
     if is_raw { inner.to_string() } else { unescape(inner) }
 }
 
-fn unescape(s: &str) -> String { /* igual que antes */ 
+fn unescape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
@@ -178,12 +181,12 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             TokenType::False => self.emit_const(Value::Bool(false)),
             TokenType::None => self.emit_const(Value::None),
             TokenType::FstringStart => self.fstring(),
-            TokenType::Minus => { self.expr(); self.chunk.emit(OpCode::Minus, 0); }
+            TokenType::Minus => { self.expr(); self.chunk.emit(OpCode::Minus, 0); },
             _ => {}
         }
     }
 
-    fn parse_number(&mut self, raw: &str, kind: TokenType) { /* igual que antes */ 
+    fn parse_number(&mut self, raw: &str, kind: TokenType) {
         let s = raw.replace('_', "");
         if kind == TokenType::Float {
             self.emit_const(Value::Float(s.parse().unwrap_or(0.0)));
@@ -201,7 +204,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.chunk.emit(OpCode::LoadConst, i);
     }
 
-    fn name(&mut self, t: Token) { /* igual que antes */ 
+    fn name(&mut self, t: Token) {
         let name = self.lexeme(&t).to_string();
         if matches!(self.peek(), Some(TokenType::Colon)) { self.advance(); self.advance(); }
         match self.peek() {
@@ -211,7 +214,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
     }
 
-    fn assign(&mut self, name: String) { /* igual */ 
+    fn assign(&mut self, name: String) { 
         self.advance();
         self.expr();
         let ver = self.increment_version(&name);
@@ -220,7 +223,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.chunk.emit(OpCode::StoreName, i);
     }
 
-    fn parse_args(&mut self) -> u16 { /* igual */ 
+    fn parse_args(&mut self) -> u16 {
         self.advance();
         let mut argc = 0;
         while !matches!(self.peek(), Some(TokenType::Rpar) | None) {
@@ -231,13 +234,31 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         argc
     }
 
-    fn call(&mut self, name: String) { /* igual */ 
+    fn call(&mut self, name: String) {
         match name.as_str() {
             "print" => { let _ = self.parse_args(); self.chunk.emit(OpCode::CallPrint, 0); }
             "len" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallLen, a); }
             "abs" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallAbs, a); }
             "str" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallStr, a); }
             "int" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallInt, a); }
+            "type" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallType, a); }
+            "float" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallFloat, a); }
+            "bool"  => { let a = self.parse_args(); self.chunk.emit(OpCode::CallBool, a); }
+            "round" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallRound, a); }
+            "min" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallMin, a); }
+            "max" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallMax, a); }
+            "sum" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallSum, a); }
+            "sorted" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallSorted, a); }
+            "enumerate" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallEnumerate, a); }
+            "zip" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallZip, a); }
+            "list" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallList, a); }
+            "tuple" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallTuple, a); }
+            "dict" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallDict, a); }
+            "set" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallSet, a); }
+            "input" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallInput, a); }
+            "isinstance" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallIsInstance, a); }
+            "chr" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallChr, a); }
+            "ord" => { let a = self.parse_args(); self.chunk.emit(OpCode::CallOrd, a); }
             "range" => self.call_range(),
             _ => {
                 let i = self.chunk.push_name(&name);
@@ -248,7 +269,8 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
     }
 
-    fn call_range(&mut self) { /* igual */ 
+    fn call_range(&mut self) {
+        self.advance();
         let mut args = Vec::new();
         while !matches!(self.peek(), Some(TokenType::Rpar) | None) {
             let tok = self.advance();
@@ -258,14 +280,17 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             if matches!(self.peek(), Some(TokenType::Comma)) { self.advance(); }
         }
         self.advance();
+
         let (start, stop, step) = match args.as_slice() {
-            [stop] => (0, *stop, 1),
-            [start, stop] => (*start, *stop, 1),
+            [stop]              => (0, *stop, 1),
+            [start, stop]       => (*start, *stop, 1),
             [start, stop, step] => (*start, *stop, *step),
-            _ => (0, 0, 1),
+            _                   => (0, 0, 1),
         };
-        for v in [start, stop, step] { self.emit_const(Value::Int(v)); }
-        self.chunk.emit(OpCode::CallRange, 3);
+
+        let i = self.chunk.push_const(Value::Range(start, stop, step));
+        self.chunk.emit(OpCode::LoadConst, i);
+        self.chunk.emit(OpCode::CallRange, 1);
     }
 
     fn fstring(&mut self) {
@@ -274,60 +299,22 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             match self.peek() {
                 Some(TokenType::FstringMiddle) => {
                     let t = self.advance();
-                    let mut rest = self.lexeme(&t);
-
-                    while let Some(open) = rest.find('{') {
-                        if open > 0 {
-                            self.emit_const(Value::Str(rest[..open].to_string()));
-                            parts += 1;
-                        }
-                        rest = &rest[open + 1..];
-
-                        if let Some(close) = rest.find('}') {
-                            let expr = rest[..close].trim();
-                            if !expr.is_empty() {
-                                self.parse_fstring_expr(expr);
-                                self.chunk.emit(OpCode::FormatValue, 0);
-                                parts += 1;
-                            }
-                            rest = &rest[close + 1..];
-                        } else {
-                            break;
-                        }
-                    }
-
-                    if !rest.is_empty() {
-                        self.emit_const(Value::Str(rest.to_string()));
-                        parts += 1;
+                    self.emit_const(Value::Str(self.lexeme(&t).to_string()));
+                    parts += 1;
+                }
+                Some(TokenType::Lbrace) => {
+                    self.advance(); // consume '{'
+                    self.expr();    // ← parser normal, soporta TODO
+                    self.chunk.emit(OpCode::FormatValue, 0);
+                    parts += 1;
+                    if matches!(self.peek(), Some(TokenType::Rbrace)) {
+                        self.advance(); // consume '}'
                     }
                 }
                 Some(TokenType::FstringEnd) => { self.advance(); break; }
                 _ => break,
             }
         }
-        if parts > 0 {
-            self.chunk.emit(OpCode::BuildString, parts);
-        }
-    }
-
-    fn parse_fstring_expr(&mut self, expr: &str) {
-        if expr.chars().all(|c| c.is_alphanumeric() || c == '_') && !expr.starts_with(char::is_numeric) {
-            // Caso simple: {euler}
-            self.emit_load_ssa(expr.to_string());
-        } else if let Some(pos) = expr.find(" + ") {
-            // Caso {euler + 5}
-            let left = expr[..pos].trim();
-            let right = expr[pos + 3..].trim();
-            self.emit_load_ssa(left.to_string());
-            if let Ok(num) = right.parse::<i64>() {
-                self.emit_const(Value::Int(num));
-            } else {
-                self.emit_const(Value::Str(right.to_string()));
-            }
-            self.chunk.emit(OpCode::Add, 0);
-        } else {
-            // Fallback seguro
-            self.emit_const(Value::Str(expr.to_string()));
-        }
+        if parts > 0 { self.chunk.emit(OpCode::BuildString, parts); }
     }
 }

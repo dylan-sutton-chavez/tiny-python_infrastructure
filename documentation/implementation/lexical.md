@@ -27,7 +27,11 @@ The lexer emits `Nl` for blank lines, comments, and lines inside brackets. For a
 
 ## F-Strings
 
-F-strings are decomposed into a three-token sequence rather than a single String token: `FstringStart -> FstringMiddle -> FstringEnd`. Tooling that consumes the token stream should handle this sequence explicitly.
+F-strings are decomposed into a token sequence rather than a single String token: `FstringStart → FstringMiddle → Lbrace → (expr tokens) → Rbrace → FstringEnd`. Tooling that consumes the token stream should handle each segment explicitly.
+
+Expression tokens inside `{}` are emitted by the main lexer — not the f-string scanner — allowing full expression support without special-casing.
+
+`{{` and `}}` are treated as escaped literal braces and do not produce `Lbrace`/`Rbrace` tokens.
 
 ## Soft Keyword Disambiguation
 

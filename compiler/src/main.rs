@@ -29,26 +29,7 @@ fn main() {
 
     initialize_logger();
 
-    let source = r#"
-        euler: float = 2.71828
-        pi: float = 3.14159
-
-        print(f"Euler + 5 = {euler + 5}")
-        print(f"Pi * 2 = {pi * 2}")
-
-        if euler > 2:
-            print("Euler is greater than 2")
-        else:
-            print("Error")
-
-        counter: int = 3
-        while counter > 0:
-            print(f"Counting: {counter}")
-            counter = counter - 1
-
-        print("Length of 'hello':", len("hello"))
-        print("Absolute of -42:", abs(-42))
-    "#;
+    let source = "name: str = 'Dylan'\nage: int = 25\nmsg: str = f'User {name} is {age} years old'";
 
     let chunk = modules::parser::Parser::new(source, modules::lexer::lexer(source)).parse();
 
