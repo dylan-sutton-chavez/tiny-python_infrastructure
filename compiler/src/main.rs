@@ -29,7 +29,7 @@ fn main() {
 
     initialize_logger();
 
-    let source = "name: str = 'Dylan'\nage: int = 25\nmsg: str = f'User {name} is {age} years old'";
+    let source = "dict()\ndict(a=1)\n{'a': 1}\ndict({'a': 1})";
 
     let chunk = modules::parser::Parser::new(source, modules::lexer::lexer(source)).parse();
 

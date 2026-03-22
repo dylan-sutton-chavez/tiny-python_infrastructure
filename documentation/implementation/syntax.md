@@ -50,7 +50,7 @@ x = 42
 
 FStrings parse from `FstringStart -> FstringMiddle -> FstringEnd` token sequence. Each `FstringMiddle` scanned for `{name}` expressions (`f"Hey, {name}."`).
 
-Supported: simple name {name} and binary addition {name + expr}.
+Supported: simple name `{name}` and binary addition `{name + expr}`.
 
 ## SSA Form
 

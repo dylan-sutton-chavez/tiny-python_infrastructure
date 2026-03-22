@@ -49,10 +49,10 @@ use std::collections::HashMap;
 pub enum OpCode {
     LoadConst, LoadName, StoreName, Call, PopTop, ReturnValue,
     BuildString, CallPrint, CallLen, FormatValue, CallAbs, Minus,
-    CallStr, CallInt, CallRange, Phi, Add, CallType,
+    CallStr, CallInt, CallRange, Phi, CallChr, CallType,
     CallFloat, CallBool, CallRound, CallMin, CallMax, CallSum,
     CallSorted, CallEnumerate, CallZip, CallList, CallTuple, CallDict,
-    CallIsInstance, CallSet, CallInput, CallChr, CallOrd
+    CallIsInstance, CallSet, CallInput, CallOrd, BuildDict, BuildList
 }
 
 #[derive(Debug)] pub struct Instruction { pub opcode: OpCode, pub operand: u16 }
@@ -156,6 +156,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             }
         }
     }
+
     fn advance(&mut self) -> Token { self.tokens.next().unwrap() }
     fn at_end(&mut self) -> bool { self.peek().is_none() }
     fn lexeme(&self, t: &Token) -> &'src str { &self.source[t.start..t.end] }
@@ -182,8 +183,34 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             TokenType::None => self.emit_const(Value::None),
             TokenType::FstringStart => self.fstring(),
             TokenType::Minus => { self.expr(); self.chunk.emit(OpCode::Minus, 0); },
+            TokenType::Lbrace => self.dict_literal(),  // ← agrega
+            TokenType::Lsqb   => self.list_literal(),  // ← agrega
             _ => {}
         }
+    }
+
+    fn dict_literal(&mut self) {
+        let mut pairs = 0u16;
+        while !matches!(self.peek(), Some(TokenType::Rbrace) | None) {
+            self.expr(); // clave
+            if matches!(self.peek(), Some(TokenType::Colon)) { self.advance(); }
+            self.expr(); // valor
+            pairs += 1;
+            if matches!(self.peek(), Some(TokenType::Comma)) { self.advance(); }
+        }
+        self.advance(); // consume '}'
+        self.chunk.emit(OpCode::BuildDict, pairs);
+    }
+
+    fn list_literal(&mut self) {
+        let mut count = 0u16;
+        while !matches!(self.peek(), Some(TokenType::Rsqb) | None) {
+            self.expr();
+            count += 1;
+            if matches!(self.peek(), Some(TokenType::Comma)) { self.advance(); }
+        }
+        self.advance(); // consume ']'
+        self.chunk.emit(OpCode::BuildList, count);
     }
 
     fn parse_number(&mut self, raw: &str, kind: TokenType) {
@@ -227,7 +254,21 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.advance();
         let mut argc = 0;
         while !matches!(self.peek(), Some(TokenType::Rpar) | None) {
-            self.expr(); argc += 1;
+            // kwarg: name=value → emite ("name", value)
+            if matches!(self.peek(), Some(TokenType::Name)) {
+                let t = self.advance();
+                if matches!(self.peek(), Some(TokenType::Equal)) {
+                    self.advance();
+                    let i = self.chunk.push_const(Value::Str(self.lexeme(&t).to_string()));
+                    self.chunk.emit(OpCode::LoadConst, i);
+                    self.expr();
+                } else {
+                    self.name(t); // expresión normal
+                }
+            } else {
+                self.expr();
+            }
+            argc += 1;
             if matches!(self.peek(), Some(TokenType::Comma)) { self.advance(); }
         }
         self.advance();
