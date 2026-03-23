@@ -55,7 +55,8 @@ pub enum OpCode {
     CallSorted, CallEnumerate, CallZip, CallList, CallTuple, CallDict,
     CallIsInstance, CallSet, CallInput, CallOrd, BuildDict, BuildList, 
     NotEq, Lt, Gt, LtEq, GtEq, And, 
-    Or, Not, JumpIfFalse, Jump, GetIter, ForIter
+    Or, Not, JumpIfFalse, Jump, GetIter, ForIter,
+    GetItem
 }
 
 #[derive(Debug)] pub struct Instruction { pub opcode: OpCode, pub operand: u16 }
@@ -89,6 +90,8 @@ pub struct Parser<'src, I: Iterator<Item = Token>> {
     chunk: SSAChunk,
     ssa_versions: HashMap<String, u32>,
     join_stack: Vec<JoinNode>,
+    loop_starts: Vec<u16>,        // continue salta aquí
+    loop_breaks: Vec<Vec<usize>> // break: posiciones a patchear
 }
 
 fn parse_string(s: &str) -> String { 
@@ -116,7 +119,7 @@ fn unescape(s: &str) -> String {
 
 impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     pub fn new(source: &'src str, iter: I) -> Self {
-        Self { source, tokens: iter.peekable(), chunk: SSAChunk::default(), ssa_versions: HashMap::new(), join_stack: Vec::new() }
+        Self { source, tokens: iter.peekable(), chunk: SSAChunk::default(), ssa_versions: HashMap::new(), join_stack: Vec::new(), loop_starts: Vec::new(), loop_breaks: Vec::new() }
     }
 
     pub fn parse(mut self) -> SSAChunk {
@@ -181,6 +184,12 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     fn at_end(&mut self) -> bool { self.peek().is_none() }
     fn lexeme(&self, t: &Token) -> &'src str { &self.source[t.start..t.end] }
 
+    fn store_name(&mut self, name: String) {
+        let ver = self.increment_version(&name);
+        let i = self.chunk.push_name(&format!("{}_{}", name, ver));
+        self.chunk.emit(OpCode::StoreName, i);
+    }
+
     fn stmt(&mut self) {
         match self.peek() {
             Some(TokenType::If)    => self.if_stmt(),
@@ -188,6 +197,16 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             Some(TokenType::For)   => self.for_stmt(),
             Some(TokenType::Name)  => { let t = self.advance(); self.name_stmt(t); }
             Some(TokenType::Def)   => { self.advance(); self.func_def(); }
+            Some(TokenType::Break) => {
+                self.advance();
+                self.chunk.emit(OpCode::Jump, 0);
+                self.loop_breaks.last_mut().unwrap().push(self.chunk.instructions.len() - 1);
+            }
+            Some(TokenType::Continue) => {
+                self.advance();
+                let start = *self.loop_starts.last().unwrap();
+                self.chunk.emit(OpCode::Jump, start);
+            }
             Some(TokenType::Return) => {
                 self.advance();
                 if matches!(self.peek(), Some(TokenType::Newline | TokenType::Endmarker)) {
@@ -205,6 +224,8 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.advance();
         self.enter_block();
         let loop_start = self.chunk.instructions.len() as u16;
+        self.loop_starts.push(loop_start);
+        self.loop_breaks.push(vec![]);
         self.expr();
         self.chunk.emit(OpCode::JumpIfFalse, 0);
         let jf = self.chunk.instructions.len() - 1;
@@ -212,6 +233,8 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.stmt();
         self.chunk.emit(OpCode::Jump, loop_start);
         self.patch(jf);
+        self.loop_starts.pop();
+        for pos in self.loop_breaks.pop().unwrap_or_default() { self.patch(pos); }
         self.commit_block();
     }
 
@@ -261,6 +284,8 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.chunk.emit(OpCode::GetIter, 0);
 
         let loop_start = self.chunk.instructions.len() as u16;
+        self.loop_starts.push(loop_start);
+        self.loop_breaks.push(vec![]);
         self.chunk.emit(OpCode::ForIter, 0);
         let fi = self.chunk.instructions.len() - 1;
 
@@ -270,9 +295,11 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
         self.eat(TokenType::Colon);
         self.stmt();
-        self.chunk.emit(OpCode::PopTop, 0);  // ← nuevo
+        self.chunk.emit(OpCode::PopTop, 0);
         self.chunk.emit(OpCode::Jump, loop_start);
         self.patch(fi);
+        self.loop_starts.pop();
+        for pos in self.loop_breaks.pop().unwrap_or_default() { self.patch(pos); }
     }
 
     // helpers
@@ -342,8 +369,12 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
         // assign y call no necesitan la cadena de precedencia
         match self.peek() {
-            Some(TokenType::Equal) => { self.assign(name); return; }
-            Some(TokenType::Lpar)  => { self.call(name);   return; }
+            Some(TokenType::Equal)      => { self.assign(name); return; }
+            Some(TokenType::PlusEqual)  => { self.advance(); self.emit_load_ssa(name.clone()); self.expr(); self.chunk.emit(OpCode::Add, 0); self.store_name(name); return; }
+            Some(TokenType::MinEqual) => { self.advance(); self.emit_load_ssa(name.clone()); self.expr(); self.chunk.emit(OpCode::Sub, 0); self.store_name(name); return; }
+            Some(TokenType::StarEqual)  => { self.advance(); self.emit_load_ssa(name.clone()); self.expr(); self.chunk.emit(OpCode::Mul, 0); self.store_name(name); return; }
+            Some(TokenType::SlashEqual) => { self.advance(); self.emit_load_ssa(name.clone()); self.expr(); self.chunk.emit(OpCode::Div, 0); self.store_name(name); return; }
+            Some(TokenType::Lpar)       => { self.call(name); return; }
             _ => {}
         }
 
@@ -434,6 +465,12 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             TokenType::Lpar         => { self.expr(); self.eat(TokenType::Rpar); }
             _ => {}
         }
+        while matches!(self.peek(), Some(TokenType::Lsqb)) {
+            self.advance();
+            self.expr();
+            self.eat(TokenType::Rsqb);
+            self.chunk.emit(OpCode::GetItem, 0);
+        }
     }
 
     fn name(&mut self, t: Token) {           // solo desde expr()
@@ -445,13 +482,10 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
     }
 
-    fn assign(&mut self, name: String) { 
+    fn assign(&mut self, name: String) {
         self.advance();
         self.expr();
-        let ver = self.increment_version(&name);
-        let ssa = format!("{}_{}", name, ver);
-        let i = self.chunk.push_name(&ssa);
-        self.chunk.emit(OpCode::StoreName, i);
+        self.store_name(name);
     }
 
     fn parse_args(&mut self) -> u16 {
