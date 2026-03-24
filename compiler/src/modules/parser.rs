@@ -316,13 +316,13 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     fn dict_literal(&mut self) {
         let mut pairs = 0u16;
         while !matches!(self.peek(), Some(TokenType::Rbrace) | None) {
-            self.expr(); // clave
-            if matches!(self.peek(), Some(TokenType::Colon)) { self.advance(); }
-            self.expr(); // valor
+            self.expr();                    // clave
+            self.eat(TokenType::Colon);     // ← ahora OBLIGATORIO
+            self.expr();                    // valor
             pairs += 1;
-            if matches!(self.peek(), Some(TokenType::Comma)) { self.advance(); }
+            self.eat_if(TokenType::Comma);
         }
-        self.advance(); // consume '}'
+        self.advance(); // '}'
         self.chunk.emit(OpCode::BuildDict, pairs);
     }
 
@@ -482,6 +482,14 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             Some(TokenType::Equal) => self.assign(name),
             Some(TokenType::Lpar)  => self.call(name),
             _                      => self.emit_load_ssa(name),
+        }
+
+        // NUEVO: soporte para d[expr], d["x"], etc. (funciona en cualquier sitio)
+        while matches!(self.peek(), Some(TokenType::Lsqb)) {
+            self.advance();           // consume [
+            self.expr();
+            self.eat(TokenType::Rsqb);
+            self.chunk.emit(OpCode::GetItem, 0);
         }
     }
 

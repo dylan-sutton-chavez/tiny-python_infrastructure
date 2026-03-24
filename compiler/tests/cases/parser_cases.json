@@ -75,5 +75,12 @@
     "names": ["x_1", "a_0", "x_2", "b_0", "x_3", "x_4", "x_5", "y_1"],
     "instructions": [["LoadConst",0], ["StoreName",0], ["PopTop",0], ["LoadName",1], ["JumpIfFalse",9], ["LoadConst",1], ["StoreName",2], ["PopTop",0], ["Jump",18], ["LoadName",3], ["JumpIfFalse",15], ["LoadConst",2], ["StoreName",4], ["PopTop",0], ["Jump",18], ["LoadConst",3], ["StoreName",5], ["PopTop",0], ["Phi",6], ["LoadName",6], ["StoreName",7], ["PopTop",0], ["ReturnValue",0]],
     "annotations": {}
+  },
+  {
+  "src": "d = {1: 'one', 2: True, 'x': 3.14}\nprint(d)\nprint(d[2])\nprint(d['x'])",
+  "constants": ["1", "one", "2", "true", "x", "3.14", "2", "x"],
+  "names": ["d_1"],
+  "instructions": [["LoadConst",0], ["LoadConst",1], ["LoadConst",2], ["LoadConst",3], ["LoadConst",4], ["LoadConst",5], ["BuildDict",3], ["StoreName",0], ["PopTop",0], ["LoadName",0], ["CallPrint",0], ["PopTop",0], ["LoadName",0], ["LoadConst",6], ["GetItem",0], ["CallPrint",0], ["PopTop",0], ["LoadName",0], ["LoadConst",7], ["GetItem",0], ["CallPrint",0], ["PopTop",0], ["ReturnValue",0]],
+  "annotations": {}
   }
 ]

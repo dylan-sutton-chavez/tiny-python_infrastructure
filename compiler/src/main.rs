@@ -29,8 +29,8 @@ fn main() {
 
     initialize_logger();
 
-    let source = "def add(a, b): return a + b\nresult = add(1, 2)";
-
+    let source = "d = {1: 'one', 2: True, 'x': 3.14}\nprint(d)\nprint(d[2])\nprint(d['x'])";
+    
     let chunk = modules::parser::Parser::new(source, modules::lexer::lexer(source)).parse();
 
     // Instructions.
