@@ -26,6 +26,8 @@
 
         info!("constants: {:?}", chunk.constants);
         info!("names: {:?}", chunk.names);
+        info!("annotations: {:?}", chunk.annotations);
+        info!("functions count: {:?}", chunk.functions.len());
         ```
 
     Output:
@@ -230,7 +232,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.chunk.emit(OpCode::JumpIfFalse, 0);
         let jf = self.chunk.instructions.len() - 1;
         self.eat(TokenType::Colon);
-        self.stmt();
+        self.compile_block();           // ← AQUÍ
         self.chunk.emit(OpCode::Jump, loop_start);
         self.patch(jf);
         self.loop_starts.pop();
@@ -250,8 +252,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.chunk.emit(OpCode::JumpIfFalse, 0);
         let jf = self.chunk.instructions.len() - 1;
         self.eat(TokenType::Colon);
-        self.stmt();
-        self.chunk.emit(OpCode::PopTop, 0);
+        self.compile_block();
 
         match self.peek() {
             Some(TokenType::Elif) => {
@@ -268,8 +269,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 let jmp = self.chunk.instructions.len() - 1;
                 self.patch(jf);
                 self.eat(TokenType::Colon);
-                self.stmt();
-                self.chunk.emit(OpCode::PopTop, 0);
+                self.compile_block();           // ← usa block aquí
                 self.patch(jmp);
             }
             _ => { self.patch(jf); }
@@ -294,8 +294,8 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.chunk.emit(OpCode::StoreName, idx);
 
         self.eat(TokenType::Colon);
-        self.stmt();
-        self.chunk.emit(OpCode::PopTop, 0);
+        self.compile_block();                    // ← correcto
+
         self.chunk.emit(OpCode::Jump, loop_start);
         self.patch(fi);
         self.loop_starts.pop();
@@ -311,6 +311,31 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     }
     fn eat_if(&mut self, kind: TokenType) -> bool {
         if matches!(self.peek(), Some(k) if k == kind) { self.advance(); true } else { false }
+    }
+
+    fn compile_block(&mut self) {
+        self.eat_if(TokenType::Indent);
+
+        while !self.at_end() {
+            if matches!(self.peek(), Some(TokenType::Dedent)) {
+                self.advance();
+                break;
+            }
+
+            if matches!(self.peek(), Some(TokenType::Newline | TokenType::Nl)) {
+                self.advance();
+                continue;
+            }
+
+            let is_compound = matches!(self.peek(),
+                Some(TokenType::For | TokenType::If | TokenType::While | TokenType::Def));
+
+            self.stmt();   // ← ya lo tienes, perfecto
+
+            if !self.at_end() && !is_compound {
+                self.chunk.emit(OpCode::PopTop, 0);
+            }
+        }
     }
 
     fn dict_literal(&mut self) {
@@ -588,15 +613,17 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     }
         
     fn compile_body(&mut self, params: &[String]) -> SSAChunk {
-        let (saved_chunk, saved_ver) = (std::mem::take(&mut self.chunk), std::mem::take(&mut self.ssa_versions));
-        for p in params { self.ssa_versions.insert(p.clone(), 0); }
-        
-        loop {
-            let is_return = matches!(self.peek(), Some(TokenType::Return));
-            self.stmt();
-            if is_return || self.at_end() { break; }
+        let (mut saved_chunk, saved_ver) = (
+            std::mem::take(&mut self.chunk),
+            std::mem::take(&mut self.ssa_versions),
+        );
+
+        for p in params {
+            self.ssa_versions.insert(p.clone(), 0);
         }
-        
+
+        self.compile_block();   // ← SOLO esto
+
         let body = std::mem::take(&mut self.chunk);
         (self.chunk, self.ssa_versions) = (saved_chunk, saved_ver);
         body
