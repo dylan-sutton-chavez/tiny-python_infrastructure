@@ -71,6 +71,7 @@ pub struct SSAChunk {
     pub names: Vec<String>,
     pub functions: Vec<(Vec<String>, SSAChunk)>,
     pub annotations: HashMap<String, String>,
+    pub phi_sources: Vec<(u16, u16)>
 }
 
 impl SSAChunk {
@@ -83,7 +84,8 @@ impl SSAChunk {
 }
 
 struct JoinNode {
-    backup: HashMap<String, u32>
+    backup: HashMap<String, u32>,
+    then: Option<HashMap<String, u32>>
 }
 
 pub struct Parser<'src, I: Iterator<Item = Token>> {
@@ -138,9 +140,10 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     fn current_version(&self, name: &str) -> u32 { self.ssa_versions.get(name).copied().unwrap_or(0) }
     
     fn increment_version(&mut self, name: &str) -> u32 {
-        let v = self.current_version(name) + 1;
-        self.ssa_versions.insert(name.to_string(), v);
-        v
+        let current = self.ssa_versions.get(name).copied().unwrap_or(0);
+        let new_ver = current + 1;
+        self.ssa_versions.insert(name.to_string(), new_ver);
+        new_ver
     }
 
     fn emit_load_ssa(&mut self, name: String) {
@@ -151,41 +154,60 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     }
 
     fn enter_block(&mut self) { 
-        self.join_stack.push(JoinNode { backup: self.ssa_versions.clone() }); 
+        self.join_stack.push(JoinNode { backup: self.ssa_versions.clone(), then: None }); 
     }
     
-    fn commit_block(&mut self) {
-        if let Some(j) = self.join_stack.pop() {
-            let post = self.ssa_versions.clone();
-            self.ssa_versions = j.backup;
+    fn mid_block(&mut self) {
+        let Some(j) = self.join_stack.last_mut() else { return };
 
-            let mut diffs: Vec<(String, u32)> = post
-                .into_iter()
-                .filter(|(name, post_ver)| {
-                    self.ssa_versions.get(name).copied().unwrap_or(0) != *post_ver
-                })
-                .collect();
+        let current = self.ssa_versions.clone();
+        j.then = Some(current.clone());
 
-            diffs.sort_by(|(a, _), (b, _)| a.cmp(b));
-
-            for (name, post_ver) in diffs {
-                self.ssa_versions.insert(name.clone(), post_ver);
-                let new_ver = self.increment_version(&name);
-                let ssa = format!("{}_{}", name, new_ver);
-                let i = self.chunk.push_name(&ssa);
-                self.chunk.emit(OpCode::Phi, i);
-            }
+        // Merge de versiones más altas (max) - inline y súper limpio
+        let mut restored = j.backup.clone();
+        for (name, &v) in &current {
+            let e = restored.entry(name.clone()).or_insert(0);
+            *e = (*e).max(v);
         }
+        self.ssa_versions = restored;
     }
 
-    fn peek(&mut self) -> Option<TokenType> {
-        loop {
-            match self.tokens.peek().map(|t| t.kind.clone()) {
-                Some(TokenType::Newline | TokenType::Nl | TokenType::Comment) => { self.tokens.next(); }
-                Some(k) => return Some(k),
-                None => return None,
-            }
+    fn commit_block(&mut self) {
+        let Some(j) = self.join_stack.pop() else { return };
+        let post = self.ssa_versions.clone();
+        let (a, b) = match j.then {
+            Some(t) => (t, post),
+            None    => (post, j.backup.clone())
+        };
+
+        let mut names: Vec<_> = a.keys().chain(b.keys()).cloned().collect();
+        names.sort(); names.dedup();
+
+        for name in names {
+            let va = *a.get(&name).unwrap_or(&0);
+            let vb = *b.get(&name).unwrap_or(&0);
+            if va == vb { continue; }
+
+            let ia = if va == 0 {
+                self.chunk.push_name(&format!("{}_{}", name, vb))
+            } else {
+                self.chunk.push_name(&format!("{}_{}", name, va))
+            };
+            let ib = if vb == 0 {
+                self.chunk.push_name(&format!("{}_{}", name, va))
+            } else {
+                self.chunk.push_name(&format!("{}_{}", name, vb))
+            };
+
+            let v  = self.increment_version(&name);
+            let ix = self.chunk.push_name(&format!("{}_{}", name, v));
+
+            self.chunk.phi_sources.push((ia, ib));
+            self.chunk.emit(OpCode::Phi, ix);
+
+            self.ssa_versions.insert(name.clone(), v);
         }
+
     }
 
     fn advance(&mut self) -> Token { self.tokens.next().unwrap() }
@@ -265,6 +287,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 self.advance();              // consume 'elif'
                 self.chunk.emit(OpCode::Jump, 0);
                 let jmp = self.chunk.instructions.len() - 1;
+                self.mid_block();
                 self.patch(jf);
                 self.if_body();              // recursivo SIN enter/commit
                 self.patch(jmp);
@@ -273,12 +296,23 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 self.advance();
                 self.chunk.emit(OpCode::Jump, 0);
                 let jmp = self.chunk.instructions.len() - 1;
+                self.mid_block();
                 self.patch(jf);
                 self.eat(TokenType::Colon);
                 self.compile_block();           // ← usa block aquí
                 self.patch(jmp);
             }
             _ => { self.patch(jf); }
+        }
+    }
+
+    fn peek(&mut self) -> Option<TokenType> {
+        loop {
+            match self.tokens.peek().map(|t| t.kind.clone()) {
+                Some(TokenType::Newline | TokenType::Nl | TokenType::Comment) => { self.tokens.next(); }
+                Some(k) => return Some(k),
+                None => return None,
+            }
         }
     }
 
@@ -620,7 +654,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     }
         
     fn compile_body(&mut self, params: &[String]) -> SSAChunk {
-        let (mut saved_chunk, saved_ver) = (
+        let (saved_chunk, saved_ver) = (
             std::mem::take(&mut self.chunk),
             std::mem::take(&mut self.ssa_versions),
         );
@@ -632,7 +666,9 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.compile_block();   // ← SOLO esto
 
         let body = std::mem::take(&mut self.chunk);
+        
         (self.chunk, self.ssa_versions) = (saved_chunk, saved_ver);
+        
         body
     }
 
