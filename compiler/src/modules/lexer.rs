@@ -1,6 +1,6 @@
 /* 
 `lexer.rs`
-    Tokenizes Python source into a stream of spanned Token variants.
+    Tokenizes Python source into offset-indexed tokens. Zero-copy, zero-alloc hot path, DFA-compiled via logos.
 
     Usage:
         ```rust
@@ -29,12 +29,13 @@ use std::cmp::Ordering;
 // A04:2021 Prevent asymetric DoS via deeply data structures: `handle_indent`, `lex_fstring_body`.
 const MAX_INDENT_DEPTH: usize = 100;
 const MAX_FSTRING_DEPTH: usize = 200;
+const MAX_SOURCE_SIZE: usize = 10 * 1024 * 1024; // 10MB
 
 #[derive(Default)]
 pub struct LexerState {
 
     /*
-    Structure for: pending token queue, indentation stack, bracket nesting depth.
+    Pending queue, indentation stack, bracket depth, line counter, and f-string context.
     */
 
     pending: VecDeque<(TokenType, usize, usize, usize)>,
@@ -49,7 +50,7 @@ pub struct LexerState {
 pub struct Token {
 
     /* 
-    Structure: kind (token type): line, start and end for indexes of the kind.
+    Token kind with line number and byte-offset span (start, end) into source. 
     */
 
     pub kind: TokenType,
@@ -63,28 +64,46 @@ pub struct Token {
 fn open_bracket(lex: &mut Lexer<TokenType>) { lex.extras.nesting += 1; }
 fn close_bracket(lex: &mut Lexer<TokenType>) { lex.extras.nesting = lex.extras.nesting.saturating_sub(1); }
 
-fn handle_indent (lex: &mut Lexer<TokenType>) -> logos::Skip {
+fn handle_indent(lex: &mut Lexer<TokenType>) -> logos::Skip {
 
-    /*
-    Decides `if \n` is a statement boundary or inside brackets.
+    /* 
+    Emits Indent/Dedent/Newline tokens or suppresses them inside bracketed expressions. 
     */
 
     let s = lex.span();
-
-    let src = lex.remainder();
-    let indent: Vec<u8> = src.bytes().take_while(|&b| b == b' ' || b == b'\t').collect();
-    let level = indent.len();
-    let line = s.end + level;
-
     let current_line = lex.extras.line;
+
     lex.extras.line += 1;
 
-    let next = src[indent.len()..].chars().next();
-    
-    if lex.extras.nesting > 0 { lex.extras.pending.push_back((TokenType::Nl, current_line, s.start, s.end)); return logos::Skip; }
-    if indent.contains(&b' ') && indent.contains(&b'\t') { lex.extras.pending.push_back((TokenType::Newline, current_line, s.start, s.end)); lex.extras.pending.push_back((TokenType::Endmarker, current_line, s.start, s.end)); return logos::Skip; }
-    if matches!(next, Some('\n' | '\r' | '#')) { lex.extras.pending.push_back((TokenType::Nl, current_line, s.start, s.end)); return logos::Skip; }
+    if lex.extras.nesting > 0 {
+        lex.extras.pending.push_back((TokenType::Nl, current_line, s.start, s.end));
+        return logos::Skip;
+    }
 
+    let bytes = lex.remainder().as_bytes();
+
+    let mut level = 0usize;
+    let mut has_space = false;
+    let mut has_tab = false;
+
+    while level < bytes.len() && (bytes[level] == b' ' || bytes[level] == b'\t') {
+        has_space |= bytes[level] == b' ';
+        has_tab |= bytes[level] == b'\t';
+        level += 1;
+    }
+
+    if has_space && has_tab {
+        lex.extras.pending.push_back((TokenType::Newline, current_line, s.start, s.end));
+        lex.extras.pending.push_back((TokenType::Endmarker, current_line, s.start, s.end));
+        return logos::Skip;
+    }
+
+    if matches!(bytes.get(level), Some(b'\n' | b'\r' | b'#')) {
+        lex.extras.pending.push_back((TokenType::Nl, current_line, s.start, s.end));
+        return logos::Skip;
+    }
+
+    let line = s.end + level;
     let current = *lex.extras.indent_stack.last().unwrap_or(&0);
 
     lex.extras.pending.push_back((TokenType::Newline, current_line, s.start, s.end));
@@ -92,18 +111,21 @@ fn handle_indent (lex: &mut Lexer<TokenType>) -> logos::Skip {
     match level.cmp(&current) {
 
         Ordering::Greater => {
-            if lex.extras.indent_stack.len() >= MAX_INDENT_DEPTH { lex.extras.pending.push_back((TokenType::Endmarker, current_line, s.start, s.end)); return logos::Skip; }
+            if lex.extras.indent_stack.len() >= MAX_INDENT_DEPTH {
+                lex.extras.pending.push_back((TokenType::Endmarker, current_line, s.start, s.end));
+                return logos::Skip;
+            }
             lex.extras.indent_stack.push(level);
             lex.extras.pending.push_back((TokenType::Indent, lex.extras.line, line, line));
-        },
-        
+        }
+
         Ordering::Less => while lex.extras.indent_stack.last().is_some_and(|&t| t > level) {
             lex.extras.indent_stack.pop();
             lex.extras.pending.push_back((TokenType::Dedent, lex.extras.line, line, line));
-        },
-    
+        }
+
         Ordering::Equal => {}
-    
+
     }
 
     logos::Skip
@@ -111,13 +133,17 @@ fn handle_indent (lex: &mut Lexer<TokenType>) -> logos::Skip {
 }
 
 fn lex_fstring_body(lex: &mut Lexer<TokenType>, quote: u8, triple: bool, body_start: usize) {
+
     /* 
-    Scans f-string bytes, suspending at `{` to let the main lexer resume.
+    Scans f-string bytes, emitting text segments and suspending at `{` for expression lexing. 
     */
+
     let bytes = lex.remainder().as_bytes();
+
     let mut pos = 0usize;
 
     while pos < bytes.len() {
+    
         let closes = if triple {
             bytes.get(pos..pos + 3) == Some(&[quote, quote, quote])
         } else {
@@ -125,19 +151,26 @@ fn lex_fstring_body(lex: &mut Lexer<TokenType>, quote: u8, triple: bool, body_st
         };
 
         if closes {
+
             if pos > 0 {
                 lex.extras.pending.push_back((TokenType::FstringMiddle, lex.extras.line, body_start, body_start + pos));
             }
+
             let quote_len = if triple { 3 } else { 1 };
+
             lex.bump(pos + quote_len);
             lex.extras.pending.push_back((TokenType::FstringEnd, lex.extras.line, body_start + pos, body_start + pos + quote_len));
+
             return;
+
         }
 
         match bytes[pos] {
-            b'\\' => pos += 2,
+
+            b'\\' => pos = (pos + 2).min(bytes.len()),
+
             b'{' if bytes.get(pos + 1) != Some(&b'{') => {
-                // Emite texto previo
+
                 if pos > 0 {
                     lex.extras.pending.push_back((TokenType::FstringMiddle, lex.extras.line, body_start, body_start + pos));
                 }
@@ -147,37 +180,49 @@ fn lex_fstring_body(lex: &mut Lexer<TokenType>, quote: u8, triple: bool, body_st
                     lex.bump(pos + 1);
                     return;
                 }
-                // Emite Lbrace
+
                 lex.extras.pending.push_back((TokenType::Lbrace, lex.extras.line, body_start + pos, body_start + pos + 1));
-                // Guarda estado fstring para reanudar después del '}'
                 lex.extras.fstring_stack.push((quote, triple, body_start + pos + 1));
-                // Avanza el lexer hasta después del '{' — logos retoma control
                 lex.bump(pos + 1);
-                return; // ← PARA aquí, logos tokeniza la expresión
+
+                return;
+
             }
+
             _ => pos += 1,
+
         }
+
     }
+
 }
 
 fn lex_name_or_fstring(lex: &mut Lexer<TokenType>) -> Option<()> {
 
-    /*
-    Detects f-string prefixes within identifier matches and delegates to lex_fstring_body .
+    /* 
+    Reclassifies `f`/`fr`/`rf` identifiers as f-string starts when followed by a quote. 
     */
 
     let s = lex.span();
+    let slice = lex.slice().as_bytes();
 
-    if !matches!(lex.slice().to_ascii_lowercase().as_str(), "f" | "fr" | "rf") { return Some(()); }
+    let is_fprefix = match slice.len() {
+        1 => matches!(slice[0], b'f' | b'F'),
+        2 => matches!((slice[0], slice[1]), (b'f' | b'F', b'r' | b'R') | (b'r' | b'R', b'f' | b'F')),
+        _ => return Some(()),
+    };
+
+    if !is_fprefix { return Some(()); }
 
     let Some(&q) = lex.remainder().as_bytes().first() else { return Some(()); };
+
     if !matches!(q, b'"' | b'\'') { return Some(()); }
 
     let triple = lex.remainder().as_bytes().get(1) == Some(&q);
-
     let quote_len = if triple { 3 } else { 1 };
 
     lex.bump(quote_len);
+
     let body_start = s.end + quote_len;
     lex.extras.pending.push_back((TokenType::FstringStart, lex.extras.line, s.start, body_start));
 
@@ -188,18 +233,22 @@ fn lex_name_or_fstring(lex: &mut Lexer<TokenType>) -> Option<()> {
 }
 
 fn close_fstring_expr(lex: &mut Lexer<TokenType>) -> logos::Skip {
-    /* Saves correct Rbrace span before resuming f-string body scan. */
-    let span = lex.span(); // ← span correcto ANTES de cualquier bump
+
+    /* 
+    Closes an f-string expression on `}`, emits Rbrace, and resumes f-string body scanning. 
+    */
+
+    let span = lex.span();
+
     if let Some((quote, triple, _)) = lex.extras.fstring_stack.pop() {
-        // Empuja Rbrace con span correcto al pending
         lex.extras.pending.push_back((TokenType::Rbrace, lex.extras.line, span.start, span.end));
-        // Reanuda fstring — puede hacer bump, ya no importa
         lex_fstring_body(lex, quote, triple, span.end);
     } else {
         lex.extras.nesting = lex.extras.nesting.saturating_sub(1);
         lex.extras.pending.push_back((TokenType::Rbrace, lex.extras.line, span.start, span.end));
     }
-    logos::Skip // ← logos no emite nada, pending lo maneja
+
+    logos::Skip
 }
 
 #[derive(Logos, Debug, PartialEq, Clone)]
@@ -362,49 +411,58 @@ pub enum TokenType {
 }
 
 pub fn lexer(source: &str) -> impl Iterator<Item = Token> + '_ {
-
+    
     /* 
-    Tokenizes Python source into a parser-ready stream, resolving indentation, soft keywords, and f-string expression boundaries.
+    Produces a parser-ready token stream with indentation, soft keywords, and f-string boundaries resolved. 
     */
+    
+    let source_len = source.len();
 
-    let source_len = source.len(); // ← longitud real del source
     let mut lex = TokenType::lexer(source);
     let mut done = false;
+
+    if source_len > MAX_SOURCE_SIZE {
+        lex.extras.pending.push_back((TokenType::Endmarker, 0, source_len, source_len));
+    }
 
     let mut stream = std::iter::from_fn(move || {
 
         if let Some(tok) = lex.extras.pending.pop_front() { return Some(tok); }
-
-        let result = match lex.next() {
-            Some(Ok(tok)) => { let s = lex.span(); Some((tok, lex.extras.line, s.start, s.end)) },
-            Some(Err(_)) => lex.extras.pending.is_empty().then_some((TokenType::Endmarker, lex.extras.line, source_len, source_len)),
-            None if !done => { done = true; Some((TokenType::Endmarker, lex.extras.line, source_len, source_len)) }
-            _ => None,
+        
+        let tok = match lex.next() {
+            Some(Ok(tok)) => { let s = lex.span(); (tok, lex.extras.line, s.start, s.end) }
+            Some(Err(_)) if lex.extras.pending.is_empty() => (TokenType::Endmarker, lex.extras.line, source_len, source_len),
+            Some(Err(_)) => return lex.extras.pending.pop_front(),
+            None if !done => { done = true; (TokenType::Endmarker, lex.extras.line, source_len, source_len) }
+            None => return None,
         };
 
-        if let Some(t) = result { lex.extras.pending.push_back(t); }
-
-        lex.extras.pending.pop_front()
+        if lex.extras.pending.is_empty() {
+            Some(tok)
+        } else {
+            lex.extras.pending.push_back(tok);
+            lex.extras.pending.pop_front()
+        }
 
     }).peekable();
 
     let mut ended = false;
 
     std::iter::from_fn(move || {
-    
-        if ended { return None; }
-    
+
         let (tok, line, start, end) = stream.next()?;
-    
+
+        if ended { return None; }
         if tok == TokenType::Endmarker { ended = true; }
 
-        let as_name = matches!(tok, TokenType::Match | TokenType::Case | TokenType::Type) && matches!(stream.peek(), Some((
+        let is_soft_keyword = matches!(tok, TokenType::Match | TokenType::Case | TokenType::Type);
+        let next_demotes = matches!(stream.peek(), Some((
             TokenType::Lpar | TokenType::Colon | TokenType::Equal |
-            TokenType::Comma | TokenType::Rpar | TokenType::Rsqb  |
+            TokenType::Comma | TokenType::Rpar | TokenType::Rsqb |
             TokenType::Newline, _, _, _
         )) | None);
 
-        let kind = if as_name { TokenType::Name } else { tok };
+        let kind = if is_soft_keyword && next_demotes { TokenType::Name } else { tok };
 
         Some(Token { kind, line, start, end })
     

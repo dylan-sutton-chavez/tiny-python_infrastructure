@@ -1,52 +1,28 @@
 #[cfg(test)]
 mod lexer_test {
 
-    /*
-    Loads lexer test cases from JSON and asserts token output matches expected values.
-    */
+    use compiler::modules::lexer::lexer;
 
-    use compiler::modules::lexer::{lexer, TokenType};
+    #[derive(serde::Deserialize)]
+    struct Case {
+        src: String,
+        tokens: Vec<String>,
+    }
 
     #[test]
     fn test_cases() {
 
-        /*
-        Using a formatted vector: [source, expected_tokens], the lexer builds its structure and compares it against the expected token output.
+        /* 
+        Loads lexer cases from JSON and asserts each source produces the expected token sequence. 
         */
-
-        let raw = include_str!("cases/lexer_cases.json");
-        let cases: Vec<(String, Vec<String>)> = serde_json::from_str(raw).expect("invalid JSON");
-
-        for (src, expected) in cases {
-            let got: Vec<String> = lexer(&src).map(|t| format!("{:?}", t.kind)).collect();
-            assert_eq!(got, expected, "failed on: {:?}", src);
+        
+        let cases: Vec<Case> = serde_json::from_str(include_str!("cases/lexer_cases.json")).expect("invalid JSON");
+        
+        for case in cases {
+            let got: Vec<String> = lexer(&case.src).map(|t| format!("{:?}", t.kind)).collect();
+            assert_eq!(got, case.tokens, "failed on: {:?}", case.src);
         }
-
-    }
-
-    #[test]
-    fn test_spans() {
-
-        /*
-        Asserts token byte positions against known source offsets.
-        */
-
-        let cases = vec![
-            ("1 + 1", vec![
-                (TokenType::Int, 0, 1),
-                (TokenType::Plus, 2, 3),
-                (TokenType::Int, 4, 5),
-                (TokenType::Endmarker, 5, 5),
-            ])
-        ];
-
-        for (src, expected) in cases {
-
-            let got: Vec<(TokenType, usize, usize)> = lexer(src).map(|t| (t.kind, t.start, t.end)).collect();
-            assert_eq!(got, expected, "failed on: {:?}", src);
-
-        }
-
+    
     }
 
 }

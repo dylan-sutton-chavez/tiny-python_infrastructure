@@ -1,89 +1,498 @@
 [
-  ["1 + 1", ["Int",  "Plus",  "Int",  "Endmarker"]],
-  ["x - 1", ["Name", "Minus", "Int",  "Endmarker"]],
-  ["x * 2", ["Name", "Star",  "Int",  "Endmarker"]],
-  ["x / 2", ["Name", "Slash", "Int",  "Endmarker"]],
-  ["x % 2", ["Name", "Percent",    "Int", "Endmarker"]],
-  ["x & 2", ["Name", "Amper",      "Int", "Endmarker"]],
-  ["x | 2", ["Name", "Vbar",       "Int", "Endmarker"]],
-  ["x ^ 2", ["Name", "Circumflex", "Int", "Endmarker"]],
-  ["~x",    ["Tilde", "Name", "Endmarker"]],
-  ["x @ y", ["Name", "At",   "Name", "Endmarker"]],
-  ["x ** 2", ["Name", "DoubleStar",  "Int", "Endmarker"]],
-  ["x // 2", ["Name", "DoubleSlash", "Int", "Endmarker"]],
-  ["x >> 2", ["Name", "RightShift",  "Int", "Endmarker"]],
-  ["x << 2", ["Name", "LeftShift",   "Int", "Endmarker"]],
-
-  ["x < 2",  ["Name", "Less",         "Int", "Endmarker"]],
-  ["x > 2",  ["Name", "Greater",      "Int", "Endmarker"]],
-  ["x >= 2", ["Name", "GreaterEqual", "Int", "Endmarker"]],
-  ["x <= 2", ["Name", "LessEqual",    "Int", "Endmarker"]],
-  ["x == 5", ["Name", "EqEqual",      "Int", "Endmarker"]],
-  ["x != 5", ["Name", "NotEqual",     "Int", "Endmarker"]],
-  ["...",    ["Ellipsis", "Endmarker"]],
-
-  ["x = 5",   ["Name", "Equal",           "Int",  "Endmarker"]],
-  ["x += 1",  ["Name", "PlusEqual",       "Int",  "Endmarker"]],
-  ["x -= 1",  ["Name", "MinEqual",        "Int",  "Endmarker"]],
-  ["x *= 2",  ["Name", "StarEqual",       "Int",  "Endmarker"]],
-  ["x /= 2",  ["Name", "SlashEqual",      "Int",  "Endmarker"]],
-  ["x %= 2",  ["Name", "PercentEqual",    "Int",  "Endmarker"]],
-  ["x &= 2",  ["Name", "AmperEqual",      "Int",  "Endmarker"]],
-  ["x |= 2",  ["Name", "VbarEqual",       "Int",  "Endmarker"]],
-  ["x ^= 2",  ["Name", "CircumflexEqual", "Int",  "Endmarker"]],
-  ["x @= y",  ["Name", "AtEqual",         "Name", "Endmarker"]],
-  ["x **= 2", ["Name", "DoubleStarEqual",  "Int",  "Endmarker"]],
-  ["x //= 2", ["Name", "DoubleSlashEqual", "Int",  "Endmarker"]],
-  ["x >>= 2", ["Name", "RightShiftEqual",  "Int",  "Endmarker"]],
-  ["x <<= 2", ["Name", "LeftShiftEqual",   "Int",  "Endmarker"]],
-  ["x -> y",  ["Name", "Rarrow",           "Name", "Endmarker"]],
-  ["x := 5",  ["Name", "ColonEqual",       "Int",  "Endmarker"]],
-
-  ["42",        ["Int",     "Endmarker"]],
-  ["1_000_000", ["Int",     "Endmarker"]],
-  ["0xFF",      ["Int",     "Endmarker"]],
-  ["0b1010",    ["Int",     "Endmarker"]],
-  ["0o77",      ["Int",     "Endmarker"]],
-  ["3.14",      ["Float",   "Endmarker"]],
-  [".5",        ["Float",   "Endmarker"]],
-  ["1e-5",      ["Float",   "Endmarker"]],
-  ["3j",        ["Complex", "Endmarker"]],
-  ["2.5J",      ["Complex", "Endmarker"]],
-
-  ["'hello'",      ["String", "Endmarker"]],
-  ["b'bytes'",     ["String", "Endmarker"]],
-  ["r'raw'",       ["String", "Endmarker"]],
-  ["u'unicode'",   ["String", "Endmarker"]],
-  ["'''triple'''", ["String", "Endmarker"]],
-
-  ["f'hello'",       ["FstringStart", "FstringMiddle", "FstringEnd", "Endmarker"]],
-  ["f'hello {x}'",   ["FstringStart", "FstringMiddle", "Lbrace", "Name", "Rbrace", "FstringEnd", "Endmarker"]],
-  ["f'{a} and {b}'", ["FstringStart", "Lbrace", "Name", "Rbrace", "FstringMiddle", "Lbrace", "Name", "Rbrace", "FstringEnd", "Endmarker"]],
-  ["f'''multi\nline'''", ["FstringStart", "FstringMiddle", "FstringEnd", "Endmarker"]],
-  ["f'''multi\n{x}'''",  ["FstringStart", "FstringMiddle", "Lbrace", "Name", "Rbrace", "FstringEnd", "Endmarker"]],
-
-  ["# comment",      ["Comment", "Endmarker"]],
-  ["x = 1 # inline", ["Name", "Equal", "Int", "Comment", "Endmarker"]],
-
-  ["",       ["Endmarker"]],
-  ["   ",    ["Endmarker"]],
-  ["\n",     ["Newline", "Endmarker"]],
-  ["# N/a\n", ["Comment", "Newline", "Endmarker"]],
-
-  ["x = 1",       ["Name", "Equal", "Int", "Endmarker"]],
-  ["(\n)\n",       ["Lpar", "Nl", "Rpar", "Newline", "Endmarker"]],
-  ["[\n1,\n2\n]\n", ["Lsqb", "Nl", "Int", "Comma", "Nl", "Int", "Nl", "Rsqb", "Newline", "Endmarker"]],
-
-  ["if x:\n    pass\n",          ["If", "Name", "Colon", "Newline", "Indent", "Pass", "Newline", "Dedent", "Endmarker"]],
-  ["if True:\n\tpass\n",         ["If", "True", "Colon", "Newline", "Indent", "Pass", "Newline", "Dedent", "Endmarker"]],
-  ["if x:\n    pass\n\n    pass\n", ["If", "Name", "Colon", "Newline", "Indent", "Pass", "Nl", "Newline", "Pass", "Newline", "Dedent", "Endmarker"]],
-  ["if x:\n \tpass\n",           ["If", "Name", "Colon", "Newline", "Endmarker"]],
-  ["if x:\n    if y:\n        pass\nz\n", ["If", "Name", "Colon", "Newline", "Indent", "If", "Name", "Colon", "Newline", "Indent", "Pass", "Newline", "Dedent", "Dedent", "Name", "Newline", "Endmarker"]],
-  ["def f():\n    if True:\n        pass\n", ["Def", "Name", "Lpar", "Rpar", "Colon", "Newline", "Indent", "If", "True", "Colon", "Newline", "Indent", "Pass", "Newline", "Dedent", "Dedent", "Endmarker"]],
-
-  ["match = 5",  ["Name", "Equal", "Int",  "Endmarker"]],
-  ["case = True", ["Name", "Equal", "True", "Endmarker"]],
-  ["type = None", ["Name", "Equal", "None", "Endmarker"]],
-  ["type X = int\n", ["Type", "Name", "Equal", "Name", "Newline", "Endmarker"]],
-  ["match x:\n    case _:\n        pass\n", ["Match", "Name", "Colon", "Newline", "Indent", "Case", "Underscore", "Colon", "Newline", "Indent", "Pass", "Newline", "Dedent", "Dedent", "Endmarker"]]
+  {
+    "src": "1 + 1", 
+    "tokens": ["Int", "Plus", "Int", "Endmarker"]
+  },
+  {
+    "src": "x - 1", 
+    "tokens": ["Name", "Minus", "Int", "Endmarker"]
+  },
+  {
+    "src": "x * 2", 
+    "tokens": ["Name", "Star", "Int", "Endmarker"]
+  },
+  {
+    "src": "x / 2", 
+    "tokens": ["Name", "Slash", "Int", "Endmarker"]
+  },
+  {
+    "src": "x % 2", 
+    "tokens": ["Name", "Percent", "Int", "Endmarker"]
+  },
+  {
+    "src": "x & 2", 
+    "tokens": ["Name", "Amper", "Int", "Endmarker"]
+  },
+  {
+    "src": "x | 2", 
+    "tokens": ["Name", "Vbar", "Int", "Endmarker"]
+  },
+  {
+    "src": "x ^ 2", 
+    "tokens": ["Name", "Circumflex", "Int", "Endmarker"]
+  },
+  {
+    "src": "~x", 
+    "tokens": ["Tilde", "Name", "Endmarker"]
+  },
+  {
+    "src": "x @ y", 
+    "tokens": ["Name", "At", "Name", "Endmarker"]
+  },
+  {
+    "src": "x ** 2", 
+    "tokens": ["Name", "DoubleStar", "Int", "Endmarker"]
+  },
+  {
+    "src": "x // 2", 
+  "tokens": ["Name", "DoubleSlash", "Int", "Endmarker"]
+  },
+  {
+    "src": "x >> 2", 
+    "tokens": ["Name", "RightShift", "Int", "Endmarker"]
+  },
+  {
+    "src": "x << 2", 
+    "tokens": ["Name", "LeftShift", "Int", "Endmarker"]
+  },
+  {
+    "src": "x < 2", 
+    "tokens": ["Name", "Less", "Int", "Endmarker"]
+  },
+  {
+    "src": "x > 2", 
+    "tokens": ["Name", "Greater", "Int", "Endmarker"]
+  },
+  {
+    "src": "x >= 2", 
+    "tokens": ["Name", "GreaterEqual", "Int", "Endmarker"]
+  },
+  {
+    "src": "x <= 2", 
+    "tokens": ["Name", "LessEqual", "Int", "Endmarker"]
+  },
+  {
+    "src": "x == 5", 
+    "tokens": ["Name", "EqEqual", "Int", "Endmarker"]
+  },
+  {
+    "src": "x != 5", 
+    "tokens": ["Name", "NotEqual", "Int", "Endmarker"]
+  },
+  {
+    "src": "...", 
+    "tokens": ["Ellipsis", "Endmarker"]
+  },
+  {
+    "src": "x = 5", 
+    "tokens": ["Name", "Equal", "Int", "Endmarker"]
+  },
+  {
+    "src": "x += 1", 
+    "tokens": ["Name", "PlusEqual", "Int", "Endmarker"]
+  },
+  {
+    "src": "x -= 1", 
+    "tokens": ["Name", "MinEqual", "Int", "Endmarker"]
+  },
+  {
+    "src": "x *= 2", 
+    "tokens": ["Name", "StarEqual", "Int", "Endmarker"]
+  },
+  {
+    "src": "x /= 2", 
+    "tokens": ["Name", "SlashEqual", "Int", "Endmarker"]
+  },
+  {
+    "src": "x %= 2", 
+    "tokens": ["Name", "PercentEqual", "Int", "Endmarker"]
+  },
+  {
+    "src": "x &= 2", 
+    "tokens": ["Name", "AmperEqual", "Int", "Endmarker"]
+  },
+  {
+    "src": "x |= 2", 
+    "tokens": ["Name", "VbarEqual", "Int", "Endmarker"]
+  },
+  {
+    "src": "x ^= 2", 
+    "tokens": ["Name", "CircumflexEqual", "Int", "Endmarker"]
+  },
+  {
+    "src": "x @= y", 
+    "tokens": ["Name", "AtEqual", "Name", "Endmarker"]
+  },
+  {
+    "src": "x **= 2", 
+    "tokens": ["Name", "DoubleStarEqual", "Int", "Endmarker"]
+  },
+  {
+    "src": "x //= 2", 
+    "tokens": ["Name", "DoubleSlashEqual", "Int", "Endmarker"]
+  },
+  {
+    "src": "x >>= 2", 
+    "tokens": ["Name", "RightShiftEqual", "Int", "Endmarker"]
+  },
+  {
+    "src": "x <<= 2", 
+    "tokens": ["Name", "LeftShiftEqual", "Int", "Endmarker"]
+  },
+  {
+    "src": "x -> y", 
+    "tokens": ["Name", "Rarrow", "Name", "Endmarker"]
+  },
+  {
+    "src": "x := 5", 
+    "tokens": ["Name", "ColonEqual", "Int", "Endmarker"]
+  },
+  {
+    "src": "42", 
+    "tokens": ["Int", "Endmarker"]
+  },
+  {
+    "src": "1_000_000", 
+    "tokens": ["Int", "Endmarker"]
+  },
+  {
+    "src": "0xFF", 
+    "tokens": ["Int", "Endmarker"]
+  },
+  {
+    "src": "0b1010", 
+    "tokens": ["Int", "Endmarker"]
+  },
+  {
+    "src": "0o77", 
+    "tokens": ["Int", "Endmarker"]
+  },
+  {
+    "src": "3.14", 
+    "tokens": ["Float", "Endmarker"]
+  },
+  {
+    "src": ".5", 
+    "tokens": ["Float", "Endmarker"]
+  },
+  {
+    "src": "1e-5", 
+    "tokens": ["Float", "Endmarker"]
+  },
+  {
+    "src": "3j", 
+    "tokens": ["Complex", "Endmarker"]
+  },
+  {
+    "src": "2.5J", 
+    "tokens": ["Complex", "Endmarker"]
+  },
+  {
+    "src": "'hello'", 
+    "tokens": ["String", "Endmarker"]
+  },
+  {
+    "src": "b'bytes'", 
+    "tokens": ["String", "Endmarker"]
+  },
+  {
+    "src": "r'raw'", 
+    "tokens": ["String", "Endmarker"]
+  },
+  {
+    "src": "u'unicode'", 
+    "tokens": ["String", "Endmarker"]
+  },
+  {
+    "src": "'''triple'''", 
+    "tokens": ["String", "Endmarker"]
+  },
+  {
+    "src": "f'hello'", 
+    "tokens": ["FstringStart", "FstringMiddle", "FstringEnd", "Endmarker"]
+  },
+  {
+    "src": "f'hello {x}'", 
+    "tokens": ["FstringStart", "FstringMiddle", "Lbrace", "Name", "Rbrace", "FstringEnd", "Endmarker"]
+  },
+  {
+    "src": "f'{a} and {b}'", 
+    "tokens": ["FstringStart", "Lbrace", "Name", "Rbrace", "FstringMiddle", "Lbrace", "Name", "Rbrace", "FstringEnd", "Endmarker"]
+  },
+  {
+    "src": "f'''multi\nline'''", 
+    "tokens": ["FstringStart", "FstringMiddle", "FstringEnd", "Endmarker"]
+  },
+  {
+    "src": "f'''multi\n{x}'''", 
+    "tokens": ["FstringStart", "FstringMiddle", "Lbrace", "Name", "Rbrace", "FstringEnd", "Endmarker"]
+  },
+  {
+    "src": "# comment", 
+    "tokens": ["Comment", "Endmarker"]
+  },
+  {
+    "src": "x = 1 # inline", 
+    "tokens": ["Name", "Equal", "Int", "Comment", "Endmarker"]
+  },
+  {
+    "src": "", 
+    "tokens": ["Endmarker"]
+  },
+  {
+    "src": "   ", 
+    "tokens": ["Endmarker"]
+  },
+  {
+    "src": "\n", 
+    "tokens": ["Newline", "Endmarker"]
+  },
+  {
+    "src": "# N/a\n", 
+    "tokens": ["Comment", "Newline", "Endmarker"]
+  },
+  {
+    "src": "x = 1", 
+    "tokens": ["Name", "Equal", "Int", "Endmarker"]
+  },
+  {
+    "src": "(\n)\n", 
+    "tokens": ["Lpar", "Nl", "Rpar", "Newline", "Endmarker"]
+  },
+  {
+    "src": "[\n1,\n2\n]\n", 
+    "tokens": ["Lsqb", "Nl", "Int", "Comma", "Nl", "Int", "Nl", "Rsqb", "Newline", "Endmarker"]
+  },
+  {
+    "src": "if x:\n    pass\n", 
+    "tokens": ["If", "Name", "Colon", "Newline", "Indent", "Pass", "Newline", "Dedent", "Endmarker"]
+  },
+  {
+    "src": "if True:\n\tpass\n", 
+    "tokens": ["If", "True", "Colon", "Newline", "Indent", "Pass", "Newline", "Dedent", "Endmarker"]
+  },
+  {
+    "src": "if x:\n    pass\n\n    pass\n", 
+    "tokens": ["If", "Name", "Colon", "Newline", "Indent", "Pass", "Nl", "Newline", "Pass", "Newline", "Dedent", "Endmarker"]
+  },
+  {
+    "src": "if x:\n \tpass\n", 
+    "tokens": ["If", "Name", "Colon", "Newline", "Endmarker"]
+  },
+  {
+    "src": "if x:\n    if y:\n        pass\nz\n", 
+    "tokens": ["If", "Name", "Colon", "Newline", "Indent", "If", "Name", "Colon", "Newline", "Indent", "Pass", "Newline", "Dedent", "Dedent", "Name", "Newline", "Endmarker"]
+  },
+  {
+    "src": "def f():\n    if True:\n        pass\n", 
+    "tokens": ["Def", "Name", "Lpar", "Rpar", "Colon", "Newline", "Indent", "If", "True", "Colon", "Newline", "Indent", "Pass", "Newline", "Dedent", "Dedent", "Endmarker"]
+  },
+  {
+    "src": "match = 5", 
+    "tokens": ["Name", "Equal", "Int", "Endmarker"]
+  },
+  {
+    "src": "case = True", 
+    "tokens": ["Name", "Equal", "True", "Endmarker"]
+  },
+  {
+    "src": "type = None", 
+    "tokens": ["Name", "Equal", "None", "Endmarker"]
+  },
+  {
+    "src": "type X = int\n", 
+    "tokens": ["Type", "Name", "Equal", "Name", "Newline", "Endmarker"]
+  },
+  {
+    "src": "match x:\n    case _:\n        pass\n", 
+    "tokens": ["Match", "Name", "Colon", "Newline", "Indent", "Case", "Underscore", "Colon", "Newline", "Indent", "Pass", "Newline", "Dedent", "Dedent", "Endmarker"]
+  },
+  {
+    "src": "and", 
+    "tokens": ["And", "Endmarker"]
+  },
+  {
+    "src": "or", 
+    "tokens": ["Or", "Endmarker"]
+  },
+  {
+    "src": "not", 
+    "tokens": ["Not", "Endmarker"]
+  },
+  {
+    "src": "is", 
+    "tokens": ["Is", "Endmarker"]
+  },
+  {
+    "src": "in", 
+    "tokens": ["In", "Endmarker"]
+  },
+  {
+    "src": "as", 
+    "tokens": ["As", "Endmarker"]
+  },
+  {
+    "src": "if", 
+    "tokens": ["If", "Endmarker"]
+  },
+  {
+    "src": "elif", 
+    "tokens": ["Elif", "Endmarker"]
+  },
+  {
+    "src": "else", 
+    "tokens": ["Else", "Endmarker"]
+  },
+  {
+    "src": "for", 
+    "tokens": ["For", "Endmarker"]
+  },
+  {
+    "src": "while", 
+    "tokens": ["While", "Endmarker"]
+  },
+  {
+    "src": "def", 
+    "tokens": ["Def", "Endmarker"]
+  },
+  {
+    "src": "return", 
+    "tokens": ["Return", "Endmarker"]
+  },
+  {
+    "src": "class", 
+    "tokens": ["Class", "Endmarker"]
+  },
+  {
+    "src": "try", 
+    "tokens": ["Try", "Endmarker"]
+  },
+  {
+    "src": "except", 
+    "tokens": ["Except", "Endmarker"]
+  },
+  {
+    "src": "finally", 
+    "tokens": ["Finally", "Endmarker"]
+  },
+  {
+    "src": "raise", 
+    "tokens": ["Raise", "Endmarker"]
+  },
+  {
+    "src": "import", 
+    "tokens": ["Import", "Endmarker"]
+  },
+  {
+    "src": "from", 
+    "tokens": ["From", "Endmarker"]
+  },
+  {
+    "src": "break", 
+    "tokens": ["Break", "Endmarker"]
+  },
+  {
+    "src": "continue", 
+    "tokens": ["Continue", "Endmarker"]
+  },
+  {
+    "src": "pass", 
+    "tokens": ["Pass", "Endmarker"]
+  },
+  {
+    "src": "with", 
+    "tokens": ["With", "Endmarker"]
+  },
+  {
+    "src": "yield", 
+    "tokens": ["Yield", "Endmarker"]
+  },
+  {
+    "src": "lambda", 
+    "tokens": ["Lambda", "Endmarker"]
+  },
+  {
+    "src": "global", 
+    "tokens": ["Global", "Endmarker"]
+  },
+  {
+    "src": "nonlocal", 
+    "tokens": ["Nonlocal", "Endmarker"]
+  },
+  {
+    "src": "del", 
+    "tokens": ["Del", "Endmarker"]
+  },
+  {
+    "src": "assert", 
+    "tokens": ["Assert", "Endmarker"]
+  },
+  {
+    "src": "async", 
+    "tokens": ["Async", "Endmarker"]
+  },
+  {
+    "src": "await", 
+    "tokens": ["Await", "Endmarker"]
+  },
+  {
+    "src": "True", 
+    "tokens": ["True", "Endmarker"]
+  },
+  {
+    "src": "False", 
+    "tokens": ["False", "Endmarker"]
+  },
+  {
+    "src": "None", 
+    "tokens": ["None", "Endmarker"]
+  },
+  {
+    "src": "_", 
+    "tokens": ["Underscore", "Endmarker"]
+  },
+  {
+    "src": "()", 
+    "tokens": ["Lpar", "Rpar", "Endmarker"]
+  },
+  {
+    "src": "[]", 
+    "tokens": ["Lsqb", "Rsqb", "Endmarker"]
+  },
+  {
+    "src": "{}", 
+    "tokens": ["Lbrace", "Rbrace", "Endmarker"]
+  },
+  {
+    "src": ":", 
+    "tokens": ["Colon", "Endmarker"]
+  },
+  {
+    "src": ",", 
+    "tokens": ["Comma", "Endmarker"]
+  },
+  {
+    "src": ";", 
+    "tokens": ["Semi", "Endmarker"]
+  },
+  {
+    "src": ".", 
+    "tokens": ["Dot", "Endmarker"]
+  },
+  {
+    "src": "!", 
+    "tokens": ["Exclamation", "Endmarker"]
+  },
+  {
+    "src": "a.b", 
+    "tokens": ["Name", "Dot", "Name", "Endmarker"]
+  },
+  {
+    "src": "a.b.c", 
+    "tokens": ["Name", "Dot", "Name", "Dot", "Name", "Endmarker"]
+  },
+  {
+    "src": "x;y", 
+    "tokens": ["Name", "Semi", "Name", "Endmarker"]
+  }
 ]
