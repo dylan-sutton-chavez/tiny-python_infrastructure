@@ -705,13 +705,22 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     fn for_stmt(&mut self) {
         self.advance();
 
+        let parens = self.eat_if(TokenType::Lpar);
         let mut vars = Vec::new();
+        let mut star_pos: Option<usize> = None;
         loop {
-            let t = self.advance();
-            vars.push(self.lexeme(&t).to_string());
+            if self.eat_if(TokenType::Star) {
+                star_pos = Some(vars.len());
+                let t = self.advance();
+                vars.push(self.lexeme(&t).to_string());
+            } else {
+                let t = self.advance();
+                vars.push(self.lexeme(&t).to_string());
+            }
             if !self.eat_if(TokenType::Comma) { break; }
-            if matches!(self.peek(), Some(TokenType::In)) { break; }
+            if matches!(self.peek(), Some(TokenType::In | TokenType::Rpar)) { break; }
         }
+        if parens { self.eat(TokenType::Rpar); }
 
         self.eat(TokenType::In);
         self.expr();
@@ -726,10 +735,19 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.chunk.emit(OpCode::ForIter, 0);
         let fi = self.chunk.instructions.len() - 1;
 
-        if vars.len() == 1 {
+        if vars.len() == 1 && star_pos.is_none() {
             let ver = self.increment_version(&vars[0]);
             let idx = self.chunk.push_name(&format!("{}_{}", vars[0], ver));
             self.chunk.emit(OpCode::StoreName, idx);
+        } else if let Some(sp) = star_pos {
+            let before = sp as u16;
+            let after = (vars.len() - sp - 1) as u16;
+            self.chunk.emit(OpCode::UnpackEx, (before << 8) | after);
+            for var in vars.iter().rev() {
+                let ver = self.increment_version(var);
+                let idx = self.chunk.push_name(&format!("{}_{}", var, ver));
+                self.chunk.emit(OpCode::StoreName, idx);
+            }
         } else {
             self.chunk.emit(OpCode::UnpackSequence, vars.len() as u16);
             for var in vars.iter().rev() {
@@ -819,6 +837,70 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         match self.peek() {
             Some(TokenType::Equal) => {
                 self.assign(name);
+                false
+            }
+            Some(TokenType::DoubleSlashEqual) => {
+                self.advance();
+                self.emit_load_ssa(name.clone());
+                self.expr();
+                self.chunk.emit(OpCode::FloorDiv, 0);
+                self.store_name(name);
+                false
+            }
+            Some(TokenType::PercentEqual) => {
+                self.advance();
+                self.emit_load_ssa(name.clone());
+                self.expr();
+                self.chunk.emit(OpCode::Mod, 0);
+                self.store_name(name);
+                false
+            }
+            Some(TokenType::DoubleStarEqual) => {
+                self.advance();
+                self.emit_load_ssa(name.clone());
+                self.expr();
+                self.chunk.emit(OpCode::Pow, 0);
+                self.store_name(name);
+                false
+            }
+            Some(TokenType::AmperEqual) => {
+                self.advance();
+                self.emit_load_ssa(name.clone());
+                self.expr();
+                self.chunk.emit(OpCode::BitAnd, 0);
+                self.store_name(name);
+                false
+            }
+            Some(TokenType::VbarEqual) => {
+                self.advance();
+                self.emit_load_ssa(name.clone());
+                self.expr();
+                self.chunk.emit(OpCode::BitOr, 0);
+                self.store_name(name);
+                false
+            }
+            Some(TokenType::CircumflexEqual) => {
+                self.advance();
+                self.emit_load_ssa(name.clone());
+                self.expr();
+                self.chunk.emit(OpCode::BitXor, 0);
+                self.store_name(name);
+                false
+            }
+            Some(TokenType::LeftShiftEqual) => {
+                self.advance();
+                self.emit_load_ssa(name.clone());
+                self.expr();
+                self.chunk.emit(OpCode::Shl, 0);
+                self.store_name(name);
+                false
+            }
+            Some(TokenType::RightShiftEqual) => {
+                self.advance();
+                self.emit_load_ssa(name.clone());
+                self.expr();
+                self.chunk.emit(OpCode::Shr, 0);
+                self.store_name(name);
                 false
             }
             Some(TokenType::PlusEqual) => {
