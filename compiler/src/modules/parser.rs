@@ -366,8 +366,8 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                         self.advance();
                         self.async_func_def(0);
                     }
-                    Some(TokenType::For) => { self.for_stmt(); }
-                    Some(TokenType::With) => { self.with_stmt(); }
+                    Some(TokenType::For) => { self.async_for_stmt(); }
+                    Some(TokenType::With) => { self.async_with_stmt(); }
                     _ => {}
                 }
                 false
@@ -1103,6 +1103,90 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         let ver = self.increment_version(&fname);
         let i = self.chunk.push_name(&format!("{}_{}", fname, ver));
         self.chunk.emit(OpCode::StoreName, i);
+    }
+
+    fn async_for_stmt(&mut self) {
+        self.advance();
+
+        let parens = self.eat_if(TokenType::Lpar);
+        let mut vars = Vec::new();
+        let mut star_pos: Option<usize> = None;
+        loop {
+            if self.eat_if(TokenType::Star) {
+                star_pos = Some(vars.len());
+                let t = self.advance();
+                vars.push(self.lexeme(&t).to_string());
+            } else {
+                let t = self.advance();
+                vars.push(self.lexeme(&t).to_string());
+            }
+            if !self.eat_if(TokenType::Comma) { break; }
+            if matches!(self.peek(), Some(TokenType::In | TokenType::Rpar)) { break; }
+        }
+        if parens { self.eat(TokenType::Rpar); }
+
+        self.eat(TokenType::In);
+        self.expr();
+        self.chunk.emit(OpCode::GetIter, 1); // 1 = async
+
+        self.enter_block();
+
+        let loop_start = self.chunk.instructions.len() as u16;
+        self.loop_starts.push(loop_start);
+        self.loop_breaks.push(vec![]);
+
+        self.chunk.emit(OpCode::ForIter, 0);
+        let fi = self.chunk.instructions.len() - 1;
+
+        if vars.len() == 1 && star_pos.is_none() {
+            let ver = self.increment_version(&vars[0]);
+            let idx = self.chunk.push_name(&format!("{}_{}", vars[0], ver));
+            self.chunk.emit(OpCode::StoreName, idx);
+        } else if let Some(sp) = star_pos {
+            let before = sp as u16;
+            let after = (vars.len() - sp - 1) as u16;
+            self.chunk.emit(OpCode::UnpackEx, (before << 8) | after);
+            for var in vars.iter().rev() {
+                let ver = self.increment_version(var);
+                let idx = self.chunk.push_name(&format!("{}_{}", var, ver));
+                self.chunk.emit(OpCode::StoreName, idx);
+            }
+        } else {
+            self.chunk.emit(OpCode::UnpackSequence, vars.len() as u16);
+            for var in vars.iter().rev() {
+                let ver = self.increment_version(var);
+                let idx = self.chunk.push_name(&format!("{}_{}", var, ver));
+                self.chunk.emit(OpCode::StoreName, idx);
+            }
+        }
+
+        self.eat(TokenType::Colon);
+        self.compile_block();
+
+        self.chunk.emit(OpCode::Jump, loop_start);
+        self.patch(fi);
+
+        self.loop_starts.pop();
+        for pos in self.loop_breaks.pop().unwrap_or_default() { self.patch(pos); }
+
+        self.commit_block();
+    }
+
+    fn async_with_stmt(&mut self) {
+        self.advance();
+        loop {
+            self.expr();
+            self.chunk.emit(OpCode::SetupWith, 1); // 1 = async
+            if self.eat_if(TokenType::As) {
+                let t = self.advance();
+                let name = self.lexeme(&t).to_string();
+                self.store_name(name);
+            }
+            if !self.eat_if(TokenType::Comma) { break; }
+        }
+        self.eat(TokenType::Colon);
+        self.compile_block();
+        self.chunk.emit(OpCode::ExitWith, 1); // 1 = async
     }
 
     fn parse_not(&mut self) {
