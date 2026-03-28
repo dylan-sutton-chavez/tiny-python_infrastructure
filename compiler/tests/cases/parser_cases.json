@@ -1142,5 +1142,21 @@
     "names": ["f_0"], 
     "instructions": [["LoadName",0], ["Call",0], ["Await",0], ["PopTop",0], ["ReturnValue",0]], 
     "annotations": {}
+  },
+  {
+    "src": "def f(a, b, /, c):\n    pass", 
+    "constants": [], 
+    "names": ["f_1"], 
+    "instructions": [["MakeFunction",0], ["StoreName",0], ["ReturnValue",0]], 
+    "annotations": {}, 
+    "functions": 1
+  },
+  {
+    "src": "def f(a, /, b, *, c):\n    pass", 
+    "constants": [], 
+    "names": ["f_1"], 
+    "instructions": [["MakeFunction",0], ["StoreName",0], ["ReturnValue",0]], 
+    "annotations": {}, 
+    "functions": 1
   }
 ]

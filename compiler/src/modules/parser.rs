@@ -1568,6 +1568,10 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         let mut params = Vec::new();
         let mut defaults = 0u16;
         while !matches!(self.peek(), Some(TokenType::Rpar) | None) {
+            if self.eat_if(TokenType::Slash) {
+                if matches!(self.peek(), Some(TokenType::Comma)) { self.advance(); }
+                continue;
+            }
             if self.eat_if(TokenType::Star) {
                 let p = self.advance();
                 params.push(format!("*{}", self.lexeme(&p)));
