@@ -36,10 +36,8 @@ jobs:
 
       - name: Binary Size
         run: |
-          echo "Libraries and binaries"
-          cargo bloat --release --creates
-          echo "Bigger Features"
-          cargo bloat --release -n 20
+          cargo bloat --release --creates -n 7
+          cargo bloat --release -n 7
 
   deployment:
     runs-on: *ubuntu
