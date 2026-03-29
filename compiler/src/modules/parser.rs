@@ -12,7 +12,6 @@ use std::sync::LazyLock;
 const MAX_EXPR_DEPTH: usize = 200;
 const MAX_INSTRUCTIONS: usize = 65_535;
 
-
 // OpCodes
 
 #[derive(Debug, Clone, PartialEq)]

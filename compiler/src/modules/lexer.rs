@@ -26,7 +26,7 @@ use logos::{Logos, Lexer};
 use std::collections::VecDeque;
 use std::cmp::Ordering;
 
-// A04:2021 Prevent asymetric DoS via deeply data structures: `handle_indent`, `lex_fstring_body`.
+// A04:2021 - Prevent asymetric DoS via deeply data structures: `handle_indent`, `lex_fstring_body`.
 const MAX_INDENT_DEPTH: usize = 100;
 const MAX_FSTRING_DEPTH: usize = 200;
 const MAX_SOURCE_SIZE: usize = 10 * 1024 * 1024; // 10MB
