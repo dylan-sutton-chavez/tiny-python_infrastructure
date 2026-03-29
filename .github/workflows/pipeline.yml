@@ -27,7 +27,7 @@ jobs:
         run: cargo test
 
       - name: Install CLI Tools
-        run: cargo install cargo-shear cargo-bloat
+        run: cargo install cargo-shear
 
       - name: Unused code
         run: |
@@ -35,9 +35,7 @@ jobs:
           cargo clippy
 
       - name: Binary Size
-        run: |
-          cargo bloat --release --crates -n 7
-          cargo bloat --release -n 7
+        run: ls -lh target/release/compiler
 
   deployment:
     runs-on: *ubuntu
