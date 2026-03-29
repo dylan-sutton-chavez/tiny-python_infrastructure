@@ -25,14 +25,20 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+
       - uses: dtolnay/rust-toolchain@nightly
-        with: { components: "rust-src, clippy", targets: ${{ matrix.target }} }
+        with:
+          components: "rust-src, clippy"
+          targets: ${{ matrix.target }}
+
       - uses: Swatinem/rust-cache@v2
 
       - name: Build
         run: cargo +nightly build --release --target ${{ matrix.target }}
+
       - name: Binary Size
         run: ls -lh target/${{ matrix.target }}/release/${{ matrix.binary }}
+
       - name: Test
         if: matrix.test
         run: cargo test
@@ -40,9 +46,11 @@ jobs:
       - name: Install CLI Tools
         if: matrix.analyze
         run: cargo install cargo-shear cargo-bloat
+
       - name: Unused Code
         if: matrix.analyze
         run: cargo shear && cargo clippy
+
       - name: Bloat
         if: matrix.analyze
         run: cargo bloat --release --target x86_64-unknown-linux-gnu --crates -n 7
