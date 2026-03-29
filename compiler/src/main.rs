@@ -1,8 +1,7 @@
-use log::{info, LevelFilter};
+use log::{LevelFilter, info};
 use simple_logger::SimpleLogger;
 
-fn initialize_logger () {
-
+fn initialize_logger() {
     /*
     Initialize the needed dependencies app.
     */
@@ -13,7 +12,6 @@ fn initialize_logger () {
         .expect("An error ocurred on the initialization of logging system.");
 
     info!("Logging system initialized correctly.");
-
 }
 
 mod modules {
@@ -22,11 +20,9 @@ mod modules {
 }
 
 fn main() {
-
     /*
     Initialization point for the CDK.
     */
 
     initialize_logger();
-
 }

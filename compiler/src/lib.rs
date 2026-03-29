@@ -6,5 +6,4 @@ pub mod modules {
 
     pub mod lexer;
     pub mod parser;
-
 }
