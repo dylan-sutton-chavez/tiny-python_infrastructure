@@ -848,99 +848,12 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 self.assign(name);
                 false
             }
-            Some(TokenType::DoubleSlashEqual) => {
+            Some(t) if Self::augmented_op(&t).is_some() => {
+                let op = Self::augmented_op(&t).unwrap();
                 self.advance();
                 self.emit_load_ssa(name.clone());
                 self.expr();
-                self.chunk.emit(OpCode::FloorDiv, 0);
-                self.store_name(name);
-                false
-            }
-            Some(TokenType::PercentEqual) => {
-                self.advance();
-                self.emit_load_ssa(name.clone());
-                self.expr();
-                self.chunk.emit(OpCode::Mod, 0);
-                self.store_name(name);
-                false
-            }
-            Some(TokenType::DoubleStarEqual) => {
-                self.advance();
-                self.emit_load_ssa(name.clone());
-                self.expr();
-                self.chunk.emit(OpCode::Pow, 0);
-                self.store_name(name);
-                false
-            }
-            Some(TokenType::AmperEqual) => {
-                self.advance();
-                self.emit_load_ssa(name.clone());
-                self.expr();
-                self.chunk.emit(OpCode::BitAnd, 0);
-                self.store_name(name);
-                false
-            }
-            Some(TokenType::VbarEqual) => {
-                self.advance();
-                self.emit_load_ssa(name.clone());
-                self.expr();
-                self.chunk.emit(OpCode::BitOr, 0);
-                self.store_name(name);
-                false
-            }
-            Some(TokenType::CircumflexEqual) => {
-                self.advance();
-                self.emit_load_ssa(name.clone());
-                self.expr();
-                self.chunk.emit(OpCode::BitXor, 0);
-                self.store_name(name);
-                false
-            }
-            Some(TokenType::LeftShiftEqual) => {
-                self.advance();
-                self.emit_load_ssa(name.clone());
-                self.expr();
-                self.chunk.emit(OpCode::Shl, 0);
-                self.store_name(name);
-                false
-            }
-            Some(TokenType::RightShiftEqual) => {
-                self.advance();
-                self.emit_load_ssa(name.clone());
-                self.expr();
-                self.chunk.emit(OpCode::Shr, 0);
-                self.store_name(name);
-                false
-            }
-            Some(TokenType::PlusEqual) => {
-                self.advance();
-                self.emit_load_ssa(name.clone());
-                self.expr();
-                self.chunk.emit(OpCode::Add, 0);
-                self.store_name(name);
-                false
-            }
-            Some(TokenType::MinEqual) => {
-                self.advance();
-                self.emit_load_ssa(name.clone());
-                self.expr();
-                self.chunk.emit(OpCode::Sub, 0);
-                self.store_name(name);
-                false
-            }
-            Some(TokenType::StarEqual) => {
-                self.advance();
-                self.emit_load_ssa(name.clone());
-                self.expr();
-                self.chunk.emit(OpCode::Mul, 0);
-                self.store_name(name);
-                false
-            }
-            Some(TokenType::SlashEqual) => {
-                self.advance();
-                self.emit_load_ssa(name.clone());
-                self.expr();
-                self.chunk.emit(OpCode::Div, 0);
+                self.chunk.emit(op, 0);
                 self.store_name(name);
                 false
             }
@@ -958,16 +871,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 } else {
                     let idx = self.chunk.push_name(&attr);
                     self.chunk.emit(OpCode::LoadAttr, idx);
-                    self.postfix_tail();
-                    self.mul_tail();
-                    self.add_tail();
-                    self.shift_tail();
-                    self.bitand_tail();
-                    self.bitxor_tail();
-                    self.bitor_tail();
-                    self.cmp_tail();
-                    self.and_tail();
-                    self.or_tail();
+                    self.expr_tails();
                     true
                 }
             }
@@ -1016,19 +920,27 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             }
             _ => {
                 self.emit_load_ssa(name);
-                self.postfix_tail();
-                self.mul_tail();
-                self.add_tail();
-                self.shift_tail();
-                self.bitand_tail();
-                self.bitxor_tail();
-                self.bitor_tail();
-                self.cmp_tail();
-                self.and_tail();
-                self.or_tail();
+                self.expr_tails();
                 true
             }
+        }
+    }
 
+    fn augmented_op(tok: &TokenType) -> Option<OpCode> {
+        match tok {
+            TokenType::PlusEqual        => Some(OpCode::Add),
+            TokenType::MinEqual         => Some(OpCode::Sub),
+            TokenType::StarEqual        => Some(OpCode::Mul),
+            TokenType::SlashEqual       => Some(OpCode::Div),
+            TokenType::DoubleSlashEqual => Some(OpCode::FloorDiv),
+            TokenType::PercentEqual     => Some(OpCode::Mod),
+            TokenType::DoubleStarEqual  => Some(OpCode::Pow),
+            TokenType::AmperEqual       => Some(OpCode::BitAnd),
+            TokenType::VbarEqual        => Some(OpCode::BitOr),
+            TokenType::CircumflexEqual  => Some(OpCode::BitXor),
+            TokenType::LeftShiftEqual   => Some(OpCode::Shl),
+            TokenType::RightShiftEqual  => Some(OpCode::Shr),
+            _ => None,
         }
     }
 
@@ -1062,6 +974,19 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             self.patch(jmp);
         }
         self.expr_depth -= 1;
+    }
+
+    fn expr_tails(&mut self) {
+        self.postfix_tail();
+        self.mul_tail();
+        self.add_tail();
+        self.shift_tail();
+        self.bitand_tail();
+        self.bitxor_tail();
+        self.bitor_tail();
+        self.cmp_tail();
+        self.and_tail();
+        self.or_tail();
     }
 
     fn parse_or(&mut self)  { self.parse_and(); self.or_tail(); }
