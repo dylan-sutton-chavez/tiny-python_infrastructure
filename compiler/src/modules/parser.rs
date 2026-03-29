@@ -960,15 +960,24 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 // Expression parsing (precedence climbing)
 
 impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
+
+    fn parse_unary(&mut self) {
+        match self.peek() {
+            Some(TokenType::Minus) => { self.advance(); self.parse_unary(); self.chunk.emit(OpCode::Minus, 0); }
+            Some(TokenType::Tilde) => { self.advance(); self.parse_unary(); self.chunk.emit(OpCode::BitNot, 0); }
+            Some(TokenType::Await) => { self.advance(); self.parse_unary(); self.chunk.emit(OpCode::Await, 0); }
+            _ => self.parse_atom(),
+        }
+    }
     
     fn expr(&mut self) {
         self.expr_depth += 1;
         if self.expr_depth > MAX_EXPR_DEPTH { self.expr_depth -= 1; return; } // A04:2021 – Insecure Design: cap recursion depth to prevent stack overflow.
         self.saw_newline = false;
-        self.parse_or();
+        self.expr_bp(0);
         if !self.saw_newline && matches!(self.peek(), Some(TokenType::If)) {
             self.advance();
-            self.parse_or();
+            self.expr_bp(0);
             self.chunk.emit(OpCode::JumpIfFalse, 0);
             let jf = self.chunk.instructions.len() - 1;
             self.chunk.emit(OpCode::Jump, 0);
@@ -976,140 +985,85 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             self.patch(jf);
             self.chunk.emit(OpCode::PopTop, 0);
             self.eat(TokenType::Else);
-            self.parse_or();
+            self.expr_bp(0);
             self.patch(jmp);
         }
         self.expr_depth -= 1;
     }
 
-    fn expr_tails(&mut self) {
-        self.postfix_tail();
-        self.mul_tail();
-        self.add_tail();
-        self.shift_tail();
-        self.bitand_tail();
-        self.bitxor_tail();
-        self.bitor_tail();
-        self.cmp_tail();
-        self.and_tail();
-        self.or_tail();
+    fn binding_power(tok: &TokenType) -> Option<(u8, u8, OpCode)> {
+        match tok {
+            TokenType::Or           => Some((1,  2,  OpCode::Or)),
+            TokenType::And          => Some((3,  4,  OpCode::And)),
+            TokenType::EqEqual      => Some((7,  8,  OpCode::Eq)),
+            TokenType::NotEqual     => Some((7,  8,  OpCode::NotEq)),
+            TokenType::Less         => Some((7,  8,  OpCode::Lt)),
+            TokenType::Greater      => Some((7,  8,  OpCode::Gt)),
+            TokenType::LessEqual    => Some((7,  8,  OpCode::LtEq)),
+            TokenType::GreaterEqual => Some((7,  8,  OpCode::GtEq)),
+            TokenType::In           => Some((7,  8,  OpCode::In)),
+            TokenType::Vbar         => Some((9,  10, OpCode::BitOr)),
+            TokenType::Circumflex   => Some((11, 12, OpCode::BitXor)),
+            TokenType::Amper        => Some((13, 14, OpCode::BitAnd)),
+            TokenType::LeftShift    => Some((15, 16, OpCode::Shl)),
+            TokenType::RightShift   => Some((15, 16, OpCode::Shr)),
+            TokenType::Plus         => Some((17, 18, OpCode::Add)),
+            TokenType::Minus        => Some((17, 18, OpCode::Sub)),
+            TokenType::Star         => Some((19, 20, OpCode::Mul)),
+            TokenType::Slash        => Some((19, 20, OpCode::Div)),
+            TokenType::Percent      => Some((19, 20, OpCode::Mod)),
+            TokenType::DoubleSlash  => Some((19, 20, OpCode::FloorDiv)),
+            TokenType::DoubleStar   => Some((22, 21, OpCode::Pow)),
+            _ => None,
+        }
     }
 
-    fn parse_or(&mut self)  { self.parse_and(); self.or_tail(); }
-    fn parse_and(&mut self) { self.parse_not(); self.and_tail(); }
-    fn parse_cmp(&mut self)    { self.parse_bitor();  self.cmp_tail(); }
-    fn parse_bitor(&mut self)  { self.parse_bitxor(); self.bitor_tail(); }
-    fn parse_bitxor(&mut self) { self.parse_bitand(); self.bitxor_tail(); }
-    fn parse_bitand(&mut self) { self.parse_shift();  self.bitand_tail(); }
-    fn parse_shift(&mut self)  { self.parse_add();    self.shift_tail(); }
-    fn parse_add(&mut self)    { self.parse_mul();    self.add_tail(); }
-    fn parse_mul(&mut self)    { self.parse_unary();  self.mul_tail(); }
-
-    fn parse_unary(&mut self) {
+    fn expr_bp(&mut self, min_bp: u8) {
         match self.peek() {
-            Some(TokenType::Minus) => { self.advance(); self.parse_unary(); self.chunk.emit(OpCode::Minus, 0); }
-            Some(TokenType::Not)   => { self.advance(); self.parse_unary(); self.chunk.emit(OpCode::Not, 0); }
-            Some(TokenType::Tilde) => { self.advance(); self.parse_unary(); self.chunk.emit(OpCode::BitNot, 0); }
-            Some(TokenType::Await) => { self.advance(); self.parse_unary(); self.chunk.emit(OpCode::Await, 0); }
-            _ => self.parse_atom(),
-        }
-    }
-
-    fn parse_not(&mut self) {
-        if matches!(self.peek(), Some(TokenType::Not)) {
-            self.advance(); self.parse_not(); self.chunk.emit(OpCode::Not, 0);
-        } else {
-            self.parse_cmp();
-        }
-    }
-
-    fn or_tail(&mut self) {
-        while matches!(self.peek(), Some(TokenType::Or)) {
-            self.advance(); self.parse_and(); self.chunk.emit(OpCode::Or, 0);
-        }
-    }
-
-    fn and_tail(&mut self) {
-        while matches!(self.peek(), Some(TokenType::And)) {
-            self.advance(); self.parse_not(); self.chunk.emit(OpCode::And, 0);
-        }
-    }
-
-    fn cmp_tail(&mut self) {
-        match self.peek() {
-            Some(TokenType::EqEqual)      => { self.advance(); self.parse_bitor(); self.chunk.emit(OpCode::Eq,    0); }
-            Some(TokenType::NotEqual)     => { self.advance(); self.parse_bitor(); self.chunk.emit(OpCode::NotEq, 0); }
-            Some(TokenType::Less)         => { self.advance(); self.parse_bitor(); self.chunk.emit(OpCode::Lt,    0); }
-            Some(TokenType::Greater)      => { self.advance(); self.parse_bitor(); self.chunk.emit(OpCode::Gt,    0); }
-            Some(TokenType::LessEqual)    => { self.advance(); self.parse_bitor(); self.chunk.emit(OpCode::LtEq,  0); }
-            Some(TokenType::GreaterEqual) => { self.advance(); self.parse_bitor(); self.chunk.emit(OpCode::GtEq,  0); }
-            Some(TokenType::In)           => { self.advance(); self.parse_bitor(); self.chunk.emit(OpCode::In,    0); }
-            Some(TokenType::Is) => {
-                self.advance();
-                if self.eat_if(TokenType::Not) {
-                    self.parse_bitor(); self.chunk.emit(OpCode::IsNot, 0);
-                } else {
-                    self.parse_bitor(); self.chunk.emit(OpCode::Is, 0);
-                }
-            }
             Some(TokenType::Not) => {
                 self.advance();
+                self.expr_bp(5);
+                self.chunk.emit(OpCode::Not, 0);
+            }
+            _ => self.parse_unary(),
+        }
+        self.infix_bp(min_bp);
+    }
+
+    fn infix_bp(&mut self, min_bp: u8) {
+        loop {
+            let Some(tok) = self.peek() else { break };
+            // Multi-token: `is` / `is not`
+            if tok == TokenType::Is {
+                if 7 < min_bp { break; }
+                self.advance();
+                if self.eat_if(TokenType::Not) {
+                    self.expr_bp(8); self.chunk.emit(OpCode::IsNot, 0);
+                } else {
+                    self.expr_bp(8); self.chunk.emit(OpCode::Is, 0);
+                }
+                continue;
+            }
+            // Multi-token: `not in`
+            if tok == TokenType::Not {
+                if 7 < min_bp { break; }
+                self.advance();
                 self.eat(TokenType::In);
-                self.parse_bitor(); self.chunk.emit(OpCode::NotIn, 0);
+                self.expr_bp(8); self.chunk.emit(OpCode::NotIn, 0);
+                continue;
             }
-            _ => {}
+            // Regular binary operators via table
+            let Some((l_bp, r_bp, op)) = Self::binding_power(&tok) else { break };
+            if l_bp < min_bp { break; }
+            self.advance();
+            self.expr_bp(r_bp);
+            self.chunk.emit(op, 0);
         }
     }
 
-    fn add_tail(&mut self) {
-        while matches!(self.peek(), Some(TokenType::Plus | TokenType::Minus)) {
-            match self.peek() {
-                Some(TokenType::Plus)  => { self.advance(); self.parse_mul(); self.chunk.emit(OpCode::Add, 0); }
-                Some(TokenType::Minus) => { self.advance(); self.parse_mul(); self.chunk.emit(OpCode::Sub, 0); }
-                _ => break,
-            }
-        }
-    }
-
-    fn mul_tail(&mut self) {
-        while matches!(self.peek(), Some(TokenType::Star | TokenType::Slash | TokenType::Percent | TokenType::DoubleStar | TokenType::DoubleSlash)) {
-            match self.peek() {
-                Some(TokenType::Star)        => { self.advance(); self.parse_unary(); self.chunk.emit(OpCode::Mul,      0); }
-                Some(TokenType::Slash)       => { self.advance(); self.parse_unary(); self.chunk.emit(OpCode::Div,      0); }
-                Some(TokenType::Percent)     => { self.advance(); self.parse_unary(); self.chunk.emit(OpCode::Mod,      0); }
-                Some(TokenType::DoubleStar)  => { self.advance(); self.parse_unary(); self.chunk.emit(OpCode::Pow,      0); }
-                Some(TokenType::DoubleSlash) => { self.advance(); self.parse_unary(); self.chunk.emit(OpCode::FloorDiv, 0); }
-                _ => break,
-            }
-        }
-    }
-
-    fn shift_tail(&mut self) {
-        while matches!(self.peek(), Some(TokenType::LeftShift | TokenType::RightShift)) {
-            match self.peek() {
-                Some(TokenType::LeftShift)  => { self.advance(); self.parse_add(); self.chunk.emit(OpCode::Shl, 0); }
-                Some(TokenType::RightShift) => { self.advance(); self.parse_add(); self.chunk.emit(OpCode::Shr, 0); }
-                _ => break,
-            }
-        }
-    }
-
-    fn bitand_tail(&mut self) {
-        while matches!(self.peek(), Some(TokenType::Amper)) {
-            self.advance(); self.parse_shift(); self.chunk.emit(OpCode::BitAnd, 0);
-        }
-    }
-
-    fn bitxor_tail(&mut self) {
-        while matches!(self.peek(), Some(TokenType::Circumflex)) {
-            self.advance(); self.parse_bitand(); self.chunk.emit(OpCode::BitXor, 0);
-        }
-    }
-
-    fn bitor_tail(&mut self) {
-        while matches!(self.peek(), Some(TokenType::Vbar)) {
-            self.advance(); self.parse_bitxor(); self.chunk.emit(OpCode::BitOr, 0);
-        }
+    fn expr_tails(&mut self) {
+        self.postfix_tail();
+        self.infix_bp(0);
     }
     
 }
@@ -1334,7 +1288,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             let t = self.advance();
             let var = self.lexeme(&t).to_string();
             self.eat(TokenType::In);
-            self.parse_or();
+            self.expr_bp(1);
             self.chunk.emit(OpCode::GetIter, 0);
 
             let ls = self.chunk.instructions.len() as u16;
@@ -1346,7 +1300,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             self.chunk.emit(OpCode::StoreName, idx);
 
             while self.eat_if(TokenType::If) {
-                self.parse_or();
+                self.expr_bp(1);
                 self.chunk.emit(OpCode::JumpIfFalse, ls);
             }
 
