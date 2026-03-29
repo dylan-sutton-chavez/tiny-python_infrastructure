@@ -23,19 +23,24 @@ jobs:
       - name: Build
         run: cargo build --release
 
+      - name: Binary Size
+        run: ls -lh target/release/compiler
+
       - name: Run tests
         run: cargo test
 
       - name: Install CLI Tools
-        run: cargo install cargo-shear
+        run: cargo install cargo-shear cargo-bloat
 
       - name: Unused code
         run: |
           cargo shear
           cargo clippy
 
-      - name: Binary Size
-        run: ls -lh target/release/compiler
+      - name: Dependencies and Functions Size
+        run: |
+          cargo bloat --release --crates -n 7
+          cargo bloat --release -n 7
 
   deployment:
     runs-on: *ubuntu
