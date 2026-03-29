@@ -1,3 +1,5 @@
+cargo-features = ["panic-immediate-abort"]
+
 [package]
 name = "edge-python-compiler"
 version = "0.1.0"
