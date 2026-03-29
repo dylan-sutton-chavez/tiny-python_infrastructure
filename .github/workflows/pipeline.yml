@@ -26,13 +26,16 @@ jobs:
       - name: Run tests
         run: cargo test
 
-      - name: Install cargo-shear
-        run: cargo install cargo-shear
+      - name: Install CLI Tools
+        run: cargo install cargo-shear cargo-bloat
 
       - name: Unused code
         run: |
           cargo shear
           cargo clippy
+
+      - name: Analyze Binary Size
+        run: cargo bloat --release --n 10
 
   deployment:
     runs-on: *ubuntu
