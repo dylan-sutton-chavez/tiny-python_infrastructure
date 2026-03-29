@@ -1,60 +1,60 @@
 name: pipeline
 
 on:
-  push:
-    branches: [ main ]
-    tags: [ "v*" ]
-  pull_request:
-    branches: [ main ]
+    push:
+        branches: [main]
+        tags: ["v*"]
+    pull_request:
+        branches: [main]
 
 jobs:
-  compiler:
-    strategy:
-      matrix:
-        include:
-          - { name: Linux,   os: ubuntu-latest,  target: x86_64-unknown-linux-gnu,  binary: compiler,      test: true,  analyze: true  }
-          - { name: Windows, os: windows-latest, target: x86_64-pc-windows-msvc,    binary: compiler.exe,  test: true,  analyze: false }
-          - { name: Mac,     os: macos-latest,   target: aarch64-apple-darwin,       binary: compiler,      test: true,  analyze: false }
-          - { name: WASM,    os: ubuntu-latest,  target: wasm32-wasip1,              binary: compiler.wasm, test: false, analyze: false }
+    compiler:
+        strategy:
+            matrix:
+                include:
+                    - { name: Linux, os: ubuntu-latest, target: x86_64-unknown-linux-gnu, binary: compiler, test: true, analyze: true }
+                    - { name: Windows, os: windows-latest, target: x86_64-pc-windows-msvc, binary: compiler.exe, test: true, analyze: false }
+                    - { name: Mac, os: macos-latest, target: aarch64-apple-darwin, binary: compiler, test: true, analyze: false }
+                    - { name: WASM, os: ubuntu-latest, target: wasm32-wasip1, binary: compiler.wasm, test: false, analyze: false }
 
-    name: ${{ matrix.name }}
-    defaults:
-      run:
-        working-directory: compiler
+        name: ${{ matrix.name }}
+        defaults:
+            run:
+                working-directory: compiler
 
-    steps:
-      - uses: actions/checkout@v5
+        steps:
+            - uses: actions/checkout@v5
 
-      - uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: "rust-src, clippy"
-          targets: ${{ matrix.target }}
+            - uses: dtolnay/rust-toolchain@nightly
+                with:
+                    components: "rust-src, clippy"
+                    targets: ${{ matrix.target }}
 
-      - uses: Swatinem/rust-cache@v2
+            - uses: Swatinem/rust-cache@v2
 
-      - name: Build
-        run: cargo +nightly build --release --target ${{ matrix.target }}
+            - name: Build
+                run: cargo +nightly build --release --target ${{ matrix.target }}
 
-      - name: Binary Size
-        run: ls -lh target/${{ matrix.target }}/release/${{ matrix.binary }}
+            - name: Binary Size
+                run: ls -lh target/${{ matrix.target }}/release/${{ matrix.binary }}
 
-      - name: Test
-        if: matrix.test
-        run: cargo test
+            - name: Test
+                if: matrix.test
+                run: cargo test
 
-      - name: Install CLI Tools
-        if: matrix.analyze
-        run: cargo install cargo-shear cargo-bloat
+            - name: Install CLI Tools
+                if: matrix.analyze
+                run: cargo install cargo-shear cargo-bloat
 
-      - name: Unused Code
-        if: matrix.analyze
-        run: cargo shear && cargo clippy
+            - name: Unused Code
+                if: matrix.analyze
+                run: cargo shear && cargo clippy
 
-      - name: Bloat
-        if: matrix.analyze
-        run: cargo bloat --release --target x86_64-unknown-linux-gnu --crates -n 7
+            - name: Bloat
+                if: matrix.analyze
+                run: cargo bloat --release --target x86_64-unknown-linux-gnu --crates -n 7
 
-      - uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: compiler/target/${{ matrix.target }}/release/${{ matrix.binary }}
+            - uses: softprops/action-gh-release@v2
+                if: startsWith(github.ref, 'refs/tags/')
+                with:
+                    files: compiler/target/${{ matrix.target }}/release/${{ matrix.binary }}
