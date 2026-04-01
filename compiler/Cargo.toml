@@ -22,7 +22,6 @@ path = "tests/integration_test.rs"
 
 [dependencies]
 logos = "0.16"
-thiserror = "2"
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }

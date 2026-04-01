@@ -6,7 +6,7 @@
 
 use crate::modules::parser::{OpCode, SSAChunk, Value};
 use std::collections::HashMap;
-use thiserror::Error;
+use core::fmt;
 
 // ── A04:2021 — runtime limits ──
 
@@ -95,18 +95,35 @@ impl Obj {
 
 // ── Errors ──
 
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum VmErr {
-    #[error("StackOverflow")]              StackOverflow,
-    #[error("RecursionError: max depth")]  CallDepth,
-    #[error("MemoryError: heap limit")]    Heap,
-    #[error("RuntimeError: budget")]       Budget,
-    #[error("NameError: '{0}'")]           Name(String),
-    #[error("TypeError: {0}")]             Type(String),
-    #[error("ValueError: {0}")]            Value(String),
-    #[error("ZeroDivisionError")]          ZeroDiv,
-    #[error("AssertionError")]             Assert,
-    #[error("RuntimeError: {0}")]          Runtime(String),
+    StackOverflow,
+    CallDepth,
+    Heap,
+    Budget,
+    Name(String),
+    Type(String),
+    Value(String),
+    ZeroDiv,
+    Assert,
+    Runtime(String),
+}
+
+impl fmt::Display for VmErr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::StackOverflow  => write!(f, "StackOverflow"),
+            Self::CallDepth      => write!(f, "RecursionError: max depth"),
+            Self::Heap           => write!(f, "MemoryError: heap limit"),
+            Self::Budget         => write!(f, "RuntimeError: budget exceeded"),
+            Self::Name(s)        => write!(f, "NameError: '{}'", s),
+            Self::Type(s)        => write!(f, "TypeError: {}", s),
+            Self::Value(s)       => write!(f, "ValueError: {}", s),
+            Self::ZeroDiv        => write!(f, "ZeroDivisionError: division by zero"),
+            Self::Assert         => write!(f, "AssertionError"),
+            Self::Runtime(s)     => write!(f, "RuntimeError: {}", s),
+        }
+    }
 }
 
 // ── Memory pool — heap allocation tracking ──
@@ -295,6 +312,11 @@ impl<'a> VM<'a> {
                 ip += 1;
                 if self.exec_fast(fast)? { continue; }
                 self.adaptive.deopt(ip - 1);
+                self.cache.invalidate(ip - 1);
+                ip -= 1;
+            } else if let Some(fast) = self.cache.get(ip) {
+                ip += 1;
+                if self.exec_fast(fast)? { continue; }
                 self.cache.invalidate(ip - 1);
                 ip -= 1;
             }
