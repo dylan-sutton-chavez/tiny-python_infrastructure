@@ -23,17 +23,17 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install CLI Tools
-        run: cargo install cargo-shear cargo-bloat
-
       - name: Build
         run: cargo build --release --target wasm32-unknown-unknown --features wasm --lib
 
+      - name: Install CLI Tools
+        run: cargo install cargo-shear cargo-bloat
+
       - name: Test
-        run: cargo test --features wasm
+        run: cargo test --lib --features wasm
 
       - name: Unused Code
-        run: cargo shear && cargo clippy --target wasm32-unknown-unknown --features wasm
+        run: cargo shear && cargo clippy --lib --target wasm32-unknown-unknown --features wasm
 
       - name: Install WASM Tools
         run: |
