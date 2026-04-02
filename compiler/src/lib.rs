@@ -2,6 +2,13 @@
 
 extern crate alloc; // Enables heap allocation without the standard library.
 
+/* 
+Webassembly architecture entry point.
+*/
+
+#[cfg(target_arch = "wasm32")]
+pub mod wasm;
+
 /*
 Internal modules accessed through all the package.
 */
