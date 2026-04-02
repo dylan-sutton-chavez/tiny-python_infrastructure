@@ -1,0 +1,58 @@
+name: wasm
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    name: WASM
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: compiler
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Install target
+        run: rustup target add wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install CLI Tools
+        run: cargo install cargo-shear cargo-bloat
+
+      - name: Build
+        run: cargo build --release --target wasm32-unknown-unknown --features wasm --lib
+
+      - name: Test
+        run: cargo test --features wasm
+
+      - name: Unused Code
+        run: cargo shear && cargo clippy --target wasm32-unknown-unknown --features wasm
+
+      - name: Install WASM Tools
+        run: |
+          cargo install twiggy
+          sudo apt-get install -y binaryen
+
+      - name: Optimize
+        run: wasm-opt -Oz --strip-debug target/wasm32-unknown-unknown/release/compiler_lib.wasm -o target/wasm32-unknown-unknown/release/compiler_lib.wasm
+
+      - name: Size
+        run: ls -lh target/wasm32-unknown-unknown/release/compiler_lib.wasm
+
+      - name: Bloat
+        run: twiggy top target/wasm32-unknown-unknown/release/compiler_lib.wasm -n 10
+
+      - name: Test WASM
+        run: node tests/wasm.mjs
+
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: compiler/target/wasm32-unknown-unknown/release/compiler_lib.wasm

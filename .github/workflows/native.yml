@@ -1,0 +1,66 @@
+name: native
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary: edge
+
+          - name: Windows
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary: edge.exe
+
+          - name: Mac
+            os: macos-latest
+            target: aarch64-apple-darwin
+            binary: edge
+
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: compiler
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rust-src, clippy
+
+      - name: Install target
+        run: rustup target add ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Size
+        run: ls -lh target/${{ matrix.target }}/release/${{ matrix.binary }}
+        shell: bash
+
+      - name: Test
+        run: cargo test
+
+      - name: Install CLI Tools
+        run: cargo install cargo-shear cargo-bloat
+
+      - name: Unused Code
+        run: cargo shear && cargo clippy --target ${{ matrix.target }}
+
+      - name: Bloat
+        run: cargo bloat --release --target ${{ matrix.target }} --crates -n 7
+
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: compiler/target/${{ matrix.target }}/release/${{ matrix.binary }}
