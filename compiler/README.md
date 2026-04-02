@@ -13,12 +13,24 @@ Single-pass SSA compiler for Python 3.13: logos lexer, token-to-bytecode parser,
 
 ### Quick Start
 
+Build and Install:
+
 ```bash
 cd compiler/
 
 cargo build --release
 ./target/release/edge -c 'print("Hello, world!")'
 ```
+
+Add to `$PATH`:
+
+```bash
+realpath target/release/edge
+
+echo 'export PATH="/path/to/compiler:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
 
 ### Usage
 
