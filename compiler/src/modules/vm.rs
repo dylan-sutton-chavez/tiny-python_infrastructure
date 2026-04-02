@@ -12,9 +12,9 @@ use core::fmt;
 // ── A04:2021 — runtime limits ──
 
 const MAX_STACK: usize = 1_024;
-const MAX_CALLS: usize = 256;
+const MAX_CALLS: usize = 512;
 const MAX_HEAP: usize = 100_000;
-const MAX_OPS: usize = 10_000_000;
+const MAX_OPS: usize = 100_000_000;
 const CACHE_THRESHOLD: u8 = 8;
 const HOTSPOT_THRESHOLD: u32 = 1_000;
 const TEMPLATE_THRESHOLD: u32 = 4;
@@ -75,9 +75,22 @@ impl Obj {
 
     pub fn display(&self) -> String {
         match self {
-            Self::Int(i) => i.to_string(),
-            Self::Float(f) if *f == (*f as i64) as f64 && f.is_finite() => format!("{:.1}", f),
-            Self::Float(f) => f.to_string(),
+            Self::Int(i) => {
+                let mut buf = itoa::Buffer::new();
+                buf.format(*i).into()
+            }
+            Self::Float(f) if *f == (*f as i64) as f64 && f.is_finite() => {
+                let mut s = itoa::Buffer::new();
+                let i = *f as i64;
+                let mut out = String::with_capacity(20);
+                out.push_str(s.format(i));
+                out.push_str(".0");
+                out
+            }
+            Self::Float(f) => {
+                let mut buf = ryu::Buffer::new();
+                buf.format(*f).into()
+            }
             Self::Str(s) => s.clone(),
             Self::Bool(b) => if *b { "True" } else { "False" }.into(),
             Self::None => "None".into(),
@@ -175,26 +188,44 @@ impl InlineCache {
 
 // ── Template table — memoized function results ──
 
-struct TemplateEntry { result: Obj, hits: u32 }
+struct TemplateEntry { args: Vec<Obj>, result: Obj, hits: u32 }
 
-struct TemplateTable { entries: HashMap<(usize, Vec<u8>), TemplateEntry> }
+struct TemplateTable { entries: HashMap<usize, Vec<TemplateEntry>> }
 
 impl TemplateTable {
     fn new() -> Self { Self { entries: HashMap::new() } }
 
     fn lookup(&self, fi: usize, args: &[Obj]) -> Option<&Obj> {
-        let e = self.entries.get(&(fi, args.iter().map(type_tag).collect()))?;
-        if e.hits >= TEMPLATE_THRESHOLD { Some(&e.result) } else { None }
+        let entries = self.entries.get(&fi)?;
+        entries.iter()
+            .find(|e| e.hits >= TEMPLATE_THRESHOLD && Self::args_eq(&e.args, args))
+            .map(|e| &e.result)
     }
 
     fn record(&mut self, fi: usize, args: &[Obj], result: &Obj) {
-        let key = (fi, args.iter().map(type_tag).collect());
-        let e = self.entries.entry(key).or_insert(TemplateEntry { result: result.clone(), hits: 0 });
-        e.hits += 1;
-        e.result = result.clone();
+        let entries = self.entries.entry(fi).or_insert_with(Vec::new);
+        if let Some(e) = entries.iter_mut().find(|e| Self::args_eq(&e.args, args)) {
+            e.hits += 1;
+            e.result = result.clone();
+        } else if entries.len() < 256 {
+            entries.push(TemplateEntry { args: args.to_vec(), result: result.clone(), hits: 1 });
+        }
     }
 
-    fn cached_count(&self) -> usize { self.entries.values().filter(|e| e.hits >= TEMPLATE_THRESHOLD).count() }
+    fn args_eq(a: &[Obj], b: &[Obj]) -> bool {
+        a.len() == b.len() && a.iter().zip(b).all(|(x, y)| match (x, y) {
+            (Obj::Int(a), Obj::Int(b))     => a == b,
+            (Obj::Float(a), Obj::Float(b)) => a == b,
+            (Obj::Str(a), Obj::Str(b))     => a == b,
+            (Obj::Bool(a), Obj::Bool(b))   => a == b,
+            (Obj::None, Obj::None)         => true,
+            _ => false,
+        })
+    }
+
+    fn cached_count(&self) -> usize {
+        self.entries.values().map(|v| v.iter().filter(|e| e.hits >= TEMPLATE_THRESHOLD).count()).sum()
+    }
 }
 
 // ── Adaptive engine — hotspot detection + bytecode overlay ──
@@ -240,15 +271,26 @@ pub struct VM<'a> {
     budget: usize,
     depth: usize,
     pub output: Vec<String>,
+    versions: HashMap<String, String>, // "x_2" -> "x_1", precomputed prev version map
 }
 
 impl<'a> VM<'a> {
     pub fn new(chunk: &'a SSAChunk) -> Self {
         let n = chunk.instructions.len();
+        let mut versions = HashMap::new();
+        for name in &chunk.names {
+            if let Some(pos) = name.rfind('_') {
+                if let Ok(ver) = name[pos + 1..].parse::<u32>() {
+                    if ver > 0 {
+                        versions.insert(name.clone(), format!("{}_{}", &name[..pos], ver - 1));
+                    }
+                }
+            }
+        }
         Self {
             stack: Vec::with_capacity(256), chunk, pool: Pool::new(),
             cache: InlineCache::new(n), templates: TemplateTable::new(), adaptive: AdaptiveEngine::new(n),
-            budget: MAX_OPS, depth: 0, output: Vec::new(),
+            budget: MAX_OPS, depth: 0, output: Vec::new(), versions,
         }
     }
 
@@ -333,14 +375,12 @@ impl<'a> VM<'a> {
 
                 OpCode::LoadConst    => self.push(self.to_obj(&chunk.constants[op as usize]))?,
                 OpCode::LoadName     => { let n = &chunk.names[op as usize]; self.push(names.get(n).cloned().ok_or_else(|| VmErr::Name(n.clone()))?)?; }
-                OpCode::StoreName    => {
+                OpCode::StoreName => {
                     let v = self.pop()?;
                     let full = &chunk.names[op as usize];
                     names.insert(full.clone(), v.clone());
-                    if let Some(pos) = full.rfind('_') {
-                        if let Ok(ver) = full[pos + 1..].parse::<u32>() {
-                            if ver > 0 { names.insert(format!("{}_{}", &full[..pos], ver - 1), v); }
-                        }
+                    if let Some(prev) = self.versions.get(full) {
+                        names.insert(prev.clone(), v);
                     }
                 }
                 OpCode::LoadTrue     => self.push(Obj::Bool(true))?,
@@ -433,24 +473,43 @@ impl<'a> VM<'a> {
                 OpCode::MakeFunction | OpCode::MakeCoroutine => self.push(Obj::Func(op as usize))?,
                 OpCode::Call => {
                     let argc = op as usize;
-                    let args = self.pop_n(argc)?;
-                    let func = self.pop()?;
-                    match func {
+                    if self.depth >= MAX_CALLS { return Err(VmErr::CallDepth); }
+
+                    // Extraer argumentos en orden de llamada (sin reverse)
+                    let mut args = Vec::with_capacity(argc);
+                    for _ in 0..argc {
+                        args.push(self.pop()?);
+                    }
+                    args.reverse();
+                    let callable = self.pop()?;
+
+                    match callable {
                         Obj::Func(fi) => {
-                            if self.depth >= MAX_CALLS { return Err(VmErr::CallDepth); }
-                            if let Some(cached) = self.templates.lookup(fi, &args) { self.push(cached.clone())?; continue; }
+                            if let Some(cached) = self.templates.lookup(fi, &args) {
+                                self.push(cached.clone())?;
+                                continue;
+                            }
                             self.depth += 1;
                             let (params, body, _) = &self.chunk.functions[fi];
-                            let mut fn_ns = names.clone();
+                            // Scope chain: only bind params, pass outer scope by ref
+                            let mut fn_ns: HashMap<String, Obj> = HashMap::with_capacity(params.len() + 4);
                             for (i, p) in params.iter().enumerate() {
-                                if i < args.len() { fn_ns.insert(format!("{}_0", p.trim_start_matches('*')), args[i].clone()); }
+                                if i < args.len() {
+                                    fn_ns.insert(format!("{}_0", p.trim_start_matches('*')), args[i].clone());
+                                }
+                            }
+                            // Copy only function definitions from outer scope (for recursion)
+                            for (k, v) in names.iter() {
+                                if matches!(v, Obj::Func(_)) {
+                                    fn_ns.insert(k.clone(), v.clone());
+                                }
                             }
                             let result = self.exec(body, &mut fn_ns)?;
                             self.depth -= 1;
                             self.templates.record(fi, &args, &result);
                             self.push(result)?;
                         }
-                        _ => return Err(VmErr::Type(format!("'{}' not callable", func.ty()))),
+                        _ => return Err(VmErr::Type("call non‑function".into())),
                     }
                 }
 

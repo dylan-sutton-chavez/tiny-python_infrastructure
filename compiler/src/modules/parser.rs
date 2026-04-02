@@ -1857,7 +1857,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     }
 
     fn parse_args(&mut self) -> u16 {
-        self.advance();
+        self.advance(); // consume '('
         let mut argc = 0;
         while !matches!(self.peek(), Some(TokenType::Rpar) | None) {
             if self.eat_if(TokenType::Star) {
@@ -1870,9 +1870,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 let t = self.advance();
                 if matches!(self.peek(), Some(TokenType::Equal)) {
                     self.advance();
-                    let i = self
-                        .chunk
-                        .push_const(Value::Str(self.lexeme(&t).to_string()));
+                    let i = self.chunk.push_const(Value::Str(self.lexeme(&t).to_string()));
                     self.chunk.emit(OpCode::LoadConst, i);
                     self.expr();
                 } else {
@@ -1887,7 +1885,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 self.advance();
             }
         }
-        self.advance();
+        self.eat(TokenType::Rpar);
         argc
     }
 

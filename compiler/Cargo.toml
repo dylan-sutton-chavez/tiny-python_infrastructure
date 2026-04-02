@@ -27,6 +27,8 @@ hashbrown = { version = "0.15", default-features = false, features = ["default-h
 log = "0.4"
 stderrlog = { version = "0.6", default-features = false }
 lol_alloc = { version = "0.4", optional = true }
+itoa = "1"
+ryu = "1"
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }
