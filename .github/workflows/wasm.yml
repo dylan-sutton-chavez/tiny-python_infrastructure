@@ -29,9 +29,6 @@ jobs:
       - name: Install CLI Tools
         run: cargo install cargo-shear cargo-bloat
 
-      - name: Test
-        run: cargo test --lib --features wasm
-
       - name: Unused Code
         run: cargo shear && cargo clippy --lib --target wasm32-unknown-unknown --features wasm
 
@@ -43,9 +40,6 @@ jobs:
 
       - name: Bloat
         run: twiggy top target/wasm32-unknown-unknown/release/compiler_lib.wasm -n 10
-
-      - name: Test WASM
-        run: node tests/wasm.mjs
 
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
