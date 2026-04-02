@@ -5,7 +5,11 @@ use log::{debug, info, error};
 fn parse_args() -> (String, usize, bool, bool) {
     let args: Vec<_> = env::args().skip(1).collect();
     if args.is_empty() || args.contains(&"-h".into()) {
-        println!("usage: edge [-d] [-dd] [-q] [--sandbox] <file>"); exit(0)
+        println!("usage: edge [-c code] [-d] [-dd] [-q] [--sandbox] <file>"); exit(0)
+    }
+    if let Some(pos) = args.iter().position(|a| a == "-c") {
+        let code = args.get(pos + 1).cloned().unwrap_or_default();
+        return (code, 0, false, false);
     }
     let p = args.iter().find(|&a| !a.starts_with('-')).cloned().unwrap_or_else(|| {
         eprintln!("abort: execution failed because no input target was specified"); exit(1)
@@ -15,9 +19,11 @@ fn parse_args() -> (String, usize, bool, bool) {
 }
 
 fn run(path: &str, v: usize, q: bool, sandbox: bool) -> Result<(), Box<dyn std::error::Error>> {
-    stderrlog::new().module(module_path!()).verbosity(v).quiet(q).init().ok();
-
-    let src = fs::read_to_string(path).map_err(|e| format!("io: cannot access '{}' because {}", path, e))?;
+    let src = if path.ends_with(".py") {
+        fs::read_to_string(path).map_err(|e| format!("io: cannot access '{}' because {}", path, e))?
+    } else {
+        path.to_string()
+    };
 
     let (chunk, errs) = Parser::new(&src, lexer(&src)).parse();
     if !errs.is_empty() {
