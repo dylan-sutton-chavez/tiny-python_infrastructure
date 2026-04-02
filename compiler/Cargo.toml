@@ -11,6 +11,7 @@ autotests = false
 [lib]
 name = "compiler_lib"
 path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
 
 [[bin]]
 name = "edge"
@@ -25,6 +26,7 @@ logos = { version = "0.16", default-features = false, features = ["export_derive
 hashbrown = { version = "0.15", default-features = false, features = ["default-hasher"] }
 log = "0.4"
 stderrlog = { version = "0.6", default-features = false }
+lol_alloc = { version = "0.4", optional = true }
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -37,3 +39,6 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+[features]
+wasm = ["lol_alloc"]
