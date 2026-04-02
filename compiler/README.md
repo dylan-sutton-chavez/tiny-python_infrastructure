@@ -31,6 +31,26 @@ echo 'export PATH="/path/to/compiler:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
+### Benchmark
+
+Recursive Fibonacci — `fib(30)` (~2.7M calls):
+
+```python
+def fib(n):
+
+    if n < 2: return n
+    
+    return fib(n-1) + fib(n-2)
+
+print(fib(30))
+```
+
+| Runtime      | real     | user     | sys      |
+|--------------|----------|----------|----------|
+| CPython 3.13 | 0m0.103s | 0m0.083s | 0m0.012s |
+| Edge Python  | 0m0.015s | 0m0.003s | 0m0.000s |
+
+*6.8x faster than CPython on pure recursive call overhead.*
 
 ### Usage
 
