@@ -22,7 +22,6 @@ name = "integration_test"
 path = "tests/integration_test.rs"
 
 [dependencies]
-logos = { version = "0.16", default-features = false, features = ["export_derive"] }
 hashbrown = { version = "0.15", default-features = false, features = ["default-hasher"] }
 log = "0.4"
 lol_alloc = { version = "0.4", optional = true }
