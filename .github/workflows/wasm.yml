@@ -41,10 +41,13 @@ jobs:
             -o target/wasm32-unknown-unknown/release/compiler_lib.wasm \
             target/wasm32-unknown-unknown/release/compiler_lib.wasm
 
+      - name: Size
+        run: ls -lh target/wasm32-unknown-unknown/release/compiler_lib.wasm
+
       - name: Test
         run: cargo test --features wasm-tests
 
-      - name: Size
+      - name: Size (optimized)
         run: ls -lh target/wasm32-unknown-unknown/release/compiler_lib.wasm
       
       - uses: softprops/action-gh-release@v2
