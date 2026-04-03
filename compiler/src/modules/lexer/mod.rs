@@ -64,7 +64,7 @@ pub fn lexer(source: &str) -> impl Iterator<Item = Token> + '_ {
     let mut done = false;
 
     if len > MAX_SOURCE_SIZE {
-        scanner.pending.push_back((TokenType::Endmarker, 0, len, len));
+        scanner.pending.push((TokenType::Endmarker, 0, len, len));
     }
 
     let mut stream = core::iter::from_fn(move || {

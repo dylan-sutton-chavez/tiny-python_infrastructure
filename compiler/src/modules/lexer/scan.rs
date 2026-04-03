@@ -2,7 +2,6 @@
 
 use super::TokenType;
 use super::tables::*;
-use alloc::collections::VecDeque;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
 
@@ -17,7 +16,7 @@ Scanner State
 pub(super) struct Scanner<'a> {
     pub src: &'a [u8],
     pub pos: usize,
-    pub pending: VecDeque<(TokenType, usize, usize, usize)>,
+    pub pending: Vec<(TokenType,usize,usize,usize)>,
     pub indent_stack: Vec<usize>,
     pub nesting: u32,
     pub line: usize,
@@ -28,7 +27,7 @@ impl<'a> Scanner<'a> {
     pub fn new(src: &'a [u8]) -> Self {
         Self {
             src, pos: 0,
-            pending: VecDeque::new(),
+            pending: Vec::new(),
             indent_stack: Vec::new(),
             nesting: 0, line: 0,
             fstring_stack: Vec::new(),
@@ -192,8 +191,8 @@ impl<'a> Scanner<'a> {
         let quote_len = if triple { 3 } else { 1 };
         self.pos = prefix_end + quote_len;
         let body_start = self.pos;
-        self.pending.push_back((TokenType::FstringStart, self.line, start, body_start));
         self.scan_fstring_body(quote, triple, body_start);
+        self.pending.push((TokenType::FstringStart, self.line, start, body_start));
     }
 
     fn scan_fstring_body(&mut self, quote: u8, triple: bool, body_start: usize) {
@@ -208,26 +207,29 @@ impl<'a> Scanner<'a> {
                 self.src[pos] == quote
             };
             if closes {
-                if pos > self.pos {
-                    self.pending.push_back((TokenType::FstringMiddle, self.line, body_start, pos));
-                }
                 let ql = if triple { 3 } else { 1 };
-                self.pending.push_back((TokenType::FstringEnd, self.line, pos, pos + ql));
+                self.pending.push((TokenType::FstringEnd, self.line, pos, pos + ql));
+                if pos > self.pos {
+                    self.pending.push((TokenType::FstringMiddle, self.line, body_start, pos));
+                }
                 self.pos = pos + ql;
                 return;
             }
             match self.src[pos] {
                 b'\\' => pos = (pos + 2).min(self.src.len()),
                 b'{' if self.src.get(pos + 1) != Some(&b'{') => {
-                    if pos > self.pos {
-                        self.pending.push_back((TokenType::FstringMiddle, self.line, body_start, pos));
-                    }
                     if self.fstring_stack.len() >= MAX_FSTRING_DEPTH {
-                        self.pending.push_back((TokenType::Endmarker, self.line, pos, pos));
+                        self.pending.push((TokenType::Endmarker, self.line, pos, pos));
+                        if pos > self.pos {
+                            self.pending.push((TokenType::FstringMiddle, self.line, body_start, pos));
+                        }
                         self.pos = pos + 1;
                         return;
                     }
-                    self.pending.push_back((TokenType::Lbrace, self.line, pos, pos + 1));
+                    self.pending.push((TokenType::Lbrace, self.line, pos, pos + 1));
+                    if pos > self.pos {
+                        self.pending.push((TokenType::FstringMiddle, self.line, body_start, pos));
+                    }
                     self.fstring_stack.push((quote, triple, pos + 1, self.nesting));
                     self.pos = pos + 1;
                     return;
@@ -249,7 +251,7 @@ impl<'a> Scanner<'a> {
         self.line += 1;
 
         if self.nesting > 0 {
-            self.pending.push_back((TokenType::Nl, current_line, start, self.pos));
+            self.pending.push((TokenType::Nl, current_line, start, self.pos));
             return;
         }
 
@@ -259,41 +261,45 @@ impl<'a> Scanner<'a> {
         let mut p = self.pos;
         while p < self.src.len() && (self.src[p] == b' ' || self.src[p] == b'\t') {
             has_space |= self.src[p] == b' ';
-            has_tab |= self.src[p] == b'\t';
+            has_tab   |= self.src[p] == b'\t';
             level += 1; p += 1;
         }
 
         if has_space && has_tab {
-            self.pending.push_back((TokenType::Newline, current_line, start, self.pos));
-            self.pending.push_back((TokenType::Endmarker, current_line, start, self.pos));
+            self.pending.push((TokenType::Endmarker, current_line, start, self.pos)); // sale 2.º
+            self.pending.push((TokenType::Newline,   current_line, start, self.pos)); // sale 1.º
             return;
         }
 
         if matches!(self.src.get(p), Some(b'\n' | b'\r' | b'#')) {
-            self.pending.push_back((TokenType::Nl, current_line, start, self.pos));
+            self.pending.push((TokenType::Nl, current_line, start, self.pos));
             return;
         }
 
         let line_pos = self.pos + level;
         let current = *self.indent_stack.last().unwrap_or(&0);
-        self.pending.push_back((TokenType::Newline, current_line, start, self.pos));
 
         match level.cmp(&current) {
             Ordering::Greater => {
                 if self.indent_stack.len() >= MAX_INDENT_DEPTH {
-                    self.pending.push_back((TokenType::Endmarker, current_line, start, self.pos));
+                    self.pending.push((TokenType::Endmarker, current_line, start, self.pos)); // sale 2.º
+                    self.pending.push((TokenType::Newline,   current_line, start, self.pos)); // sale 1.º
                     return;
                 }
                 self.indent_stack.push(level);
-                self.pending.push_back((TokenType::Indent, self.line, line_pos, line_pos));
+                self.pending.push((TokenType::Indent,  self.line,    line_pos, line_pos)); // sale 2.º
+                self.pending.push((TokenType::Newline,  current_line, start,    self.pos)); // sale 1.º
             }
             Ordering::Less => {
                 while self.indent_stack.last().is_some_and(|&t| t > level) {
                     self.indent_stack.pop();
-                    self.pending.push_back((TokenType::Dedent, self.line, line_pos, line_pos));
+                    self.pending.push((TokenType::Dedent, self.line, line_pos, line_pos)); // salen últimos
                 }
+                self.pending.push((TokenType::Newline, current_line, start, self.pos)); // sale 1.º
             }
-            Ordering::Equal => {}
+            Ordering::Equal => {
+                self.pending.push((TokenType::Newline, current_line, start, self.pos));
+            }
         }
     }
 
@@ -307,17 +313,17 @@ impl<'a> Scanner<'a> {
         if let Some(&(_, _, _, saved_nesting)) = self.fstring_stack.last() {
             if self.nesting > saved_nesting {
                 self.nesting -= 1;
-                self.pending.push_back((TokenType::Rbrace, self.line, start, end));
+                self.pending.push((TokenType::Rbrace, self.line, start, end));
             } else {
                 let (quote, triple, _, _) = self.fstring_stack.pop().unwrap();
-                self.pending.push_back((TokenType::Rbrace, self.line, start, end));
                 self.pos = end;
                 self.scan_fstring_body(quote, triple, end);
+                self.pending.push((TokenType::Rbrace, self.line, start, end));
                 return;
             }
         } else {
             self.nesting = self.nesting.saturating_sub(1);
-            self.pending.push_back((TokenType::Rbrace, self.line, start, end));
+            self.pending.push((TokenType::Rbrace, self.line, start, end));
         }
         self.pos = end;
     }
@@ -328,7 +334,7 @@ impl<'a> Scanner<'a> {
     */
 
     pub fn next_token(&mut self) -> Option<(TokenType, usize, usize, usize)> {
-        if let Some(tok) = self.pending.pop_front() {
+        if let Some(tok) = self.pending.pop() {
             return Some(tok);
         }
 
@@ -343,7 +349,7 @@ impl<'a> Scanner<'a> {
         if b == b'\n' {
             self.pos += 1;
             self.handle_newline(start);
-            return self.pending.pop_front();
+            return self.pending.pop();
         }
 
         // Comment
@@ -365,7 +371,7 @@ impl<'a> Scanner<'a> {
                     if q == b'"' || q == b'\'' {
                         let pe = self.pos;
                         self.start_fstring(start, pe);
-                        return self.pending.pop_front();
+                        return self.pending.pop();
                     }
                 }
             }
@@ -414,7 +420,7 @@ impl<'a> Scanner<'a> {
         // Close brace (f-string aware)
         if b == b'}' {
             self.close_brace(start);
-            return self.pending.pop_front();
+            return self.pending.pop();
         }
 
         // Multi-char operators: 3-char
