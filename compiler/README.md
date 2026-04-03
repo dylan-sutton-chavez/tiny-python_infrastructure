@@ -1,12 +1,12 @@
 ## Edge Python
 
-Single-pass SSA compiler for Python 3.13: logos lexer, token-to-bytecode parser, adaptive VM with inline caching, template memoization, and configurable sandbox limits.
+Single-pass SSA compiler for Python 3.13: hand-written lexer, token-to-bytecode parser, adaptive VM with inline caching, template memoization, and configurable sandbox limits.
 
 ---
 
 ### Architecture
 
-- **Lexer**: DFA-driven tokenization, offset-indexed, zero-alloc
+- **Lexer**: Hand-written scanner, LUT-based, Python 3.13 tokens
 - **Parser**: Single-pass SSA, phi nodes, precedence climbing, direct bytecode emission
 - **VM**: Adaptive stack machine, inline caching, template memoization
 - **Sandbox**: Configurable recursion, operation, and heap limits
