@@ -75,14 +75,19 @@ cargo build --target wasm32-unknown-unknown --release --no-default-features --fe
 ```bash
 ├── Cargo.lock
 ├── Cargo.toml
-├── main.py
 ├── README.md
 ├── src
 │   ├── lib.rs
 │   ├── main.rs
 │   ├── modules
 │   │   ├── lexer.rs
-│   │   ├── parser.rs
+│   │   ├── parser
+│   │   │   ├── control.rs
+│   │   │   ├── expr.rs
+│   │   │   ├── literals.rs
+│   │   │   ├── mod.rs
+│   │   │   ├── stmt.rs
+│   │   │   └── types.rs
 │   │   └── vm.rs
 │   └── wasm.rs
 └── tests
