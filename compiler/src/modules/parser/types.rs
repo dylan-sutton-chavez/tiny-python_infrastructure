@@ -1,6 +1,6 @@
 // parser/types.rs
 
-use alloc::{string::String, vec::Vec};
+use alloc::{string::{String, ToString}, vec::Vec};
 use hashbrown::HashMap;
 
 pub(crate) const MAX_EXPR_DEPTH: usize = 200;

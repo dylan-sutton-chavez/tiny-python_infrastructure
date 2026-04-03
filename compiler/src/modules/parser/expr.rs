@@ -4,7 +4,7 @@ use super::Parser;
 use super::types::{OpCode, Value, MAX_EXPR_DEPTH};
 use super::types::parse_string;
 use crate::modules::lexer::{Token, TokenType};
-use alloc::string::ToString;
+use alloc::{string::ToString, vec::Vec};
 
 impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 

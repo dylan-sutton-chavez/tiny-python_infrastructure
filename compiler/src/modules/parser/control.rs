@@ -3,7 +3,7 @@
 use super::Parser;
 use super::types::OpCode;
 use crate::modules::lexer::{Token, TokenType};
-use alloc::{string::{String, ToString}, vec};
+use alloc::{string::{String, ToString}, vec, vec::Vec, format};
 
 impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
