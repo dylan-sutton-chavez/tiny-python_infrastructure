@@ -160,14 +160,14 @@ fn fln(x: f64) -> f64 {
     let t = (m - 1.0) / (m + 1.0);
     let t2 = t * t;
     2.0 * t * (1.0 + t2 * (1.0/3.0 + t2 * (1.0/5.0 + t2 * (1.0/7.0 + t2 / 9.0))))
-        + exp as f64 * 0.693_147_180_559_945_3
+        + exp as f64 * core::f64::consts::LN_2
 }
 
 fn fexp(x: f64) -> f64 {
     if x > 709.0 { return f64::INFINITY; }
     if x < -709.0 { return 0.0; }
-    let k = (x * 1.442_695_040_888_963_4) as i64;
-    let r = x - k as f64 * 0.693_147_180_559_945_3;
+    let k = (x * core::f64::consts::LOG2_E) as i64;
+    let r = x - k as f64 * core::f64::consts::LN_2;
     let e = 1.0 + r * (1.0 + r * (0.5 + r * (1.0/6.0 + r * (1.0/24.0 + r * (1.0/120.0 + r / 720.0)))));
     f64::from_bits(((k + 1023) as u64) << 52) * e
 }
