@@ -13,7 +13,7 @@
  */
 
 use crate::modules::parser::{OpCode, SSAChunk, Value};
-use alloc::{string::{String, ToString}, vec::Vec, vec, rc::Rc, format};
+use alloc::{string::{String, ToString}, vec::Vec, vec, rc::Rc, format, boxed::Box};
 use hashbrown::HashMap;
 use core::fmt;
 use core::cell::RefCell;
