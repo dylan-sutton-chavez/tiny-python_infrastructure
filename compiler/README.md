@@ -31,18 +31,15 @@ echo 'export PATH="/path/to/compiler/target/release:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### Benchmark
+### Benchmarks
 
 Recursive Fibonacci — `fib(45)`:
 
 ```python
 def fib(n):
-
     if n < 2: return n
-    
     return fib(n-1) + fib(n-2)
-
-print(fib(45)) # fibonacci sequence forty five -> 1,134,903,170
+print(fib(45))
 ```
 
 | Runtime      | fib(45) real | fib(45) user | sys      | fib(90) real |
@@ -51,6 +48,20 @@ print(fib(45)) # fibonacci sequence forty five -> 1,134,903,170
 | Edge Python  | 0m0.011s     | 0m0.000s     | 0m0.003s | 0m0.013s     |
 
 *10,577x faster than CPython on recursive fib(45), where fib(90) completes in 13ms.*
+
+One Million Iterations — `1_000_000`:
+
+```python
+counter: int = 0
+for _ in range(1_000_000):
+    counter += 1
+print(counter)
+```
+
+| Runtime      | real     | user     | sys      |
+|--------------|----------|----------|----------|
+| CPython 3.13 | 0m0.058s | 0m0.041s | 0m0.008s |
+| Edge Python  | 0m0.056s | 0m0.054s | 0m0.001s |
 
 ### Usage
 
