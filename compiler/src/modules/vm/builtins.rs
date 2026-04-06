@@ -319,6 +319,7 @@ impl<'a> VM<'a> {
     Iterable Unwrap
         If single-arg is list/tuple, returns its items; otherwise returns args as-is.
     */
+    
     fn unwrap_single_iterable(&self, args: Vec<Val>) -> Result<Vec<Val>, VmErr> {
         if args.len() == 1 && args[0].is_heap() {
             match self.heap.get(args[0]) {

@@ -190,8 +190,14 @@ pub fn fpowi(mut base: f64, exp: i32) -> f64 {
 
 #[inline]
 pub fn fround(x: f64) -> f64 {
-    let i = x as i64; let t = i as f64; let d = x - t;
-    if d >= 0.5 { t + 1.0 } else if d <= -0.5 { t - 1.0 } else { t }
+    let i = x as i64;
+    let t = i as f64;
+    let d = x - t;
+    if d > 0.5 { t + 1.0 }
+    else if d < -0.5 { t - 1.0 }
+    else if d == 0.5 { if i % 2 == 0 { t } else { t + 1.0 } }
+    else if d == -0.5 { if i % 2 == 0 { t } else { t - 1.0 } }
+    else { t }
 }
 
 pub fn fln(x: f64) -> f64 {
@@ -199,8 +205,7 @@ pub fn fln(x: f64) -> f64 {
     let exp = ((bits >> 52) & 0x7FF) as i64 - 1023;
     let m = f64::from_bits((bits & 0x000F_FFFF_FFFF_FFFF) | 0x3FF0_0000_0000_0000);
     let t = (m - 1.0) / (m + 1.0); let t2 = t * t;
-    2.0 * t * (1.0 + t2 * (1.0/3.0 + t2 * (1.0/5.0 + t2 * (1.0/7.0 + t2 / 9.0))))
-        + exp as f64 * core::f64::consts::LN_2
+    2.0 * t * (1.0 + t2 * (1.0/3.0 + t2 * (1.0/5.0 + t2 * (1.0/7.0 + t2 / 9.0)))) + exp as f64 * core::f64::consts::LN_2
 }
 
 pub fn fexp(x: f64) -> f64 {

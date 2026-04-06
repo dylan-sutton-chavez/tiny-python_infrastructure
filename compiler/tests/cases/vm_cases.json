@@ -107,5 +107,7 @@
   {"src": "print([1,2,3,4,5][::2])", "output": ["[1, 3, 5]"], "result": "None"},
   {"src": "a, *b, c = [1, 2, 3, 4, 5]\nprint(a, b, c)", "output": ["1 [2, 3, 4] 5"], "result": "None"},
   {"src": "*a, b = [1, 2, 3]\nprint(a, b)", "output": ["[1, 2] 3"], "result": "None"},
-  {"src": "for s in {1, 2, 3}:\n    print(s)", "output": ["1","2","3"], "result": "None"}
+  {"src": "for s in {1, 2, 3}:\n    print(s)", "output": ["1","2","3"], "result": "None"},
+  {"src": "print(round(0.5))", "output": ["0"], "result": "None"},
+  {"src": "print(round(2.5))", "output": ["2"], "result": "None"}
 ]
