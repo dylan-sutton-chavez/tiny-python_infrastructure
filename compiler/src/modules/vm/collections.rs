@@ -196,7 +196,10 @@ impl<'a> VM<'a> {
             }
             _ => return Err(VmErr::Type("slice".into())),
         };
-        self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(result))))
+        match self.heap.get(obj) {
+            HeapObj::Tuple(_) => self.heap.alloc(HeapObj::Tuple(result)),
+            _                 => self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(result)))),
+        }
     }
 
     /*
