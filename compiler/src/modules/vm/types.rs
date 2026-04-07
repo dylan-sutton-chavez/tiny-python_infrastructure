@@ -39,6 +39,10 @@ impl Val {
         let bits = f.to_bits();
         if (bits & QNAN) == QNAN { Self(QNAN) } else { Self(bits) }
     }
+    #[inline(always)]
+    pub fn is_numeric(&self) -> bool {
+        self.is_int() || self.is_float()
+    }
     #[inline(always)] pub fn int(i: i64) -> Self {
         Self(TAG_INT | (i as u64 & 0x0000_FFFF_FFFF_FFFF))
     }
@@ -66,17 +70,6 @@ impl Val {
 }
 
 /*
-Tag Classifier
-    Compact numeric tag for InlineCache type specialization.
-*/
-
-#[inline(always)]
-pub fn val_tag(v: &Val) -> u8 {
-    if v.is_int() { 1 } else if v.is_float() { 2 } else if v.is_bool() { 3 }
-    else if v.is_none() { 4 } else { 5 }
-}
-
-/*
 Heap Objects
     Str, List, Dict, Set, Tuple, Func, Range and Slice stored in arena.
 */
@@ -95,7 +88,7 @@ pub enum HeapObj {
 
 /*
 Heap Pool
-    Indexed arena where Val::heap(idx) references allocated objects by slot.
+    Indexed arena for heap objects. Provides val_tag() to differentiate heap types (Str=5, List=6, etc.) for the inline cache.
 */
 
 pub struct HeapPool {
@@ -116,9 +109,31 @@ impl HeapPool {
     #[inline(always)] pub fn get(&self, v: Val) -> &HeapObj {
         &self.objects[v.as_heap() as usize]
     }
+
     #[inline(always)] pub fn get_mut(&mut self, v: Val) -> &mut HeapObj {
         &mut self.objects[v.as_heap() as usize]
     }
+
+    #[inline(always)]
+        pub fn val_tag(&self, v: Val) -> u8 {
+            if v.is_int() { 1 }
+            else if v.is_float() { 2 }
+            else if v.is_bool() { 3 }
+            else if v.is_none() { 4 }
+            else if v.is_heap() {
+            match self.get(v) {
+                HeapObj::Str(_)   => 5,
+                HeapObj::List(_)  => 6,
+                HeapObj::Dict(_)  => 7,
+                HeapObj::Set(_)   => 8,
+                HeapObj::Tuple(_) => 9,
+                HeapObj::Func(_)  => 10,
+                HeapObj::Range(..)=> 11,
+                HeapObj::Slice(..)=> 12,
+            }
+        } else { 0 }
+    }
+
     pub fn usage(&self) -> usize { self.objects.len() }
 }
 

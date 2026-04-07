@@ -1,17 +1,18 @@
 // vm/ops.rs
 
 use super::types::*;
-use alloc::{string::{String, ToString}, vec::Vec, format};
+use alloc::{string::{String}, vec::Vec, rc::Rc, format};
+use core::cell::RefCell;
 
 /*
 Cache Binop Macro
-    Pops two, records type pair in inline cache, promotes to adaptive overlay.
+    Records heap type tags and promotes stable binary ops to fast path.
 */
 
 macro_rules! cached_binop {
-    ($rip:expr, $opcode:expr, $a:expr, $b:expr, $cache:expr, $adaptive:expr) => {{
-        let ta = val_tag($a);
-        let tb = val_tag($b);
+    ($heap:expr, $rip:expr, $opcode:expr, $a:expr, $b:expr, $cache:expr, $adaptive:expr) => {{
+        let ta = $heap.val_tag($a);
+        let tb = $heap.val_tag($b);
         if let Some(f) = $cache.record($rip, $opcode, ta, tb) {
             if $adaptive.tick($rip) { $adaptive.rewrite($rip, f); }
         }
@@ -154,16 +155,34 @@ impl<'a> VM<'a> {
     }
 
     pub fn add_vals(&mut self, a: Val, b: Val) -> Result<Val, VmErr> {
-        if a.is_int() && b.is_int() { return Ok(Val::int(a.as_int() + b.as_int())); }
-        if a.is_float() && b.is_float() { return Ok(Val::float(a.as_float() + b.as_float())); }
-        if a.is_int() && b.is_float() { return Ok(Val::float(a.as_int() as f64 + b.as_float())); }
-        if a.is_float() && b.is_int() { return Ok(Val::float(a.as_float() + b.as_int() as f64)); }
+        if a.is_int() && b.is_int() {
+            return Ok(Val::int(a.as_int() + b.as_int()));
+        }
+        if a.is_numeric() && b.is_numeric() {
+            let fa = if a.is_int() { a.as_int() as f64 } else { a.as_float() };
+            let fb = if b.is_int() { b.as_int() as f64 } else { b.as_float() };
+            return Ok(Val::float(fa + fb));
+        }
+
         if a.is_heap() && b.is_heap() {
-            if let (HeapObj::Str(sa), HeapObj::Str(sb)) = (self.heap.get(a), self.heap.get(b)) {
-                let s = format!("{}{}", sa, sb);
-                return self.heap.alloc(HeapObj::Str(s));
+            match (self.heap.get(a), self.heap.get(b)) {
+                (HeapObj::Str(sa), HeapObj::Str(sb)) => {
+                    return self.heap.alloc(HeapObj::Str(format!("{}{}", sa, sb)));
+                }
+                (HeapObj::List(va), HeapObj::List(vb)) => {
+                    let mut lst = va.borrow().clone();
+                    lst.extend_from_slice(&vb.borrow());
+                    return self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(lst))));
+                }
+                (HeapObj::Tuple(va), HeapObj::Tuple(vb)) => {
+                    let mut tup = va.clone();
+                    tup.extend_from_slice(vb);
+                    return self.heap.alloc(HeapObj::Tuple(tup));
+                }
+                _ => {}
             }
         }
+
         Err(VmErr::Type(format!("'+' not supported between '{}' and '{}'", self.type_name(a), self.type_name(b))))
     }
 

@@ -23,15 +23,15 @@ VM State
 */
 
 pub struct VM<'a> {
-    pub(crate) stack:      Vec<Val>,
-    pub(crate) heap:       HeapPool,
+    pub(crate) stack: Vec<Val>,
+    pub(crate) heap: HeapPool,
     pub(crate) iter_stack: Vec<IterFrame>,
-    pub(crate) yields:     Vec<Val>,
-    pub(crate) chunk:      &'a SSAChunk,
-    templates:  Templates,
-    budget:     usize,
-    depth:      usize,
-    max_calls:  usize,
+    pub(crate) yields:Vec<Val>,
+    pub(crate) chunk: &'a SSAChunk,
+    templates: Templates,
+    budget:usize,
+    depth: usize,
+    max_calls: usize,
     pub output: Vec<String>,
 }
 
@@ -198,9 +198,9 @@ impl<'a> VM<'a> {
 
                 // Arithmetic (cached)
 
-                OpCode::Add => { let (a, b) = self.pop2()?; cached_binop!(rip, &ins.opcode, &a, &b, cache, adaptive); let v = self.add_vals(a, b)?; self.push(v); }
-                OpCode::Sub => { let (a, b) = self.pop2()?; cached_binop!(rip, &ins.opcode, &a, &b, cache, adaptive); let v = self.sub_vals(a, b)?; self.push(v); }
-                OpCode::Mul => { let (a, b) = self.pop2()?; cached_binop!(rip, &ins.opcode, &a, &b, cache, adaptive); let v = self.mul_vals(a, b)?; self.push(v); }
+                OpCode::Add => { let (a, b) = self.pop2()?; cached_binop!(self.heap, rip, &ins.opcode, a, b, cache, adaptive); let v = self.add_vals(a, b)?; self.push(v); }
+                OpCode::Sub => { let (a, b) = self.pop2()?; cached_binop!(self.heap, rip, &ins.opcode, a, b, cache, adaptive); let v = self.sub_vals(a, b)?; self.push(v); }
+                OpCode::Mul => { let (a, b) = self.pop2()?; cached_binop!(self.heap, rip, &ins.opcode, a, b, cache, adaptive); let v = self.mul_vals(a, b)?; self.push(v); }
                 OpCode::Div => { let (a, b) = self.pop2()?; let v = self.div_vals(a, b)?; self.push(v); }
                 OpCode::Mod => {
                     let (a, b) = self.pop2()?;
@@ -245,9 +245,9 @@ impl<'a> VM<'a> {
 
                 // Comparison (cached)
 
-                OpCode::Eq => { let (a,b) = self.pop2()?; cached_binop!(rip,&ins.opcode,&a,&b,cache,adaptive); self.push(Val::bool(self.eq_vals(a,b))); }
+                OpCode::Eq => { let (a, b) = self.pop2()?; cached_binop!(self.heap, rip, &ins.opcode, a, b, cache, adaptive); self.push(Val::bool(self.eq_vals(a, b))); }
                 OpCode::NotEq => { let (a,b) = self.pop2()?; self.push(Val::bool(!self.eq_vals(a,b))); }
-                OpCode::Lt => { let (a,b) = self.pop2()?; cached_binop!(rip,&ins.opcode,&a,&b,cache,adaptive); let r=self.lt_vals(a,b)?; self.push(Val::bool(r)); }
+                OpCode::Lt => { let (a, b) = self.pop2()?; cached_binop!(self.heap, rip, &ins.opcode, a, b, cache, adaptive); let r = self.lt_vals(a, b)?; self.push(Val::bool(r)); }
                 OpCode::Gt => { let (a,b) = self.pop2()?; let r=self.lt_vals(b,a)?; self.push(Val::bool(r)); }
                 OpCode::LtEq => { let (a,b) = self.pop2()?; let r=self.lt_vals(b,a)?; self.push(Val::bool(!r)); }
                 OpCode::GtEq => { let (a,b) = self.pop2()?; let r=self.lt_vals(a,b)?; self.push(Val::bool(!r)); }
@@ -255,7 +255,7 @@ impl<'a> VM<'a> {
                 // Logic
 
                 OpCode::And => { let (a,b) = self.pop2()?; self.push(if self.truthy(a) { b } else { a }); }
-                OpCode::Or  => { let (a,b) = self.pop2()?; self.push(if self.truthy(a) { a } else { b }); }
+                OpCode::Or => { let (a,b) = self.pop2()?; self.push(if self.truthy(a) { a } else { b }); }
                 OpCode::Not => { let v = self.pop()?; self.push(Val::bool(!self.truthy(v))); }
 
                 // Identity / membership
