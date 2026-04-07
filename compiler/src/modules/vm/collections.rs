@@ -198,7 +198,7 @@ impl<'a> VM<'a> {
         };
         match self.heap.get(obj) {
             HeapObj::Tuple(_) => self.heap.alloc(HeapObj::Tuple(result)),
-            _                 => self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(result)))),
+            _ => self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(result)))),
         }
     }
 

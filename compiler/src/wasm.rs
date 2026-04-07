@@ -50,7 +50,13 @@ mod tests {
     use crate::modules::{lexer::lexer, parser::Parser, vm::VM};
 
     #[derive(serde::Deserialize)]
-    struct Case { src: String, output: Vec<String>, result: String }
+    struct Case { 
+        src: String, 
+        output: Vec<String>, 
+        result: String,
+        #[serde(default)]
+        error: Option<String>,
+    }
 
     #[test]
     fn vm_cases() {
@@ -66,7 +72,13 @@ mod tests {
                     assert_eq!(vm.display(obj), case.result, "result mismatch on: {:?}", case.src);
                     assert_eq!(vm.output, case.output, "output mismatch on: {:?}", case.src);
                 }
-                Err(e) => panic!("VM error on {:?}: {}", case.src, e),
+                Err(e) => match &case.error {
+                    Some(expected) => assert!(
+                        e.to_string().contains(expected.as_str()),
+                        "wrong error on {:?}: got '{}', expected '{}'", case.src, e, expected
+                    ),
+                    None => panic!("VM error on {:?}: {}", case.src, e),
+                },
             }
         }
     }
