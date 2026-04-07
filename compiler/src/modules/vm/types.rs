@@ -115,19 +115,19 @@ impl HeapPool {
     }
 
     #[inline(always)]
-        pub fn val_tag(&self, v: Val) -> u8 {
-            if v.is_int() { 1 }
-            else if v.is_float() { 2 }
-            else if v.is_bool() { 3 }
-            else if v.is_none() { 4 }
-            else if v.is_heap() {
+    pub fn val_tag(&self, v: Val) -> u8 {
+        if v.is_int() { 1 }
+        else if v.is_float() { 2 }
+        else if v.is_bool() { 3 }
+        else if v.is_none() { 4 }
+        else if v.is_heap() {
             match self.get(v) {
-                HeapObj::Str(_)   => 5,
-                HeapObj::List(_)  => 6,
-                HeapObj::Dict(_)  => 7,
-                HeapObj::Set(_)   => 8,
+                HeapObj::Str(_) => 5,
+                HeapObj::List(_) => 6,
+                HeapObj::Dict(_) => 7,
+                HeapObj::Set(_) => 8,
                 HeapObj::Tuple(_) => 9,
-                HeapObj::Func(_)  => 10,
+                HeapObj::Func(_) => 10,
                 HeapObj::Range(..)=> 11,
                 HeapObj::Slice(..)=> 12,
             }

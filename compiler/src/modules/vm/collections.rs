@@ -3,6 +3,7 @@
 use super::VM;
 use super::types::*;
 use alloc::{string::{String, ToString}, vec::Vec, vec, rc::Rc, format};
+use hashbrown::HashSet;
 use core::cell::RefCell;
 
 impl<'a> VM<'a> {
@@ -14,11 +15,12 @@ impl<'a> VM<'a> {
     
     pub fn build_set(&mut self, op: u16) -> Result<(), VmErr> {
         let items = self.pop_n(op as usize)?;
-        let mut seen = Vec::with_capacity(items.len());
+        let mut seen: HashSet<u64> = HashSet::with_capacity(items.len());
+        let mut deduped = Vec::with_capacity(items.len());
         for v in items {
-            if !seen.iter().any(|s| self.eq_vals(*s, v)) { seen.push(v); }
+            if seen.insert(v.0) { deduped.push(v); }
         }
-        let val = self.heap.alloc(HeapObj::Set(Rc::new(RefCell::new(seen))))?;
+        let val = self.heap.alloc(HeapObj::Set(Rc::new(RefCell::new(deduped))))?;
         self.push(val); Ok(())
     }
 

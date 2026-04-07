@@ -144,5 +144,6 @@
   {"src": "print(bool([1]))", "output": ["True"], "result": "None"},
   {"src": "print(bool(''))", "output": ["False"], "result": "None"},
   {"src": "for _ in range(50):\n    a = \"hi\" + \"there\"\n    b = [1,2] + [3,4]\n    c = (5,6) + (7,8)\nprint(\"ok\")", "output": ["ok"], "result": "None"},
-  {"src": "s = \"hello\"\nl = [1, 2]\nfor _ in range(20):\n    s = s + \"!\"\n    l = l + [3]\nprint(s)\nprint(l)", "output": ["hello!!!!!!!!!!!!!!!!!!!!", "[1, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]"], "result": "None"}
+  {"src": "s = \"hello\"\nl = [1, 2]\nfor _ in range(20):\n    s = s + \"!\"\n    l = l + [3]\nprint(s)\nprint(l)", "output": ["hello!!!!!!!!!!!!!!!!!!!!", "[1, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]"], "result": "None"},
+  {"src": "print(set([1,1,2,2,3,3]))", "output": ["{1, 2, 3}"], "result": "None"}
 ]
