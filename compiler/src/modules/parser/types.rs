@@ -97,7 +97,8 @@ pub struct SSAChunk {
     pub annotations: HashMap<String, String>,
     pub phi_sources: Vec<(u16, u16)>,
     pub classes: Vec<SSAChunk>,
-    pub(super) name_index: HashMap<String, u16>,
+    pub is_pure: bool,
+    pub(super) name_index: HashMap<String, u16>
 }
 
 impl SSAChunk {

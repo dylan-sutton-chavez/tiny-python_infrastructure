@@ -67,20 +67,40 @@ const TPL_THRESH: u32 = 4;
 
 struct TplEntry { args: Vec<Val>, result: Val, hits: u32 }
 
+fn eq_vals_heap(a: Val, b: Val, heap: &super::types::HeapPool) -> bool {
+    if !a.is_heap() && !b.is_heap() { return a.0 == b.0; }
+    if a.is_heap() && b.is_heap() {
+        if let (super::types::HeapObj::Str(x), super::types::HeapObj::Str(y)) = (heap.get(a), heap.get(b)) { return x == y; }
+    }
+    false
+}
+
 pub struct Templates { map: HashMap<usize, Vec<TplEntry>> }
 
 impl Templates {
     pub fn new() -> Self { Self { map: HashMap::new() } }
 
-    pub fn lookup(&self, fi: usize, args: &[Val]) -> Option<Val> {
+    /*
+    Value-Equality Lookup
+        Finds cached result by content comparison instead of pointer identity.
+    */
+
+    pub fn lookup(&self, fi: usize, args: &[Val], heap: &super::types::HeapPool) -> Option<Val> {
         self.map.get(&fi)?.iter()
-            .find(|e| e.hits >= TPL_THRESH && e.args.as_slice() == args)
+            .find(|e| {
+                e.hits >= TPL_THRESH
+                && e.args.len() == args.len()
+                && e.args.iter().zip(args).all(|(a, b)| eq_vals_heap(*a, *b, heap))
+            })
             .map(|e| e.result)
     }
 
-    pub fn record(&mut self, fi: usize, args: &[Val], result: Val) {
+    pub fn record(&mut self, fi: usize, args: &[Val], result: Val, heap: &super::types::HeapPool) {
         let v = self.map.entry(fi).or_default();
-        if let Some(e) = v.iter_mut().find(|e| e.args.as_slice() == args) {
+        if let Some(e) = v.iter_mut().find(|e| {
+            e.args.len() == args.len()
+            && e.args.iter().zip(args).all(|(a, b)| eq_vals_heap(*a, *b, heap))
+        }) {
             e.hits += 1; e.result = result;
         } else if v.len() < 256 {
             v.push(TplEntry { args: args.to_vec(), result, hits: 1 });

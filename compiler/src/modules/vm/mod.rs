@@ -400,7 +400,7 @@ impl<'a> VM<'a> {
                         HeapObj::Func(i) => *i,
                         _ => return Err(VmErr::Type("call non-function".into())),
                     };
-                    if let Some(cached) = self.templates.lookup(fi, &args) {
+                    if let Some(cached) = self.templates.lookup(fi, &args, &self.heap) {
                         self.push(cached); continue;
                     }
                     self.depth += 1;
@@ -442,7 +442,9 @@ impl<'a> VM<'a> {
                         let val = self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(fn_yields))))?;
                         self.push(val);
                     } else {
-                        self.templates.record(fi, &args, result);
+                        if body.is_pure {
+                            self.templates.record(fi, &args, result, &self.heap);
+                        }
                         self.push(result);
                     }
                 }

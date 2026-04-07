@@ -321,7 +321,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
         self.compile_block();
 
-        let body = core::mem::take(&mut self.chunk);
+        let mut body = core::mem::take(&mut self.chunk);
         self.chunk = saved_chunk;
         self.ssa_versions  = saved_ver;
 
@@ -431,9 +431,14 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
         self.compile_block();
 
-        let body = core::mem::take(&mut self.chunk);
+        let mut body = core::mem::take(&mut self.chunk);
         self.chunk = saved_chunk;
         self.ssa_versions = saved_ver;
+
+        body.is_pure = !body.instructions.iter().any(|i| matches!(
+            i.opcode,
+            OpCode::CallPrint | OpCode::StoreItem | OpCode::StoreAttr | OpCode::CallInput
+        ));
 
         body
     }
