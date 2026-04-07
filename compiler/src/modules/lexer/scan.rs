@@ -20,7 +20,7 @@ pub(super) struct Scanner<'a> {
     pub indent_stack: Vec<usize>,
     pub nesting: u32,
     pub line: usize,
-    pub fstring_stack: Vec<(u8, bool, usize, u32)>,
+    pub fstring_stack: Vec<(u8, bool, usize, u32)>
 }
 
 impl<'a> Scanner<'a> {
@@ -30,7 +30,7 @@ impl<'a> Scanner<'a> {
             pending: Vec::new(),
             indent_stack: Vec::new(),
             nesting: 0, line: 0,
-            fstring_stack: Vec::new(),
+            fstring_stack: Vec::new()
         }
     }
 
@@ -186,8 +186,7 @@ impl<'a> Scanner<'a> {
 
     fn start_fstring(&mut self, start: usize, prefix_end: usize) {
         let quote = self.src[prefix_end];
-        let triple = self.src.get(prefix_end + 1) == Some(&quote)
-            && self.src.get(prefix_end + 2) == Some(&quote);
+        let triple = self.src.get(prefix_end + 1) == Some(&quote) && self.src.get(prefix_end + 2) == Some(&quote);
         let quote_len = if triple { 3 } else { 1 };
         self.pos = prefix_end + quote_len;
         let body_start = self.pos;

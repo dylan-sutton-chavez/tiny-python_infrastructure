@@ -101,6 +101,7 @@ impl HeapPool {
 
     pub fn alloc(&mut self, obj: HeapObj) -> Result<Val, VmErr> {
         if self.objects.len() >= self.limit { return Err(VmErr::Heap); }
+        if self.objects.len() >= (1 << 28)  { return Err(VmErr::Heap); }
         let idx = self.objects.len() as u32;
         self.objects.push(obj);
         Ok(Val::heap(idx))

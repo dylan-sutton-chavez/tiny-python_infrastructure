@@ -49,7 +49,7 @@ pub enum TokenType {
     // F-string
     FstringStart, FstringMiddle, FstringEnd,
     // Whitespace / structure
-    Comment, Newline, Indent, Dedent, Nl, Endmarker,
+    Comment, Newline, Indent, Dedent, Nl, Endmarker
 }
 
 /*
@@ -75,7 +75,7 @@ pub fn lexer(source: &str) -> impl Iterator<Item = Token> + '_ {
                 done = true;
                 Some((TokenType::Endmarker, scanner.line, len, len))
             }
-            _ => Option::None,
+            _ => Option::None
         }
     })
     .peekable();
