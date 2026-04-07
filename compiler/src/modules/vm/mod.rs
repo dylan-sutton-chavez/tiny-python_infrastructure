@@ -468,7 +468,7 @@ impl<'a> VM<'a> {
                 OpCode::CallList => { self.call_list()?; }
                 OpCode::CallTuple => { self.call_tuple()?; }
                 OpCode::CallEnumerate => { self.call_enumerate()?; }
-                OpCode::CallZip => { self.call_zip()?; }
+                OpCode::CallZip => { self.call_zip(op)?; }
                 OpCode::CallIsInstance => { self.call_isinstance()?; }
                 OpCode::CallInput => { self.call_input()?; }
                 OpCode::CallDict => { self.call_dict(op)?; }

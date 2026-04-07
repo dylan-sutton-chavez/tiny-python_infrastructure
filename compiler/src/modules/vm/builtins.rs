@@ -275,13 +275,17 @@ impl<'a> VM<'a> {
         Pairs elements from two iterables into tuple list.
     */
 
-    pub fn call_zip(&mut self) -> Result<(), VmErr> {
-        let b_val = self.pop()?; let a_val = self.pop()?;
-        let va = self.extract_iterable(a_val)?;
-        let vb = self.extract_iterable(b_val)?;
-        let mut pairs: Vec<Val> = Vec::with_capacity(va.len().min(vb.len()));
-        for (x, y) in va.into_iter().zip(vb) {
-            let t = self.heap.alloc(HeapObj::Tuple(vec![x, y]))?;
+    pub fn call_zip(&mut self, op: u16) -> Result<(), VmErr> {
+        let mut iters: Vec<Vec<Val>> = Vec::with_capacity(op as usize);
+        let mut vals = Vec::with_capacity(op as usize);
+        for _ in 0..op { vals.push(self.pop()?); }
+        vals.reverse();
+        for v in vals { iters.push(self.extract_iterable(v)?); }
+        let len = iters.iter().map(|v| v.len()).min().unwrap_or(0);
+        let mut pairs: Vec<Val> = Vec::with_capacity(len);
+        for i in 0..len {
+            let tuple: Vec<Val> = iters.iter().map(|v| v[i]).collect();
+            let t = self.heap.alloc(HeapObj::Tuple(tuple))?;
             pairs.push(t);
         }
         let val = self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(pairs))))?;
