@@ -98,12 +98,17 @@ pub struct SSAChunk {
     pub phi_sources: Vec<(u16, u16)>,
     pub classes: Vec<SSAChunk>,
     pub is_pure: bool,
+    pub overflow: bool,
     pub(super) name_index: HashMap<String, u16>
 }
 
 impl SSAChunk {
     pub(super) fn emit(&mut self, op: OpCode, operand: u16) {
-        if self.instructions.len() >= MAX_INSTRUCTIONS { return; } // silently drops instead of panicking
+        // silently drops instead of panicking
+        if self.instructions.len() >= MAX_INSTRUCTIONS {
+            self.overflow = true;
+            return;
+        }
         self.instructions.push(Instruction { opcode: op, operand });
     }
 

@@ -240,11 +240,21 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 self.chunk.emit(OpCode::PopTop, 0);
             }
         }
+
+        if self.chunk.overflow {
+            let line = self.errors.last().map(|e| e.line).unwrap_or(0);
+            self.errors.push(Diagnostic {
+                line, col: 0, end: 0,
+                msg: "program too large: exceeded maximum instruction limit".into(),
+            });
+        }
+
         if !self.errors.is_empty() {
             self.chunk.instructions.clear();
             self.chunk.constants.clear();
             self.chunk.names.clear();
         }
+
         self.chunk.emit(OpCode::ReturnValue, 0);
         (self.chunk, self.errors)
     }
