@@ -55,7 +55,7 @@ mod tests {
         output: Vec<String>, 
         result: String,
         #[serde(default)]
-        error: Option<String>,
+        error: Option<String>
     }
 
     #[test]
@@ -77,8 +77,8 @@ mod tests {
                         e.to_string().contains(expected.as_str()),
                         "wrong error on {:?}: got '{}', expected '{}'", case.src, e, expected
                     ),
-                    None => panic!("VM error on {:?}: {}", case.src, e),
-                },
+                    None => panic!("VM error on {:?}: {}", case.src, e)
+                }
             }
         }
     }

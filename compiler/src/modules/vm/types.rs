@@ -1,6 +1,6 @@
 // vm/types.rs
 
-use alloc::{string::{String, ToString}, vec::Vec, format, rc::Rc};
+use alloc::{string::{String}, vec::Vec, rc::Rc};
 use core::{fmt, cell::RefCell};
 
 /*
@@ -9,6 +9,7 @@ Sandbox Limits
 */
 
 pub struct Limits { pub calls: usize, pub ops: usize, pub heap: usize }
+
 impl Limits {
     pub fn none() -> Self { Self { calls: usize::MAX, ops: usize::MAX, heap: usize::MAX } }
     pub fn sandbox() -> Self { Self { calls: 512, ops: 100_000_000, heap: 100_000 } }
@@ -83,7 +84,7 @@ pub enum HeapObj {
     Tuple(Vec<Val>),
     Func(usize),
     Range(i64, i64, i64),
-    Slice(Val, Val, Val),
+    Slice(Val, Val, Val)
 }
 
 /*
@@ -93,7 +94,7 @@ Heap Pool
 
 pub struct HeapPool {
     objects: Vec<HeapObj>,
-    limit: usize,
+    limit: usize
 }
 
 impl HeapPool {
@@ -101,7 +102,7 @@ impl HeapPool {
 
     pub fn alloc(&mut self, obj: HeapObj) -> Result<Val, VmErr> {
         if self.objects.len() >= self.limit { return Err(VmErr::Heap); }
-        if self.objects.len() >= (1 << 28)  { return Err(VmErr::Heap); }
+        if self.objects.len() >= (1 << 28)  { return Err(VmErr::Heap); } // Prevents index overflow into Val tag bits.
         let idx = self.objects.len() as u32;
         self.objects.push(obj);
         Ok(Val::heap(idx))
@@ -130,7 +131,7 @@ impl HeapPool {
                 HeapObj::Tuple(_) => 9,
                 HeapObj::Func(_) => 10,
                 HeapObj::Range(..)=> 11,
-                HeapObj::Slice(..)=> 12,
+                HeapObj::Slice(..)=> 12
             }
         } else { 0 }
     }
@@ -147,7 +148,7 @@ Runtime Errors
 pub enum VmErr {
     CallDepth, Heap, Budget,
     Name(String), Type(String), Value(String),
-    ZeroDiv, Runtime(String),
+    ZeroDiv, Runtime(String)
 }
 
 impl fmt::Display for VmErr {
@@ -160,7 +161,7 @@ impl fmt::Display for VmErr {
             Self::Type(s) => write!(f, "TypeError: {}", s),
             Self::Value(s) => write!(f, "ValueError: {}", s),
             Self::ZeroDiv => write!(f, "ZeroDivisionError: division by zero"),
-            Self::Runtime(s) => write!(f, "RuntimeError: {}", s),
+            Self::Runtime(s) => write!(f, "RuntimeError: {}", s)
         }
     }
 }
@@ -172,7 +173,7 @@ Iterator Frame
 
 pub enum IterFrame {
     Seq { items: Vec<Val>, idx: usize },
-    Range { cur: i64, end: i64, step: i64 },
+    Range { cur: i64, end: i64, step: i64 }
 }
 
 impl IterFrame {
