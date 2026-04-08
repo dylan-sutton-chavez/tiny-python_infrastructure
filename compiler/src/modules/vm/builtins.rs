@@ -298,13 +298,24 @@ impl<'a> VM<'a> {
     */
 
     pub fn call_isinstance(&mut self) -> Result<(), VmErr> {
-        let typ = self.pop()?; let obj = self.pop()?;
+        let (arg2, obj) = (self.pop()?, self.pop()?);
         let obj_ty = self.type_name(obj);
-        let matches = if typ.is_heap() { match self.heap.get(typ) {
-            HeapObj::Str(s) => s.as_str() == obj_ty,
-            _ => false,
-        }} else { false };
-        self.push(Val::bool(matches)); Ok(())
+
+        let check = |t: Val, heap: &HeapPool| -> Result<bool, VmErr> {
+            match heap.get(t) {
+                HeapObj::Type(name) => Ok(name == &obj_ty),
+                _ => Err(VmErr::Type("isinstance() arg 2 must be a type or tuple".into())),
+            }
+        };
+
+        let result = match self.heap.get(arg2) {
+            HeapObj::Type(_) => check(arg2, &self.heap)?,
+            HeapObj::Tuple(items) => items.iter().any(|&t| check(t, &self.heap).unwrap_or(false)),
+            _ => return Err(VmErr::Type("isinstance() arg 2 must be a type or tuple".into())),
+        };
+
+        self.push(Val::bool(result));
+        Ok(())
     }
 
     /*

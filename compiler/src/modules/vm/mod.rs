@@ -12,7 +12,7 @@ use types::*;
 use cache::*;
 use ops::cached_binop;
 
-use crate::modules::parser::{OpCode, SSAChunk, Value};
+use crate::modules::parser::{OpCode, SSAChunk, Value, BUILTIN_TYPES};
 use alloc::{string::{String, ToString}, vec::Vec, vec, rc::Rc, format, boxed::Box};
 use hashbrown::HashMap;
 use core::cell::RefCell;
@@ -28,6 +28,7 @@ pub struct VM<'a> {
     pub(crate) iter_stack: Vec<IterFrame>,
     pub(crate) yields:Vec<Val>,
     pub(crate) chunk: &'a SSAChunk,
+    pub(crate) globals: HashMap<String, Val>,
     templates: Templates,
     budget:usize,
     depth: usize,
@@ -38,23 +39,41 @@ pub struct VM<'a> {
 impl<'a> VM<'a> {
     pub fn new(chunk: &'a SSAChunk) -> Self { Self::with_limits(chunk, Limits::none()) }
 
+    fn fill_builtins(&self, names: &[String]) -> Vec<Option<Val>> {
+        let mut slots = vec![None; names.len()];
+        for (i, name) in names.iter().enumerate() {
+            if let Some(v) = self.globals.get(name) {
+                slots[i] = Some(*v);
+            }
+        }
+        slots
+    }
+
     pub fn with_limits(chunk: &'a SSAChunk, limits: Limits) -> Self {
-        Self {
+        let mut vm = Self {
             stack: Vec::with_capacity(256),
             iter_stack: Vec::with_capacity(16),
             yields: Vec::new(),
             chunk,
             heap: HeapPool::new(limits.heap),
+            globals: HashMap::new(),
             templates: Templates::new(),
             budget: limits.ops,
             depth: 0,
             max_calls: limits.calls,
-            output: Vec::new(),
+            output: Vec::new()
+        };
+        for &name in BUILTIN_TYPES {
+            if let Ok(type_obj) = vm.heap.alloc(HeapObj::Type(name.to_string())) {
+                vm.globals.insert(name.to_string(), type_obj);
+                vm.globals.insert(format!("{}_0", name), type_obj);
+            }
         }
+        vm
     }
 
     pub fn run(&mut self) -> Result<Val, VmErr> {
-        let mut slots = vec![Option::<Val>::None; self.chunk.names.len()];
+        let mut slots = self.fill_builtins(&self.chunk.names);
         self.exec(self.chunk, &mut slots)
     }
 
@@ -405,6 +424,7 @@ impl<'a> VM<'a> {
                     }
                     self.depth += 1;
                     let (params, body, fn_name) = &self.chunk.functions[fi];
+                    let mut fn_slots = self.fill_builtins(&body.names);
                     let mut fn_slots: Vec<Option<Val>> = vec![None; body.names.len()];
                     let mut body_map: HashMap<&str, usize> = HashMap::with_capacity(body.names.len());
                     for (i, n) in body.names.iter().enumerate() { body_map.insert(n.as_str(), i); }

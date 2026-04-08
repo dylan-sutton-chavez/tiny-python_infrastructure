@@ -84,7 +84,8 @@ pub enum HeapObj {
     Tuple(Vec<Val>),
     Func(usize),
     Range(i64, i64, i64),
-    Slice(Val, Val, Val)
+    Slice(Val, Val, Val),
+    Type(String)
 }
 
 /*
@@ -131,7 +132,8 @@ impl HeapPool {
                 HeapObj::Tuple(_) => 9,
                 HeapObj::Func(_) => 10,
                 HeapObj::Range(..)=> 11,
-                HeapObj::Slice(..)=> 12
+                HeapObj::Slice(..)=> 12,
+                HeapObj::Type(_)  => 13
             }
         } else { 0 }
     }

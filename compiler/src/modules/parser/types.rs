@@ -189,3 +189,9 @@ fn unescape(s: &str) -> String {
     }
     out
 }
+
+// Array containing the default data types for the language.
+pub const BUILTIN_TYPES: &[&str] = &[
+    "int", "float", "str", "bool", "list", 
+    "tuple", "dict", "set", "range", "type", "NoneType"
+];
