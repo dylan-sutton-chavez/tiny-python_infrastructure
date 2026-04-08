@@ -425,7 +425,6 @@ impl<'a> VM<'a> {
                     self.depth += 1;
                     let (params, body, fn_name) = &self.chunk.functions[fi];
                     let mut fn_slots = self.fill_builtins(&body.names);
-                    let mut fn_slots: Vec<Option<Val>> = vec![None; body.names.len()];
                     let mut body_map: HashMap<&str, usize> = HashMap::with_capacity(body.names.len());
                     for (i, n) in body.names.iter().enumerate() { body_map.insert(n.as_str(), i); }
                     for (pi, p) in params.iter().enumerate() {
