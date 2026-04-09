@@ -225,8 +225,7 @@ impl<'a> VM<'a> {
                 v.get(ui).copied().ok_or(VmErr::Value("tuple index out of range".into()))
             }
             HeapObj::Dict(p) => {
-                p.borrow().get_by(idx, |a, b| self.eq_vals(a, b))
-                    .copied()
+                p.borrow().get(&idx).copied()
                     .ok_or(VmErr::Value("key not found".into()))
             }
             _ => Err(VmErr::Type("subscript".into())),
@@ -239,17 +238,10 @@ impl<'a> VM<'a> {
     */
     
     pub fn store_item(&mut self) -> Result<(), VmErr> {
-        let value    = self.pop()?;
-        let idx_val  = self.pop()?;
-        let cont     = self.pop()?;
+        let value   = self.pop()?;
+        let idx_val = self.pop()?;
+        let cont    = self.pop()?;
         if !cont.is_heap() { return Err(VmErr::Type("item assignment on non-container".into())); }
-
-        if let HeapObj::Dict(p) = self.heap.get(cont) {
-            let p = p.clone();
-            p.borrow_mut().insert_by(idx_val, value, |a, b| self.eq_vals(a, b));
-            return Ok(());
-        }
-
         match self.heap.get_mut(cont) {
             HeapObj::List(v) => {
                 if !idx_val.is_int() { return Err(VmErr::Type("list index must be int".into())); }
@@ -259,6 +251,7 @@ impl<'a> VM<'a> {
                 if ui >= b.len() { return Err(VmErr::Value("list assignment index out of range".into())); }
                 b[ui] = value;
             }
+            HeapObj::Dict(p) => { p.borrow_mut().insert(idx_val, value); }
             HeapObj::Tuple(_) => return Err(VmErr::Type("'tuple' does not support item assignment".into())),
             _ => return Err(VmErr::Type("item assignment".into())),
         }

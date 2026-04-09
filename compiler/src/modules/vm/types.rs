@@ -110,34 +110,6 @@ pub struct DictMap {
 impl DictMap {
     pub fn new() -> Self { Self { entries: Vec::new(), index: hashbrown::HashMap::new() } }
 
-    pub fn get_by(&self, key: Val, eq: impl Fn(Val, Val) -> bool) -> Option<&Val> {
-        if key.is_heap() {
-            self.entries.iter().find(|(k, _)| eq(*k, key)).map(|(_, v)| v)
-        } else {
-            self.index.get(&key).map(|&i| &self.entries[i].1)
-        }
-    }
-
-    pub fn contains_by(&self, key: Val, eq: impl Fn(Val, Val) -> bool) -> bool {
-        if key.is_heap() {
-            self.entries.iter().any(|(k, _)| eq(*k, key))
-        } else {
-            self.index.contains_key(&key)
-        }
-    }
-
-    pub fn insert_by(&mut self, key: Val, value: Val, eq: impl Fn(Val, Val) -> bool) {
-        if key.is_heap() {
-            if let Some(e) = self.entries.iter_mut().find(|(k, _)| eq(*k, key)) {
-                e.1 = value;
-            } else {
-                self.entries.push((key, value));
-            }
-        } else {
-            self.insert(key, value);
-        }
-    }
-
     pub fn with_capacity(cap: usize) -> Self {
         Self { entries: Vec::with_capacity(cap), index: hashbrown::HashMap::with_capacity(cap) }
     }
@@ -185,16 +157,21 @@ Heap Pool
 
 pub struct HeapPool {
     objects: Vec<HeapObj>,
-    limit: usize
+    limit: usize,
+    strings: hashbrown::HashMap<String, u32>,
 }
 
 impl HeapPool {
-    pub fn new(limit: usize) -> Self { Self { objects: Vec::new(), limit } }
+    pub fn new(limit: usize) -> Self { Self { objects: Vec::new(), limit, strings: hashbrown::HashMap::new() } }
 
     pub fn alloc(&mut self, obj: HeapObj) -> Result<Val, VmErr> {
+        if let HeapObj::Str(ref s) = obj {
+            if let Some(&idx) = self.strings.get(s) { return Ok(Val::heap(idx)); }
+        }
         if self.objects.len() >= self.limit { return Err(VmErr::Heap); }
-        if self.objects.len() >= (1 << 28)  { return Err(VmErr::Heap); } // Prevents index overflow into Val tag bits.
+        if self.objects.len() >= (1 << 28)  { return Err(VmErr::Heap); }
         let idx = self.objects.len() as u32;
+        if let HeapObj::Str(ref s) = obj { self.strings.insert(s.clone(), idx); }
         self.objects.push(obj);
         Ok(Val::heap(idx))
     }
