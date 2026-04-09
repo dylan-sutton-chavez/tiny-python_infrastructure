@@ -427,11 +427,22 @@ impl<'a> VM<'a> {
                     let mut fn_slots = self.fill_builtins(&body.names);
                     let mut body_map: HashMap<&str, usize> = HashMap::with_capacity(body.names.len());
                     for (i, n) in body.names.iter().enumerate() { body_map.insert(n.as_str(), i); }
-                    for (pi, p) in params.iter().enumerate() {
-                        if pi < args.len() {
-                            let pname = format!("{}_0", p.trim_start_matches('*'));
-                            if let Some(&s) = body_map.get(pname.as_str()) { fn_slots[s] = Some(args[pi]); }
+                    let mut pi = 0usize;
+                    for (_, p) in params.iter().enumerate() {
+                        if pi >= args.len() { break; }
+                        if args[pi].is_heap() {
+                            if let HeapObj::Str(k) = self.heap.get(args[pi]) {
+                                if params.iter().any(|p| p.trim_start_matches('*') == k.as_str()) && pi + 1 < args.len() {
+                                    let pname = format!("{}_0", k);
+                                    if let Some(&s) = body_map.get(pname.as_str()) { fn_slots[s] = Some(args[pi + 1]); }
+                                    pi += 2;
+                                    continue;
+                                }
+                            }
                         }
+                        let pname = format!("{}_0", p.trim_start_matches('*'));
+                        if let Some(&s) = body_map.get(pname.as_str()) { fn_slots[s] = Some(args[pi]); }
+                        pi += 1;
                     }
                     for (si, sv) in slots.iter().enumerate() {
                         if let Some(v) = sv {

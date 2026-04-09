@@ -220,7 +220,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
     pub(super) fn call(&mut self, name: String) -> bool {
         if name == "print" {
-            let argc = self.parse_args(); 
+            let (argc, _) = self.parse_args();
             self.chunk.emit(OpCode::CallPrint, argc);
             return false;
         }
@@ -231,7 +231,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
 
         if let Some((op, leaves_value)) = builtin(name.as_str()) {
-            let a = self.parse_args();
+            let (a, _) = self.parse_args();
             self.chunk.emit(op, a);
             return leaves_value;
         }
@@ -240,8 +240,8 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         let mut buf = [0u8; 128];
         let i = self.chunk.push_name(Self::ssa_name(&name, v, &mut buf));
         self.chunk.emit(OpCode::LoadName, i);
-        let a = self.parse_args();
-        self.chunk.emit(OpCode::Call, a);
+        let (a, kw) = self.parse_args();
+        self.chunk.emit(OpCode::Call, a + kw);
         true
     }
 
@@ -259,9 +259,10 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.chunk.emit(OpCode::CallRange, argc);
     }
 
-    pub(super) fn parse_args(&mut self) -> u16 {
+    pub(super) fn parse_args(&mut self) -> (u16, u16) {
         self.advance();
         let mut argc = 0;
+        let mut kwargs = 0u16;
         while !matches!(self.peek(), Some(TokenType::Rpar) | None) {
             if self.eat_if(TokenType::Star) {
                 self.expr();
@@ -276,6 +277,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                     let i = self.chunk.push_const(Value::Str(self.lexeme(&t).to_string()));
                     self.chunk.emit(OpCode::LoadConst, i);
                     self.expr();
+                    kwargs += 1;
                 } else {
                     self.name(t);
                     self.infix_bp(0);
@@ -289,7 +291,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             }
         }
         self.eat(TokenType::Rpar);
-        argc
+        (argc, kwargs)
     }
 
     /*

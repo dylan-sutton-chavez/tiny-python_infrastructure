@@ -304,8 +304,8 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                     let idx = self.chunk.push_name(&self.source[start..end]);
                     self.chunk.emit(OpCode::LoadAttr, idx);
                     if matches!(self.peek(), Some(TokenType::Lpar)) {
-                        let argc = self.parse_args();
-                        self.chunk.emit(OpCode::Call, argc);
+                        let (argc, kw) = self.parse_args();
+                        self.chunk.emit(OpCode::Call, argc + kw);
                     }
                 }
                 _ => break,

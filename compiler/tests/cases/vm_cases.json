@@ -149,5 +149,8 @@
   {"src": "print(isinstance(42, int))", "output": ["True"], "result": "None"},
   {"src": "print(isinstance(42, (str, int)))", "output": ["True"], "result": "None"},
   {"src": "my_type = int\nprint(isinstance(10, my_type))", "output": ["True"], "result": "None"},
-  {"src": "isinstance(42, 'int')", "output": [], "result": "None", "error": "isinstance() arg 2 must be a type or tuple"}
+  {"src": "isinstance(42, 'int')", "output": [], "result": "None", "error": "isinstance() arg 2 must be a type or tuple"},
+  {"src": "def add(a, b):\n    return a + b\nprint(add(a=3, b=4))", "output": ["7"], "result": "None"},
+  {"src": "def greet(name, greeting):\n    return greeting + ' ' + name\nprint(greet(greeting='Hola', name='mundo'))", "output": ["Hola mundo"], "result": "None"},
+  {"src": "def f(x, y, z):\n    return x * 100 + y * 10 + z\nprint(f(1, z=3, y=2))", "output": ["123"], "result": "None"}
 ]
