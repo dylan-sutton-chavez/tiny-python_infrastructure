@@ -183,6 +183,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             TokenType::Lbrace => self.brace_literal(),
             TokenType::Lsqb => self.list_literal(),
             TokenType::Lpar => {
+                if matches!(self.peek(), Some(TokenType::Rpar)) { self.advance(); self.chunk.emit(OpCode::BuildTuple, 0); } else {
                 self.expr();
                 if matches!(self.peek(), Some(TokenType::For)) {
                     self.comprehension(OpCode::GenExpr);
@@ -191,15 +192,13 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                     while !matches!(self.peek(), Some(TokenType::Rpar) | None) {
                         self.expr();
                         count += 1;
-                        if !self.eat_if(TokenType::Comma) {
-                            break;
-                        }
+                        if !self.eat_if(TokenType::Comma) { break; }
                     }
                     self.eat(TokenType::Rpar);
                     self.chunk.emit(OpCode::BuildTuple, count);
                 } else {
                     self.eat(TokenType::Rpar);
-                }
+                }}
             }
             TokenType::Lambda => self.parse_lambda(),
             _ => {
