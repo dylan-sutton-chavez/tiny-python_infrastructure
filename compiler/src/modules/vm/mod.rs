@@ -319,10 +319,11 @@ impl<'a> VM<'a> {
                 OpCode::BuildList  => { let v = self.pop_n(op as usize)?; let val = self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(v))))?; self.push(val); }
                 OpCode::BuildTuple => { let v = self.pop_n(op as usize)?; let val = self.heap.alloc(HeapObj::Tuple(v))?; self.push(val); }
                 OpCode::BuildDict  => {
-                    let mut p: Vec<(Val, Val)> = Vec::with_capacity(op as usize);
-                    for _ in 0..op { let v = self.pop()?; let k = self.pop()?; p.push((k, v)); }
-                    p.reverse();
-                    let val = self.heap.alloc(HeapObj::Dict(Rc::new(RefCell::new(p))))?; self.push(val);
+                    let mut pairs: Vec<(Val, Val)> = Vec::with_capacity(op as usize);
+                    for _ in 0..op { let v = self.pop()?; let k = self.pop()?; pairs.push((k, v)); }
+                    pairs.reverse();
+                    let dm = DictMap::from_pairs(pairs);
+                    let val = self.heap.alloc(HeapObj::Dict(Rc::new(RefCell::new(dm))))?; self.push(val);
                 }
                 OpCode::BuildString => {
                     let parts = self.pop_n(op as usize)?;
@@ -368,7 +369,7 @@ impl<'a> VM<'a> {
                         HeapObj::Range(s, e, st) => IterFrame::Range { cur: *s, end: *e, step: *st },
                         HeapObj::List(v)  => IterFrame::Seq { items: v.borrow().clone(), idx: 0 },
                         HeapObj::Tuple(v) => IterFrame::Seq { items: v.clone(), idx: 0 },
-                        HeapObj::Dict(p) => IterFrame::Seq { items: p.borrow().iter().map(|(k, _)| *k).collect(), idx: 0 },
+                        HeapObj::Dict(p) => IterFrame::Seq { items: p.borrow().keys().copied().collect(), idx: 0 },
                         HeapObj::Set(s) => IterFrame::Seq { items: s.borrow().clone(), idx: 0 },
                         HeapObj::Str(s) => {
                             let chars: Vec<char> = s.chars().collect(); drop(s);

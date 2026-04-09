@@ -161,5 +161,14 @@
   {"src": "print([1, [2, 3]] == [1, [2, 3]])", "output": ["True"], "result": "None"},
   {"src": "print([1, [2, 3]] == [1, [2, 4]])", "output": ["False"], "result": "None"},
   {"src": "print({1, 2, 3} == {3, 2, 1})", "output": ["True"], "result": "None"},
-  {"src": "print({1, 2} == {1, 2, 3})", "output": ["False"], "result": "None"}
+  {"src": "print({1, 2} == {1, 2, 3})", "output": ["False"], "result": "None"},
+  {"src": "d = {}\nfor i in range(100):\n    d[i] = i * i\nprint(d[99])", "output": ["9801"], "result": "None"},
+  {"src": "d = {}\nfor i in range(50):\n    d[str(i)] = i\nprint(d['49'])", "output": ["49"], "result": "None"},
+  {"src": "d = {'a': 1, 'b': 2, 'c': 3}\nprint('b' in d)", "output": ["True"], "result": "None"},
+  {"src": "d = {'a': 1, 'b': 2, 'c': 3}\nprint('z' in d)", "output": ["False"], "result": "None"},
+  {"src": "d = {1: 'a', 2: 'b'}\nd[1] = 'x'\nprint(d[1])", "output": ["x"], "result": "None"},
+  {"src": "d = {1: 'one', 2: 'two'}\nkeys = []\nfor k in d:\n    keys = keys + [k]\nprint(keys)", "output": ["[1, 2]"], "result": "None"},
+  {"src": "print({1: 'a', 2: 'b'} == {2: 'b', 1: 'a'})", "output": ["True"], "result": "None"},
+  {"src": "print({1: 'a'} == {1: 'b'})", "output": ["False"], "result": "None"},
+  {"src": "d = {}\nfor i in range(200):\n    d[i] = i\nprint(len(d))", "output": ["200"], "result": "None"}
 ]

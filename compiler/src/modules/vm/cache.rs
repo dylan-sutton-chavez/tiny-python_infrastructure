@@ -1,6 +1,6 @@
 // vm/cache.rs
 
-use super::types::{Val, VmErr};
+use super::types::{Val, DictMap};
 use crate::modules::parser::OpCode;
 use alloc::{vec, vec::Vec};
 use hashbrown::HashMap;
@@ -86,8 +86,8 @@ pub(super) fn eq_seq(a: &[Val], b: &[Val], eq: impl Fn(Val,Val)->bool) -> bool {
 pub(super) fn eq_set(a: &[Val], b: &[Val], eq: impl Fn(Val,Val)->bool) -> bool {
     a.len() == b.len() && a.iter().all(|x| b.iter().any(|y| eq(*x,*y)))
 }
-pub(super) fn eq_dict(a: &[(Val,Val)], b: &[(Val,Val)], eq: impl Fn(Val,Val)->bool) -> bool {
-    a.len() == b.len() && a.iter().all(|(k,v)| b.iter().any(|(k2,v2)| eq(*k,*k2) && eq(*v,*v2)))
+pub(super) fn eq_dict(a: &DictMap, b: &DictMap, eq: impl Fn(Val,Val)->bool) -> bool {
+    a.len() == b.len() && a.iter().all(|(k,v)| b.get(k).map_or(false, |v2| eq(*v, *v2)))
 }
 
 pub struct Templates { map: HashMap<usize, Vec<TplEntry>> }

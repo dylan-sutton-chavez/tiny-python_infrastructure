@@ -3,7 +3,7 @@
 use super::types::*;
 use alloc::{string::{String}, vec::Vec, rc::Rc, format};
 use core::cell::RefCell;
-use super::cache::{eq_seq, eq_set, eq_dict};
+use super::cache::{eq_seq, eq_set};
 
 /*
 Cache Binop Macro
@@ -130,7 +130,11 @@ impl<'a> VM<'a> {
             (HeapObj::Tuple(x), HeapObj::Tuple(y)) => eq_seq(x, y, eq),
             (HeapObj::List(x),  HeapObj::List(y))  => eq_seq(&x.borrow(), &y.borrow(), eq),
             (HeapObj::Set(x),   HeapObj::Set(y))   => eq_set(&x.borrow(), &y.borrow(), eq),
-            (HeapObj::Dict(x),  HeapObj::Dict(y))  => eq_dict(&x.borrow(), &y.borrow(), eq),
+            (HeapObj::Dict(x),  HeapObj::Dict(y))  => {
+                let xb = x.borrow();
+                let yb = y.borrow();
+                xb.len() == yb.len() && xb.iter().all(|(k, v)| yb.get(k).map_or(false, |v2| eq(*v, *v2)))
+            },
             _ => false,
         }
     }
@@ -153,7 +157,7 @@ impl<'a> VM<'a> {
         match self.heap.get(container) {
             HeapObj::List(v) => v.borrow().iter().any(|x| self.eq_vals(*x, item)),
             HeapObj::Tuple(v) => v.iter().any(|x| self.eq_vals(*x, item)),
-            HeapObj::Dict(p)  => p.borrow().iter().any(|(k, _)| self.eq_vals(*k, item)),
+            HeapObj::Dict(p) => p.borrow().contains_by(item, |a, b| self.eq_vals(a, b)),
             HeapObj::Set(s) => s.borrow().iter().any(|x| self.eq_vals(*x, item)),
             HeapObj::Str(s) => {
                 if item.is_heap() { if let HeapObj::Str(sub) = self.heap.get(item) { return s.contains(sub.as_str()); } }

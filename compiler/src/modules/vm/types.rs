@@ -34,6 +34,14 @@ pub struct Val(pub(crate) u64);
 impl PartialEq for Val {
     #[inline] fn eq(&self, o: &Self) -> bool { self.0 == o.0 }
 }
+impl Eq for Val {}
+
+impl core::hash::Hash for Val {
+    #[inline]
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
 
 impl Val {
     #[inline(always)] pub fn float(f: f64) -> Self {
@@ -79,13 +87,95 @@ Heap Objects
 pub enum HeapObj {
     Str(String),
     List(Rc<RefCell<Vec<Val>>>),
-    Dict(Rc<RefCell<Vec<(Val, Val)>>>),
+    Dict(Rc<RefCell<DictMap>>),
     Set(Rc<RefCell<Vec<Val>>>),
     Tuple(Vec<Val>),
     Func(usize),
     Range(i64, i64, i64),
     Slice(Val, Val, Val),
     Type(String)
+}
+
+/*
+DictMap
+    Insertion-ordered dict backed by Vec with HashMap index for O(1) lookup.
+*/
+
+#[derive(Clone, Debug)]
+pub struct DictMap {
+    pub entries: Vec<(Val, Val)>,
+    index: hashbrown::HashMap<Val, usize>,
+}
+
+impl DictMap {
+    pub fn new() -> Self { Self { entries: Vec::new(), index: hashbrown::HashMap::new() } }
+
+    pub fn get_by(&self, key: Val, eq: impl Fn(Val, Val) -> bool) -> Option<&Val> {
+        if key.is_heap() {
+            self.entries.iter().find(|(k, _)| eq(*k, key)).map(|(_, v)| v)
+        } else {
+            self.index.get(&key).map(|&i| &self.entries[i].1)
+        }
+    }
+
+    pub fn contains_by(&self, key: Val, eq: impl Fn(Val, Val) -> bool) -> bool {
+        if key.is_heap() {
+            self.entries.iter().any(|(k, _)| eq(*k, key))
+        } else {
+            self.index.contains_key(&key)
+        }
+    }
+
+    pub fn insert_by(&mut self, key: Val, value: Val, eq: impl Fn(Val, Val) -> bool) {
+        if key.is_heap() {
+            if let Some(e) = self.entries.iter_mut().find(|(k, _)| eq(*k, key)) {
+                e.1 = value;
+            } else {
+                self.entries.push((key, value));
+            }
+        } else {
+            self.insert(key, value);
+        }
+    }
+
+    pub fn with_capacity(cap: usize) -> Self {
+        Self { entries: Vec::with_capacity(cap), index: hashbrown::HashMap::with_capacity(cap) }
+    }
+
+    pub fn get(&self, key: &Val) -> Option<&Val> {
+        self.index.get(key).map(|&i| &self.entries[i].1)
+    }
+
+    pub fn contains_key(&self, key: &Val) -> bool {
+        self.index.contains_key(key)
+    }
+
+    pub fn insert(&mut self, key: Val, value: Val) {
+        if let Some(&i) = self.index.get(&key) {
+            self.entries[i].1 = value;
+        } else {
+            let i = self.entries.len();
+            self.entries.push((key, value));
+            self.index.insert(key, i);
+        }
+    }
+
+    pub fn len(&self) -> usize { self.entries.len() }
+    pub fn is_empty(&self) -> bool { self.entries.is_empty() }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&Val, &Val)> {
+        self.entries.iter().map(|(k, v)| (k, v))
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &Val> {
+        self.entries.iter().map(|(k, _)| k)
+    }
+
+    pub fn from_pairs(pairs: Vec<(Val, Val)>) -> Self {
+        let mut dm = Self::with_capacity(pairs.len());
+        for (k, v) in pairs { dm.insert(k, v); }
+        dm
+    }
 }
 
 /*
