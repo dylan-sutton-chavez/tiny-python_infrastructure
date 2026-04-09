@@ -68,11 +68,26 @@ const TPL_THRESH: u32 = 4;
 struct TplEntry { args: Vec<Val>, result: Val, hits: u32 }
 
 fn eq_vals_heap(a: Val, b: Val, heap: &super::types::HeapPool) -> bool {
-    if !a.is_heap() && !b.is_heap() { return a.0 == b.0; }
-    if a.is_heap() && b.is_heap() {
-        if let (super::types::HeapObj::Str(x), super::types::HeapObj::Str(y)) = (heap.get(a), heap.get(b)) { return x == y; }
+    use super::types::HeapObj;
+    if !a.is_heap() || !b.is_heap() { return a.0 == b.0; }
+    match (heap.get(a), heap.get(b)) {
+        (HeapObj::Str(x),   HeapObj::Str(y))   => x == y,
+        (HeapObj::Tuple(x), HeapObj::Tuple(y)) => eq_seq(x, y, |a,b| eq_vals_heap(a,b,heap)),
+        (HeapObj::List(x),  HeapObj::List(y))  => eq_seq(&x.borrow(), &y.borrow(), |a,b| eq_vals_heap(a,b,heap)),
+        (HeapObj::Set(x),   HeapObj::Set(y))   => eq_set(&x.borrow(), &y.borrow(), |a,b| eq_vals_heap(a,b,heap)),
+        (HeapObj::Dict(x),  HeapObj::Dict(y))  => eq_dict(&x.borrow(), &y.borrow(), |a,b| eq_vals_heap(a,b,heap)),
+        _ => false
     }
-    false
+}
+
+pub(super) fn eq_seq(a: &[Val], b: &[Val], eq: impl Fn(Val,Val)->bool) -> bool {
+    a.len() == b.len() && a.iter().zip(b).all(|(x,y)| eq(*x,*y))
+}
+pub(super) fn eq_set(a: &[Val], b: &[Val], eq: impl Fn(Val,Val)->bool) -> bool {
+    a.len() == b.len() && a.iter().all(|x| b.iter().any(|y| eq(*x,*y)))
+}
+pub(super) fn eq_dict(a: &[(Val,Val)], b: &[(Val,Val)], eq: impl Fn(Val,Val)->bool) -> bool {
+    a.len() == b.len() && a.iter().all(|(k,v)| b.iter().any(|(k2,v2)| eq(*k,*k2) && eq(*v,*v2)))
 }
 
 pub struct Templates { map: HashMap<usize, Vec<TplEntry>> }

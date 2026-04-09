@@ -3,6 +3,7 @@
 use super::types::*;
 use alloc::{string::{String}, vec::Vec, rc::Rc, format};
 use core::cell::RefCell;
+use super::cache::{eq_seq, eq_set, eq_dict};
 
 /*
 Cache Binop Macro
@@ -116,17 +117,22 @@ impl<'a> VM<'a> {
     }
 
     pub fn eq_vals(&self, a: Val, b: Val) -> bool {
-        if a.is_int() && b.is_int() { return a.as_int() == b.as_int(); }
-        if a.is_float() && b.is_float() { return a.as_float() == b.as_float(); }
-        if a.is_int() && b.is_float() { return (a.as_int() as f64) == b.as_float(); }
-        if a.is_float() && b.is_int() { return a.as_float() == (b.as_int() as f64); }
-        if !a.is_heap() && !b.is_heap() { return a.0 == b.0; }
-        if a.is_heap() && b.is_heap() {
-            if let (HeapObj::Str(x), HeapObj::Str(y)) = (self.heap.get(a), self.heap.get(b)) {
-                return x == y;
-            }
+        if !a.is_heap() || !b.is_heap() {
+            if a.is_int()   && b.is_int()   { return a.as_int()   == b.as_int(); }
+            if a.is_float() && b.is_float() { return a.as_float() == b.as_float(); }
+            if a.is_int()   && b.is_float() { return (a.as_int() as f64) == b.as_float(); }
+            if a.is_float() && b.is_int()   { return a.as_float() == (b.as_int() as f64); }
+            return a.0 == b.0;
         }
-        false
+        let eq = |a,b| self.eq_vals(a,b);
+        match (self.heap.get(a), self.heap.get(b)) {
+            (HeapObj::Str(x),   HeapObj::Str(y))   => x == y,
+            (HeapObj::Tuple(x), HeapObj::Tuple(y)) => eq_seq(x, y, eq),
+            (HeapObj::List(x),  HeapObj::List(y))  => eq_seq(&x.borrow(), &y.borrow(), eq),
+            (HeapObj::Set(x),   HeapObj::Set(y))   => eq_set(&x.borrow(), &y.borrow(), eq),
+            (HeapObj::Dict(x),  HeapObj::Dict(y))  => eq_dict(&x.borrow(), &y.borrow(), eq),
+            _ => false,
+        }
     }
 
     pub fn lt_vals(&self, a: Val, b: Val) -> Result<bool, VmErr> {
