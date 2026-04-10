@@ -159,8 +159,12 @@ impl<'a> VM<'a> {
 
     pub fn add_vals(&mut self, a: Val, b: Val) -> Result<Val, VmErr> {
         if a.is_int() && b.is_int() {
-            let r = a.as_int() as i64 + b.as_int() as i64;
-            return Ok(Val::int_checked(r).unwrap_or_else(|| Val::float(r as f64)));
+            let r = a.as_int() as i128 + b.as_int() as i128;
+            return Ok(if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 {
+                Val::int(r as i64)
+            } else {
+                Val::float(r as f64)
+            });
         }
         if a.is_numeric() && b.is_numeric() {
             let fa = if a.is_int() { a.as_int() as f64 } else { a.as_float() };
@@ -191,7 +195,14 @@ impl<'a> VM<'a> {
     }
 
     pub fn sub_vals(&self, a: Val, b: Val) -> Result<Val, VmErr> {
-        if a.is_int() && b.is_int() { return Ok(Val::int(a.as_int() - b.as_int())); }
+        if a.is_int() && b.is_int() {
+            let r = a.as_int() as i128 - b.as_int() as i128;
+            return Ok(if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 {
+                Val::int(r as i64)
+            } else {
+                Val::float(r as f64)
+            });
+        }
         if a.is_float() && b.is_float() { return Ok(Val::float(a.as_float() - b.as_float())); }
         if a.is_int() && b.is_float() { return Ok(Val::float(a.as_int() as f64 - b.as_float())); }
         if a.is_float() && b.is_int() { return Ok(Val::float(a.as_float() - b.as_int() as f64)); }
@@ -199,7 +210,14 @@ impl<'a> VM<'a> {
     }
 
     pub fn mul_vals(&mut self, a: Val, b: Val) -> Result<Val, VmErr> {
-        if a.is_int() && b.is_int() { return Ok(Val::int(a.as_int() * b.as_int())); }
+        if a.is_int() && b.is_int() {
+            let r = a.as_int() as i128 * b.as_int() as i128;
+            return Ok(if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 {
+                Val::int(r as i64)
+            } else {
+                Val::float(r as f64)
+            });
+        }
         if a.is_float() && b.is_float() { return Ok(Val::float(a.as_float() * b.as_float())); }
         if a.is_int() && b.is_float() { return Ok(Val::float(a.as_int() as f64 * b.as_float())); }
         if a.is_float() && b.is_int() { return Ok(Val::float(a.as_float() * b.as_int() as f64)); }

@@ -46,7 +46,10 @@ impl<'a> VM<'a> {
     
     pub fn call_abs(&mut self) -> Result<(), VmErr> {
         let o = self.pop()?;
-        if o.is_int() { self.push(Val::int(o.as_int().abs())); }
+        if o.is_int() {
+            let r = (o.as_int() as i128).abs();
+            self.push(if r <= Val::INT_MAX as i128 { Val::int(r as i64) } else { Val::float(r as f64) });
+        }
         else if o.is_float() { self.push(Val::float(o.as_float().abs())); }
         else { return Err(VmErr::Type("abs()".into())); }
         Ok(())
