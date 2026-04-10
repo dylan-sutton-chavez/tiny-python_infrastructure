@@ -93,7 +93,7 @@ pub struct SSAChunk {
     pub instructions: Vec<Instruction>,
     pub constants: Vec<Value>,
     pub names: Vec<String>,
-    pub functions: Vec<(Vec<String>, SSAChunk, u16)>,
+    pub functions: Vec<(Vec<String>, SSAChunk, u16, u16)>,
     pub annotations: HashMap<String, String>,
     pub phi_sources: Vec<(u16, u16)>,
     pub classes: Vec<SSAChunk>,

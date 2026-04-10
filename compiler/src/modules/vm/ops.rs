@@ -42,7 +42,7 @@ impl<'a> VM<'a> {
             HeapObj::Set(s) => !s.borrow().is_empty(),
             HeapObj::Range(s,e,st) => if *st > 0 { s < e } else { s > e },
             HeapObj::Type(_) => true,
-            HeapObj::Func(_) => true,
+            HeapObj::Func(_, _) => true,
             HeapObj::Slice(..) => true
         }
     }
@@ -58,7 +58,7 @@ impl<'a> VM<'a> {
             HeapObj::Dict(_) => "dict",
             HeapObj::Set(_) => "set",
             HeapObj::Tuple(_) => "tuple",
-            HeapObj::Func(_) => "function",
+            HeapObj::Func(_, _) => "function",
             HeapObj::Type(_) => "type",
             HeapObj::Range(..) => "range",
             HeapObj::Slice(..) => "slice"
@@ -82,8 +82,7 @@ impl<'a> VM<'a> {
         if v.is_none() { return "None".into(); }
         match self.heap.get(v) {
             HeapObj::Str(s) => s.clone(),
-            HeapObj::Type(name) => format!("<class '{}'>", name),
-            HeapObj::Func(i) => format!("<function {}>", i),
+            HeapObj::Func(i, _) => format!("<function {}>", i),
             HeapObj::Range(s,e,st) => if *st == 1 { format!("range({}, {})", s, e) } else { format!("range({}, {}, {})", s, e, st) },
             HeapObj::List(l) => format!("[{}]", l.borrow().iter().map(|x| self.repr(*x)).collect::<Vec<_>>().join(", ")),
             HeapObj::Tuple(t) => if t.len() == 1 { format!("({},)", self.repr(t[0])) } else { format!("({})", t.iter().map(|x| self.repr(*x)).collect::<Vec<_>>().join(", ")) },
@@ -94,6 +93,7 @@ impl<'a> VM<'a> {
                 .map(|x| self.repr(*x)).collect::<Vec<_>>().join(", ")),
             HeapObj::Slice(s, e, st) => format!("slice({}, {}, {})",
                 self.display(*s), self.display(*e), self.display(*st)),
+            HeapObj::Type(name) => format!("<class '{}'>", name),
         }
     }
 

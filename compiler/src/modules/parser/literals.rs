@@ -351,11 +351,11 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         let body = self.compile_body(&params);
 
         let fi = self.chunk.functions.len() as u16;
-        self.chunk.functions.push((params, body, defaults));
-        self.chunk.emit(
-            if is_async { OpCode::MakeCoroutine } else { OpCode::MakeFunction },
-            fi,
-        );
+        let cur_ver = self.current_version(&fname);
+        let mut buf = [0u8; 128];
+        let name_slot = self.chunk.push_name(Self::ssa_name(&fname, cur_ver + 1, &mut buf)) as u16;
+        self.chunk.functions.push((params, body, defaults, name_slot));
+        self.chunk.emit(if is_async { OpCode::MakeCoroutine } else { OpCode::MakeFunction }, fi);
 
         for _ in 0..decorators {
             self.chunk.emit(OpCode::Call, 1);

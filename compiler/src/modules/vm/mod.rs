@@ -436,7 +436,10 @@ impl<'a> VM<'a> {
                 // Functions
 
                 OpCode::MakeFunction | OpCode::MakeCoroutine => {
-                    let val = self.heap.alloc(HeapObj::Func(op as usize))?; self.push(val);
+                    let n_defaults = self.chunk.functions[op as usize].2 as usize;
+                    let defaults = if n_defaults > 0 { self.pop_n(n_defaults)? } else { vec![] };
+                    let val = self.heap.alloc(HeapObj::Func(op as usize, defaults))?;
+                    self.push(val);
                 }
                 OpCode::Call => {
                     let argc = op as usize;
@@ -445,15 +448,15 @@ impl<'a> VM<'a> {
                     args.reverse();
                     let callee = self.pop()?;
                     if !callee.is_heap() { return Err(VmErr::Type("call non-function".into())); }
-                    let fi = match self.heap.get(callee) {
-                        HeapObj::Func(i) => *i,
+                    let (fi, captured_defaults) = match self.heap.get(callee) {
+                        HeapObj::Func(i, d) => (*i, d.clone()),
                         _ => return Err(VmErr::Type("call non-function".into())),
                     };
                     if let Some(cached) = self.templates.lookup(fi, &args, &self.heap) {
                         self.push(cached); continue;
                     }
                     self.depth += 1;
-                    let (params, body, fn_name) = &self.chunk.functions[fi];
+                    let (params, body, _defaults, name_idx) = &self.chunk.functions[fi];
                     let mut fn_slots = self.fill_builtins(&body.names);
                     let mut body_map: HashMap<&str, usize> = HashMap::with_capacity(body.names.len());
                     for (i, n) in body.names.iter().enumerate() { body_map.insert(n.as_str(), i); }
@@ -474,16 +477,27 @@ impl<'a> VM<'a> {
                         if let Some(&s) = body_map.get(pname.as_str()) { fn_slots[s] = Some(args[pi]); }
                         pi += 1;
                     }
+                    if pi < params.len() && !captured_defaults.is_empty() {
+                        let d_start = captured_defaults.len().saturating_sub(params.len() - pi);
+                        for (i, param) in params[pi..].iter().enumerate() {
+                            if let Some(&dv) = captured_defaults.get(d_start + i) {
+                                let pname = format!("{}_0", param.trim_start_matches('*'));
+                                if let Some(&s) = body_map.get(pname.as_str()) {
+                                    if fn_slots[s].is_none() { fn_slots[s] = Some(dv); }
+                                }
+                            }
+                        }
+                    }
                     for (si, sv) in slots.iter().enumerate() {
                         if let Some(v) = sv {
                             if v.is_heap() {
-                                if let HeapObj::Func(_) = self.heap.get(*v) {
+                                if let HeapObj::Func(_, _) = self.heap.get(*v) {
                                     if let Some(&bs) = body_map.get(chunk.names[si].as_str()) { fn_slots[bs] = Some(*v); }
                                 }
                             }
                         }
                     }
-                    let name_idx = *fn_name;
+                    let name_idx = *name_idx;
                     if name_idx != u16::MAX {
                         let raw = &self.chunk.names[name_idx as usize];
                         let base = raw.rfind('_').filter(|&p| raw[p+1..].parse::<u32>().is_ok()).map(|p| &raw[..p]).unwrap_or(raw.as_str());

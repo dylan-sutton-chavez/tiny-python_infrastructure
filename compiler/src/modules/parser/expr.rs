@@ -345,7 +345,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.ssa_versions = saved_ver;
 
         let fi = self.chunk.functions.len() as u16;
-        self.chunk.functions.push((params, body, 0));
+        self.chunk.functions.push((params, body, 0, u16::MAX));
         self.chunk.emit(OpCode::MakeFunction, fi);
     }
 }

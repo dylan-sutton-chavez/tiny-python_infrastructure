@@ -90,7 +90,7 @@ pub enum HeapObj {
     Dict(Rc<RefCell<DictMap>>),
     Set(Rc<RefCell<Vec<Val>>>),
     Tuple(Vec<Val>),
-    Func(usize),
+    Func(usize, Vec<Val>),
     Range(i64, i64, i64),
     Slice(Val, Val, Val),
     Type(String)
@@ -246,7 +246,7 @@ impl HeapPool {
             match self.objects[v.as_heap() as usize].as_ref() {
                 Some(HeapObj::Str(_))    => 5,  Some(HeapObj::List(_))  => 6,
                 Some(HeapObj::Dict(_))   => 7,  Some(HeapObj::Set(_))   => 8,
-                Some(HeapObj::Tuple(_))  => 9,  Some(HeapObj::Func(_))  => 10,
+                Some(HeapObj::Tuple(_))  => 9,  Some(HeapObj::Func(_, _))  => 10,
                 Some(HeapObj::Range(..)) => 11, Some(HeapObj::Slice(..))=> 12,
                 Some(HeapObj::Type(_))   => 13, None => 0,
             }
