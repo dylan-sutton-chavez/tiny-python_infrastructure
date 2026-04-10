@@ -72,8 +72,12 @@ impl<'a> VM<'a> {
         if v.is_float() {
             let f = v.as_float();
             if f.is_finite() && f == (f as i64) as f64 {
+                let i = f as i64;
                 let mut b = itoa::Buffer::new();
-                let mut s = String::new(); s.push_str(b.format(f as i64)); s.push_str(".0"); return s;
+                if i > Val::INT_MAX || i < Val::INT_MIN {
+                    return b.format(i).into();
+                }
+                let mut s = String::new(); s.push_str(b.format(i)); s.push_str(".0"); return s;
             }
             let mut b = ryu::Buffer::new(); return b.format(f).into();
         }
@@ -155,7 +159,8 @@ impl<'a> VM<'a> {
 
     pub fn add_vals(&mut self, a: Val, b: Val) -> Result<Val, VmErr> {
         if a.is_int() && b.is_int() {
-            return Ok(Val::int(a.as_int() + b.as_int()));
+            let r = a.as_int() as i64 + b.as_int() as i64;
+            return Ok(Val::int_checked(r).unwrap_or_else(|| Val::float(r as f64)));
         }
         if a.is_numeric() && b.is_numeric() {
             let fa = if a.is_int() { a.as_int() as f64 } else { a.as_float() };

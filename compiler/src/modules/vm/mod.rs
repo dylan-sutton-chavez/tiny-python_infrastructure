@@ -255,12 +255,27 @@ impl<'a> VM<'a> {
                 }
                 OpCode::Pow => {
                     let (a, b) = self.pop2()?;
-                    let v = match (a.is_int(), b.is_int(), a.is_float(), b.is_float()) {
-                        (true, true, ..) => { let exp = b.as_int(); if exp >= 0 { Val::int(a.as_int().pow(exp as u32)) } else { Val::float(fpowi(a.as_int() as f64, exp as i32)) } }
-                        (true, _, _, true) => Val::float(fpowf(a.as_int() as f64, b.as_float())),
-                        (_,  true, true, _) => Val::float(fpowi(a.as_float(), b.as_int() as i32)),
-                        (_, _, true, true)  => Val::float(fpowf(a.as_float(), b.as_float())),
-                        _ => return Err(VmErr::Type("**".into())),
+                    let v = match (a.is_int(), b.is_int()) {
+                        (true, true) => {
+                            let exp = b.as_int();
+                            if exp >= 0 {
+                                let result = (a.as_int() as i128).pow(exp as u32);
+                                if result >= Val::INT_MIN as i128 && result <= Val::INT_MAX as i128 {
+                                    Val::int(result as i64)
+                                } else {
+                                    Val::float(result as f64)
+                                }
+                            } else {
+                                Val::float(fpowi(a.as_int() as f64, exp as i32))
+                            }
+                        }
+                        _ => {
+                            let fa = if a.is_int() { a.as_int() as f64 } else if a.is_float() { a.as_float() }
+                                    else { return Err(VmErr::Type("'**' requires numeric operands".into())); };
+                            let fb = if b.is_int() { b.as_int() as f64 } else if b.is_float() { b.as_float() }
+                                    else { return Err(VmErr::Type("'**' requires numeric operands".into())); };
+                            Val::float(fpowf(fa, fb))
+                        }
                     };
                     self.push(v);
                 }

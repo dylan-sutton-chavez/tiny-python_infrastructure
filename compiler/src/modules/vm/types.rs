@@ -52,8 +52,13 @@ impl Val {
     pub fn is_numeric(&self) -> bool {
         self.is_int() || self.is_float()
     }
+    pub const INT_MAX: i64 =  0x0000_7FFF_FFFF_FFFF;
+    pub const INT_MIN: i64 = -0x0000_8000_0000_0000;
     #[inline(always)] pub fn int(i: i64) -> Self {
         Self(TAG_INT | (i as u64 & 0x0000_FFFF_FFFF_FFFF))
+    }
+    #[inline(always)] pub fn int_checked(i: i64) -> Option<Self> {
+        if i > Self::INT_MAX || i < Self::INT_MIN { None } else { Some(Self::int(i)) }
     }
     #[inline(always)] pub fn none() -> Self { Self(TAG_NONE) }
     #[inline(always)] pub fn bool(b: bool) -> Self { Self(if b { TAG_TRUE } else { TAG_FALSE }) }
