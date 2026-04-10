@@ -1,6 +1,6 @@
 // vm/types.rs
 
-use alloc::{string::{String}, vec::Vec, rc::Rc};
+use alloc::{string::{String}, vec::Vec, vec, rc::Rc};
 use core::{fmt, cell::RefCell};
 
 /*
