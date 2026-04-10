@@ -340,7 +340,9 @@ impl<'a> VM<'a> {
                     if self.budget == 0 { return Err(VmErr::Budget); }
                     self.budget -= 1;
                     let target = op as usize;
-                    if target > chunk.instructions.len() { return Err(VmErr::Runtime("jump target out of bounds".into())); }
+                    if target > chunk.instructions.len() {
+                        return Err(VmErr::Runtime("jump target out of bounds".into()));
+                    }
                     ip = target;
                 }
                 OpCode::PopTop => { self.pop()?; }
@@ -428,6 +430,7 @@ impl<'a> VM<'a> {
                 OpCode::ForIter => {
                     if self.budget == 0 { return Err(VmErr::Budget); }
                     self.budget -= 1;
+                    if self.heap.needs_gc() { self.collect(slots); }
                     match self.iter_stack.last_mut().and_then(|f| f.next_item()) {
                         Some(item) => self.push(item),
                         None => {

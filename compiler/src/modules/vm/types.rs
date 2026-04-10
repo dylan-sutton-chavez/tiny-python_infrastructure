@@ -165,6 +165,7 @@ pub struct HeapPool {
     marked: Vec<bool>,
     free_list: Vec<u32>,
     pub gc_threshold: usize,
+    alloc_count: usize,
     limit: usize,
     strings: hashbrown::HashMap<String, u32>,
 }
@@ -176,6 +177,7 @@ impl HeapPool {
             marked: Vec::new(),
             free_list: Vec::new(),
             gc_threshold: 512,
+            alloc_count: 0,
             limit,
             strings: hashbrown::HashMap::new(),
         }
@@ -183,7 +185,9 @@ impl HeapPool {
 
     pub fn alloc(&mut self, obj: HeapObj) -> Result<Val, VmErr> {
         if let HeapObj::Str(ref s) = obj {
-            if let Some(&idx) = self.strings.get(s) { return Ok(Val::heap(idx)); }
+            if s.len() <= 64 {
+                if let Some(&idx) = self.strings.get(s) { return Ok(Val::heap(idx)); }
+            }
         }
         if self.usage() >= self.limit { return Err(VmErr::Heap); }
         if self.objects.len() >= (1 << 28)  { return Err(VmErr::Heap); }
@@ -200,8 +204,9 @@ impl HeapPool {
         };
 
         if let HeapObj::Str(s) = self.objects[idx as usize].as_ref().unwrap() {
-            self.strings.insert(s.clone(), idx);
+            if s.len() <= 64 { self.strings.insert(s.clone(), idx); }
         }
+        self.alloc_count += 1;
         Ok(Val::heap(idx))
     }
 
@@ -236,9 +241,13 @@ impl HeapPool {
             }
         }
         self.gc_threshold = (self.usage() * 2).max(512);
+        self.alloc_count  = 0;
+        if self.free_list.len() > 65_536 { self.free_list.truncate(65_536); }
     }
 
-    pub fn needs_gc(&self) -> bool { self.usage() >= self.gc_threshold }
+    pub fn needs_gc(&self) -> bool {
+        self.usage() >= self.gc_threshold || self.alloc_count >= 1024
+    }
 
     #[inline(always)] pub fn get(&self, v: Val) -> &HeapObj { self.objects[v.as_heap() as usize].as_ref().unwrap() }
     #[inline(always)] pub fn get_mut(&mut self, v: Val) -> &mut HeapObj { self.objects[v.as_heap() as usize].as_mut().unwrap() }
