@@ -176,8 +176,8 @@
   {"src": "print(2 ** 47)", "output": ["140737488355328"], "result": "None"},
   {"src": "print(2 ** 48)", "output": ["281474976710656"], "result": "None"},
   {"src": "print(2 ** 53)", "output": ["9007199254740992"], "result": "None"},
-  {"src": "print(2**47 + 2**47)",   "output": ["281474976710656"], "result": "None"},
-  {"src": "print(2**47 * 2)",        "output": ["281474976710656"], "result": "None"},
+  {"src": "print(2**47 + 2**47)", "output": ["281474976710656"], "result": "None"},
+  {"src": "print(2**47 * 2)", "output": ["281474976710656"], "result": "None"},
   {"src": "a = 140737488355328\nprint(-a - 1)", "output": ["-140737488355329"], "result": "None"},
-  {"src": "print(-(-(2**47)))",      "output": ["140737488355328"], "result": "None"}
+  {"src": "print(-(-(2**47)))", "output": ["140737488355328"], "result": "None"}
 ]

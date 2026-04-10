@@ -102,9 +102,10 @@ impl<'a> VM<'a> {
                 HeapObj::Set(v) => v.borrow().clone(),
                 _ => return Err(VmErr::Type("set()".into())),
             }} else { return Err(VmErr::Type("set()".into())); };
-            let mut seen = Vec::with_capacity(src.len());
+            let mut seen_set: hashbrown::HashSet<u64> = hashbrown::HashSet::with_capacity(src.len());
+            let mut seen: Vec<Val> = Vec::with_capacity(src.len());
             for v in src {
-                if !seen.iter().any(|s| self.eq_vals(*s, v)) { seen.push(v); }
+                if seen_set.insert(v.0) { seen.push(v); }
             }
             let val = self.heap.alloc(HeapObj::Set(Rc::new(RefCell::new(seen))))?;
             self.push(val);
