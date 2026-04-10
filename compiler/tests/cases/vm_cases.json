@@ -170,5 +170,6 @@
   {"src": "d = {1: 'one', 2: 'two'}\nkeys = []\nfor k in d:\n    keys = keys + [k]\nprint(keys)", "output": ["[1, 2]"], "result": "None"},
   {"src": "print({1: 'a', 2: 'b'} == {2: 'b', 1: 'a'})", "output": ["True"], "result": "None"},
   {"src": "print({1: 'a'} == {1: 'b'})", "output": ["False"], "result": "None"},
-  {"src": "d = {}\nfor i in range(200):\n    d[i] = i\nprint(len(d))", "output": ["200"], "result": "None"}
+  {"src": "d = {}\nfor i in range(200):\n    d[i] = i\nprint(len(d))", "output": ["200"], "result": "None"},
+  {"src": "results = []\nfor i in range(1000):\n    results = [i] + results\nprint(results[0])", "output": ["999"], "result": "None"}
 ]

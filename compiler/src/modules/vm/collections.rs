@@ -2,7 +2,7 @@
 
 use super::VM;
 use super::types::*;
-use alloc::{string::{String, ToString}, vec::Vec, vec, rc::Rc, format};
+use alloc::{string::{String, ToString}, vec::Vec, rc::Rc};
 use hashbrown::HashSet;
 use core::cell::RefCell;
 

@@ -29,6 +29,7 @@ pub struct VM<'a> {
     pub(crate) yields:Vec<Val>,
     pub(crate) chunk: &'a SSAChunk,
     pub(crate) globals: HashMap<String, Val>,
+    pub(crate) live_slots: Vec<Val>,
     templates: Templates,
     budget:usize,
     depth: usize,
@@ -57,6 +58,7 @@ impl<'a> VM<'a> {
             chunk,
             heap: HeapPool::new(limits.heap),
             globals: HashMap::new(),
+            live_slots: Vec::new(),
             templates: Templates::new(),
             budget: limits.ops,
             depth: 0,
@@ -75,6 +77,19 @@ impl<'a> VM<'a> {
     pub fn run(&mut self) -> Result<Val, VmErr> {
         let mut slots = self.fill_builtins(&self.chunk.names);
         self.exec(self.chunk, &mut slots)
+    }
+
+    fn collect(&mut self, current_slots: &[Option<Val>]) {
+        for &v in &self.stack { self.heap.mark(v); }
+        for &v in self.globals.values() { self.heap.mark(v); }
+        for frame in &self.iter_stack {
+            if let IterFrame::Seq { items, .. } = frame {
+                for &v in items { self.heap.mark(v); }
+            }
+        }
+        for &v in current_slots.iter().flatten() { self.heap.mark(v); }
+        for &v in &self.live_slots { self.heap.mark(v); }
+        self.heap.sweep();
     }
 
     pub fn heap_usage(&self) -> usize { self.heap.usage() }
@@ -154,6 +169,7 @@ impl<'a> VM<'a> {
     */
 
     pub(crate) fn exec(&mut self, chunk: &SSAChunk, slots: &mut Vec<Option<Val>>) -> Result<Val, VmErr> {
+        let slots_base = self.live_slots.len();
         let n = chunk.instructions.len();
 
         // Box per-frame caches to reduce stack frame size in debug builds
@@ -209,7 +225,16 @@ impl<'a> VM<'a> {
 
                 OpCode::LoadConst => { let v = self.to_val(&chunk.constants[op as usize])?; self.push(v); }
                 OpCode::LoadName => { let slot = op as usize; self.push(slots[slot].ok_or_else(|| VmErr::Name(chunk.names[slot].clone()))?); }
-                OpCode::StoreName => { let v = self.pop()?; let slot = op as usize; if let Some(prev) = prev_slots[slot] { slots[prev] = Some(v); } slots[slot] = Some(v); }
+                OpCode::StoreName => {
+                    let v = self.pop()?;
+                    let slot = op as usize;
+                    slots[slot] = Some(v);
+                    if let Some(prev) = prev_slots[slot] { slots[prev] = Some(v); }
+
+                    if self.heap.needs_gc() {
+                        self.collect(slots);
+                    }
+                }
                 OpCode::LoadTrue => self.push(Val::bool(true)),
                 OpCode::LoadFalse => self.push(Val::bool(false)),
                 OpCode::LoadNone => self.push(Val::none()),
@@ -304,7 +329,11 @@ impl<'a> VM<'a> {
                     ip = target;
                 }
                 OpCode::PopTop => { self.pop()?; }
-                OpCode::ReturnValue => { return Ok(if self.stack.is_empty() { Val::none() } else { self.pop()? }); }
+                OpCode::ReturnValue => {
+                    let result = if self.stack.is_empty() { Val::none() } else { self.pop()? };
+                    self.live_slots.truncate(slots_base);
+                    return Ok(result);
+                }
 
                 // Yield
 
@@ -465,7 +494,10 @@ impl<'a> VM<'a> {
                     }
 
                     let yields_before = self.yields.len();
+                    let snap = self.live_slots.len();
+                    self.live_slots.extend(slots.iter().flatten().copied());
                     let result = self.exec(body, &mut fn_slots)?;
+                    self.live_slots.truncate(snap);
                     self.depth -= 1;
 
                     if self.yields.len() > yields_before {

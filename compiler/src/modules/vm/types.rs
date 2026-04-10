@@ -11,7 +11,7 @@ Sandbox Limits
 pub struct Limits { pub calls: usize, pub ops: usize, pub heap: usize }
 
 impl Limits {
-    pub fn none() -> Self { Self { calls: usize::MAX, ops: usize::MAX, heap: usize::MAX } }
+    pub fn none() -> Self { Self { calls: usize::MAX, ops: usize::MAX, heap: 10_000_000 } }
     pub fn sandbox() -> Self { Self { calls: 512, ops: 100_000_000, heap: 100_000 } }
 }
 
@@ -156,56 +156,102 @@ Heap Pool
 */
 
 pub struct HeapPool {
-    objects: Vec<HeapObj>,
+    objects: Vec<Option<HeapObj>>,
+    marked: Vec<bool>,
+    free_list: Vec<u32>,
+    pub gc_threshold: usize,
     limit: usize,
     strings: hashbrown::HashMap<String, u32>,
 }
 
 impl HeapPool {
-    pub fn new(limit: usize) -> Self { Self { objects: Vec::new(), limit, strings: hashbrown::HashMap::new() } }
+    pub fn new(limit: usize) -> Self {
+        Self {
+            objects: Vec::new(),
+            marked: Vec::new(),
+            free_list: Vec::new(),
+            gc_threshold: 512,
+            limit,
+            strings: hashbrown::HashMap::new(),
+        }
+    }
 
     pub fn alloc(&mut self, obj: HeapObj) -> Result<Val, VmErr> {
         if let HeapObj::Str(ref s) = obj {
             if let Some(&idx) = self.strings.get(s) { return Ok(Val::heap(idx)); }
         }
-        if self.objects.len() >= self.limit { return Err(VmErr::Heap); }
+        if self.usage() >= self.limit { return Err(VmErr::Heap); }
         if self.objects.len() >= (1 << 28)  { return Err(VmErr::Heap); }
-        let idx = self.objects.len() as u32;
-        if let HeapObj::Str(ref s) = obj { self.strings.insert(s.clone(), idx); }
-        self.objects.push(obj);
+
+        let idx = if let Some(i) = self.free_list.pop() {
+            self.objects[i as usize] = Some(obj);
+            self.marked[i as usize]  = false;
+            i
+        } else {
+            let i = self.objects.len() as u32;
+            self.objects.push(Some(obj));
+            self.marked.push(false);
+            i
+        };
+
+        if let HeapObj::Str(s) = self.objects[idx as usize].as_ref().unwrap() {
+            self.strings.insert(s.clone(), idx);
+        }
         Ok(Val::heap(idx))
     }
 
-    #[inline(always)] pub fn get(&self, v: Val) -> &HeapObj {
-        &self.objects[v.as_heap() as usize]
+    pub fn mark(&mut self, v: Val) {
+        if !v.is_heap() { return; }
+        let mut worklist = vec![v.as_heap()];
+        while let Some(idx) = worklist.pop() {
+            let idx = idx as usize;
+            if self.marked[idx] { continue; }
+            self.marked[idx] = true;
+            // Empujar hijos Val al worklist
+            match &self.objects[idx] {
+                Some(HeapObj::Tuple(items)) => {
+                    for v in items { if v.is_heap() { worklist.push(v.as_heap()); } }
+                }
+                Some(HeapObj::Slice(a,b,c)) => { for v in [*a,*b,*c] { if v.is_heap() { worklist.push(v.as_heap()); } } }
+                Some(HeapObj::List(rc)) => worklist.extend(rc.borrow().iter().filter(|v| v.is_heap()).map(|v| v.as_heap())),
+                Some(HeapObj::Dict(rc)) => worklist.extend(rc.borrow().entries.iter().flat_map(|(k,v)| [*k,*v]).filter(|v| v.is_heap()).map(|v| v.as_heap())),
+                Some(HeapObj::Set(rc)) => worklist.extend(rc.borrow().iter().filter(|v| v.is_heap()).map(|v| v.as_heap())),
+                _ => {}
+            }
+        }
     }
 
-    #[inline(always)] pub fn get_mut(&mut self, v: Val) -> &mut HeapObj {
-        &mut self.objects[v.as_heap() as usize]
+    pub fn sweep(&mut self) {
+        for idx in 0..self.objects.len() {
+            match &self.objects[idx] {
+                None => {}
+                Some(_) if self.marked[idx] => { self.marked[idx] = false; } // reset
+                Some(HeapObj::Str(s)) => { self.strings.remove(s); self.objects[idx] = None; self.free_list.push(idx as u32); }
+                Some(_) => { self.objects[idx] = None; self.free_list.push(idx as u32); }
+            }
+        }
+        self.gc_threshold = (self.usage() * 2).max(512);
     }
+
+    pub fn needs_gc(&self) -> bool { self.usage() >= self.gc_threshold }
+
+    #[inline(always)] pub fn get(&self, v: Val) -> &HeapObj { self.objects[v.as_heap() as usize].as_ref().unwrap() }
+    #[inline(always)] pub fn get_mut(&mut self, v: Val) -> &mut HeapObj { self.objects[v.as_heap() as usize].as_mut().unwrap() }
+    pub fn usage(&self) -> usize { self.objects.len() - self.free_list.len() }
 
     #[inline(always)]
     pub fn val_tag(&self, v: Val) -> u8 {
-        if v.is_int() { 1 }
-        else if v.is_float() { 2 }
-        else if v.is_bool() { 3 }
-        else if v.is_none() { 4 }
-        else if v.is_heap() {
-            match self.get(v) {
-                HeapObj::Str(_) => 5,
-                HeapObj::List(_) => 6,
-                HeapObj::Dict(_) => 7,
-                HeapObj::Set(_) => 8,
-                HeapObj::Tuple(_) => 9,
-                HeapObj::Func(_) => 10,
-                HeapObj::Range(..)=> 11,
-                HeapObj::Slice(..)=> 12,
-                HeapObj::Type(_)  => 13
+        if v.is_int() { 1 } else if v.is_float() { 2 } else if v.is_bool() { 3 }
+        else if v.is_none() { 4 } else if v.is_heap() {
+            match self.objects[v.as_heap() as usize].as_ref() {
+                Some(HeapObj::Str(_))    => 5,  Some(HeapObj::List(_))  => 6,
+                Some(HeapObj::Dict(_))   => 7,  Some(HeapObj::Set(_))   => 8,
+                Some(HeapObj::Tuple(_))  => 9,  Some(HeapObj::Func(_))  => 10,
+                Some(HeapObj::Range(..)) => 11, Some(HeapObj::Slice(..))=> 12,
+                Some(HeapObj::Type(_))   => 13, None => 0,
             }
         } else { 0 }
     }
-
-    pub fn usage(&self) -> usize { self.objects.len() }
 }
 
 /*

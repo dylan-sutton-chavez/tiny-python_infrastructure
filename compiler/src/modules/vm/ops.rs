@@ -22,20 +22,6 @@ macro_rules! cached_binop {
 pub(crate) use cached_binop;
 
 /*
-Build Collection Macro
-    Pops N stack items, wraps in Rc<RefCell<Vec>> heap object, pushes result.
-*/
-
-macro_rules! build_collection {
-    ($vm:expr, $op:expr, $variant:ident) => {{
-        let v = $vm.pop_n($op as usize)?;
-        let val = $vm.heap.alloc(HeapObj::$variant(alloc::rc::Rc::new(core::cell::RefCell::new(v))))?;
-        $vm.push(val);
-    }};
-}
-pub(crate) use build_collection;
-
-/*
 VM Value Helpers
     All methods that need &self or &mut self access to HeapPool.
 */
