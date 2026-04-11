@@ -59,8 +59,8 @@ print(counter)
 
 | Runtime      | real     | user     | sys      |
 |--------------|----------|----------|----------|
-| CPython 3.13 | 0m0.058s | 0m0.041s | 0m0.008s |
-| Edge Python  | 0m0.056s | 0m0.054s | 0m0.001s |
+| CPython 3.13 | 0m0.120s | 0m0.087s | 0m0.000s |
+| Edge Python  | 0m0.095s | 0m0.073s | 0m0.009s |
 
 ### Usage
 
