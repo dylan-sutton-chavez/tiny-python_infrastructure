@@ -167,6 +167,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             .unwrap_or((0, 0, 0));
         self.errors.push(Diagnostic { line, col, end, msg: msg.to_string() });
 
+        // Sync to next statement boundary to suppress cascading false positives.
         loop {
             match self.tokens.peek().map(|t| t.kind) {
                 None
