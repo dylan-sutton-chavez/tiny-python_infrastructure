@@ -71,7 +71,8 @@ impl<'a> VM<'a> {
         }
         if v.is_float() {
             let f = v.as_float();
-            if f.is_finite() && f == (f as i64) as f64 {
+            const I64_UPPER: f64 = i64::MAX as f64;
+            if f.is_finite() && f == f.trunc() && f >= (i64::MIN as f64) && f < I64_UPPER {
                 let i = f as i64;
                 let mut b = itoa::Buffer::new();
                 if i > Val::INT_MAX || i < Val::INT_MIN {
