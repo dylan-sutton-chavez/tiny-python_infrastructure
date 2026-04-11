@@ -74,7 +74,7 @@ print(counter)
 
 ### Value Representation
 
-NaN-boxed 64-bit: integers are 48-bit signed ($\pm 2^{47}$), overflow promotes to float. Heap index is 28-bit ($2^{28}$ objects max, returns `MemoryError` beyond).
+NaN-boxed 64-bit: integers are 48-bit signed ($\pm 2^{47}$), overflow promotes to float (Gudeman, 1993). Results exceeding 48-bit range lose integer precision, consistent with Lua 5.3 and PHP 8. Heap index is 28-bit ($2^{28}$ objects max, returns `MemoryError` beyond).
 
 ### Building for WebAssembly
 

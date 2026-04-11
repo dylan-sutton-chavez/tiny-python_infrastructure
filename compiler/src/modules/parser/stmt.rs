@@ -318,6 +318,15 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                     self.expr();
                     self.chunk.emit(OpCode::StoreItem, 0);
                     false
+                } else if self.peek().and_then(|tok| Self::augmented_op(&tok)).is_some() {
+                    let op = Self::augmented_op(&self.peek().unwrap()).unwrap();
+                    self.advance();
+                    self.chunk.emit(OpCode::Dup2, 0);
+                    self.chunk.emit(OpCode::GetItem, 0);
+                    self.expr();
+                    self.chunk.emit(op, 0);
+                    self.chunk.emit(OpCode::StoreItem, 0);
+                    false
                 } else {
                     self.chunk.emit(OpCode::GetItem, 0);
                     self.expr_tails();

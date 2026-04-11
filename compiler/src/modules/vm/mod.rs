@@ -375,6 +375,12 @@ impl<'a> VM<'a> {
                     ip = target;
                 }
                 OpCode::PopTop => { self.pop()?; }
+                OpCode::Dup2 => {
+                    let b = self.pop()?;
+                    let a = self.pop()?;
+                    self.push(a); self.push(b);
+                    self.push(a); self.push(b);
+                }
                 OpCode::ReturnValue => {
                     let result = if self.stack.is_empty() { Val::none() } else { self.pop()? };
                     self.live_slots.truncate(slots_base);

@@ -22,7 +22,7 @@ pub enum OpCode {
     BuildSlice, MakeClass, SetupExcept, PopExcept, Raise, Import, ImportFrom, BitAnd, BitOr, BitXor, 
     BitNot, Shl, Shr, In, NotIn, Is, IsNot, UnpackSequence, BuildTuple, SetupWith, ExitWith, Yield, 
     Del, Assert, Global, Nonlocal, UnpackArgs, ListComp, SetComp, DictComp, BuildSet, RaiseFrom, 
-    UnpackEx, LoadEllipsis, GenExpr, Await, MakeCoroutine, YieldFrom, TypeAlias, StoreItem
+    UnpackEx, LoadEllipsis, GenExpr, Await, MakeCoroutine, YieldFrom, TypeAlias, StoreItem, Dup2
 }
 
 /*
