@@ -200,23 +200,7 @@ impl<'a> VM<'a> {
         let mut ip = 0usize;
         let mut phi_idx = 0usize;
 
-        // SSA backward-compat alias table
-        let prev_slots = {
-            let mut ps: Vec<Option<usize>> = vec![None; chunk.names.len()]; // SSA alias table: maps each versioned slot to its predecessor for backward compatibility
-            let mut name_map: HashMap<&str, usize> = HashMap::with_capacity(chunk.names.len());
-            for (i, name) in chunk.names.iter().enumerate() { name_map.insert(name.as_str(), i); }
-            for (i, name) in chunk.names.iter().enumerate() {
-                if let Some(pos) = name.rfind('_') {
-                    if let Ok(ver) = name[pos+1..].parse::<u32>() {
-                        if ver > 0 {
-                            let prev = format!("{}_{}", &name[..pos], ver - 1);
-                            if let Some(&j) = name_map.get(prev.as_str()) { ps[i] = Some(j); }
-                        }
-                    }
-                }
-            }
-            Box::new(ps)
-        };
+        let prev_slots = &chunk.prev_slots; // SSA alias table: pre-computed in SSAChunk, maps each versioned slot to its predecessor.
 
         loop {
             if ip >= n { return Ok(Val::none()); }

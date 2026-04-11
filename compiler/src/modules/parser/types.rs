@@ -99,6 +99,7 @@ pub struct SSAChunk {
     pub classes: Vec<SSAChunk>,
     pub is_pure: bool,
     pub overflow: bool,
+    pub prev_slots: Vec<Option<u16>>,
     pub(super) name_index: HashMap<String, u16>
 }
 
