@@ -64,13 +64,13 @@ print(counter)
 
 ### Usage
 
-| Command                         | Description                                       |
-|---------------------------------|---------------------------------------------------|
-| `edge script.py`                | Run with no limits                                |
+| Command                         | Description                                             |
+|---------------------------------|---------------------------------------------------------|
+| `edge script.py`                | Run with no limits                                      |
 | `edge --sandbox script.py`      | Run with sandbox ($512$ calls, $10^8$ ops, $10^5$ heap) |
-| `edge -d --sandbox script.py`   | Debug output (verbosity level 1)                  |
-| `edge -dd --sandbox script.py`  | Debug output (verbosity level 2)                  |
-| `edge -q script.py`             | Quiet mode (suppresses compiler diagnostics)      |
+| `edge -d --sandbox script.py`   | Debug output (verbosity level 1)                        |
+| `edge -dd --sandbox script.py`  | Debug output (verbosity level 2)                        |
+| `edge -q script.py`             | Quiet mode (suppresses compiler diagnostics)            |
 
 ### Value Representation
 
