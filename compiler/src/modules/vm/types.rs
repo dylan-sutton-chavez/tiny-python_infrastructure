@@ -249,8 +249,16 @@ impl HeapPool {
         self.usage() >= self.gc_threshold || self.alloc_count >= 1024
     }
 
-    #[inline(always)] pub fn get(&self, v: Val) -> &HeapObj { self.objects[v.as_heap() as usize].as_ref().unwrap() }
-    #[inline(always)] pub fn get_mut(&mut self, v: Val) -> &mut HeapObj { self.objects[v.as_heap() as usize].as_mut().unwrap() }
+    #[inline(always)] pub fn get(&self, v: Val) -> &HeapObj {
+        self.objects[v.as_heap() as usize]
+            .as_ref()
+            .expect("garbage collector invariant violated: live Val references a freed heap slot")
+    }
+    #[inline(always)] pub fn get_mut(&mut self, v: Val) -> &mut HeapObj {
+        self.objects[v.as_heap() as usize]
+            .as_mut()
+            .expect("garbage collector invariant violated: live Val references a freed heap slot (mut)")
+    }
     pub fn usage(&self) -> usize { self.objects.len() - self.free_list.len() }
 
     #[inline(always)]
