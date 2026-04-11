@@ -181,5 +181,17 @@
   {"src": "a = 140737488355328\nprint(-a - 1)", "output": ["-140737488355329"], "result": "None"},
   {"src": "print(-(-(2**47)))", "output": ["140737488355328"], "result": "None"},
   {"src": "a = 140737488355327\nb = 1\nr = 0\nfor i in range(10):\n    r = a + b\nprint(r)", "output": ["140737488355328"], "result": "None"},
-  {"src": "x = -140737488355328\nprint(-x)", "output": ["140737488355328"], "result": "None"}
+  {"src": "x = -140737488355328\nprint(-x)", "output": ["140737488355328"], "result": "None"},
+  {"src": "print(2**62)", "output": ["4611686018427387904"], "result": "None"},
+  {"src": "print(2**63 > 0)", "output": ["True"], "result": "None"},
+  {"src": "print(2**127 > 0)", "output": ["True"], "result": "None"},
+  {"src": "print(2**128 > 0)", "output": ["True"], "result": "None"},
+  {"src": "print(2**129 > 0)", "output": ["True"], "result": "None"},
+  {"src": "print(3**40 > 0)", "output": ["True"], "result": "None"},
+  {"src": "print(2**0)", "output": ["1"], "result": "None"},
+  {"src": "x = [10, 20, 30]\nx[0] += 5\nprint(x)", "output": ["[15, 20, 30]"], "result": "None"},
+  {"src": "x = [10, 20, 30]\nx[1] -= 3\nprint(x)", "output": ["[10, 17, 30]"], "result": "None"},
+  {"src": "x = [2, 3, 4]\nx[2] *= 10\nprint(x)", "output": ["[2, 3, 40]"], "result": "None"},
+  {"src": "d = {'a': 1}\nd['a'] += 99\nprint(d['a'])", "output": ["100"], "result": "None"},
+  {"src": "x = [0]\nx[0] += 1\nx[0] += 1\nx[0] += 1\nprint(x[0])", "output": ["3"], "result": "None"}
 ]

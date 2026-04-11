@@ -281,11 +281,11 @@ impl<'a> VM<'a> {
                         (true, true) => {
                             let exp = b.as_int();
                             if exp >= 0 {
-                                let result = (a.as_int() as i128).pow(exp as u32);
-                                if result >= Val::INT_MIN as i128 && result <= Val::INT_MAX as i128 {
-                                    Val::int(result as i64)
-                                } else {
-                                    Val::float(result as f64)
+                                match (a.as_int() as i128).checked_pow(exp as u32) {
+                                    Some(result) if result >= Val::INT_MIN as i128
+                                                && result <= Val::INT_MAX as i128 => Val::int(result as i64),
+                                    Some(result) => Val::float(result as f64),
+                                    None => Val::float(fpowi(a.as_int() as f64, exp as i32)),
                                 }
                             } else {
                                 Val::float(fpowi(a.as_int() as f64, exp as i32))

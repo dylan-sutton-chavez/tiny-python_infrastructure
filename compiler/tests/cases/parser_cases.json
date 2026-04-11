@@ -1618,5 +1618,12 @@
     "names": ["x_1"], 
     "instructions": [["LoadConst",0], ["StoreName",0], ["ReturnValue",0]], 
     "annotations": {}
+  },
+  {
+    "src": "a[0] += 1",
+    "constants": ["0", "1"],
+    "names": ["a_0"],
+    "instructions": [["LoadName",0], ["LoadConst",0], ["Dup2",0], ["GetItem",0], ["LoadConst",1], ["Add",0], ["StoreItem",0], ["ReturnValue",0]],
+    "annotations": {}
   }
 ]
