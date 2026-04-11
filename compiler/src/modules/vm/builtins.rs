@@ -275,7 +275,7 @@ impl<'a> VM<'a> {
 
     /*
     Zip Builtin
-        Pairs elements from two iterables into tuple list.
+        Pairs elements from N iterables into tuple list, truncating to shortest.
     */
 
     pub fn call_zip(&mut self, op: u16) -> Result<(), VmErr> {

@@ -151,7 +151,7 @@ impl<'a> VM<'a> {
 
     /*
     Slice Value
-        Extracts sub-sequence from list, tuple, or string using start:stop:step.
+        Extracts sub-sequence preserving source type (list -> list, tuple -> tuple, str -> str).
     */
 
     fn slice_val(&mut self, obj: Val, start: Val, stop: Val, step: Val) -> Result<Val, VmErr> {

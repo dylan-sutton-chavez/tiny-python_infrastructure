@@ -157,7 +157,7 @@ impl DictMap {
 
 /*
 Heap Pool
-    Indexed arena for heap objects. Provides val_tag() to differentiate heap types (Str=5, List=6, etc.) for the inline cache.
+    Arena allocator with mark-sweep GC, string interning, and per-type tagging for inline cache.
 */
 
 pub struct HeapPool {

@@ -55,9 +55,10 @@ fn run(path: &str, v: usize, q: bool, sandbox: bool) -> Result<(), String> {
 }
 
 fn main() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-
     let (p, v, q, sandbox) = parse_args();
+
+    let default_level = if q { "error" } else { "info" };
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(default_level)).init();
     
     if let Err(e) = run(&p, v, q, sandbox) {
         error!("process terminated: {}", e);

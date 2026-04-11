@@ -277,7 +277,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                     let i = self.chunk.push_const(Value::Str(self.lexeme(&t).to_string()));
                     self.chunk.emit(OpCode::LoadConst, i);
                     self.expr();
-                    kwargs += 1;
+                    kwargs += 1; // +1 in argc below -> 2 slots per kwarg matches key+value on stack
                 } else {
                     self.name(t);
                     self.infix_bp(0);

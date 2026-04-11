@@ -40,6 +40,11 @@ pub struct VM<'a> {
 impl<'a> VM<'a> {
     pub fn new(chunk: &'a SSAChunk) -> Self { Self::with_limits(chunk, Limits::none()) }
 
+    /*
+    Fill Builtins
+        Initializes slot vector from globals for a given name table.
+    */
+
     fn fill_builtins(&self, names: &[String]) -> Vec<Option<Val>> {
         let mut slots = vec![None; names.len()];
         for (i, name) in names.iter().enumerate() {
@@ -79,7 +84,7 @@ impl<'a> VM<'a> {
         self.exec(self.chunk, &mut slots)
     }
 
-    fn collect(&mut self, current_slots: &[Option<Val>]) {
+    fn collect(&mut self, current_slots: &[Option<Val>]) { // Marks all reachable values from stack, globals, iterators and slots, then sweeps.
         for &v in &self.stack { self.heap.mark(v); }
         for &v in self.globals.values() { self.heap.mark(v); }
         for frame in &self.iter_stack {
@@ -116,6 +121,11 @@ impl<'a> VM<'a> {
         Ok(self.stack.split_off(at))
     }
 
+    /*
+    Const Conversion
+        Converts a parser-level Value into a runtime Val, allocating heap for strings.
+    */
+
     pub(crate) fn to_val(&mut self, v: &Value) -> Result<Val, VmErr> {
         Ok(match v {
             Value::Int(i) => Val::int(*i),
@@ -128,7 +138,7 @@ impl<'a> VM<'a> {
 
     /*
     Fast-Path Execution
-        Runs specialized ops from inline cache or adaptive overlay directly.
+        Runs specialized ops from inline cache or adaptive overlay; returns false to trigger deopt.
     */
 
     #[inline]
@@ -180,7 +190,7 @@ impl<'a> VM<'a> {
 
         // SSA backward-compat alias table
         let prev_slots = {
-            let mut ps: Vec<Option<usize>> = vec![None; chunk.names.len()];
+            let mut ps: Vec<Option<usize>> = vec![None; chunk.names.len()]; // SSA alias table: maps each versioned slot to its predecessor for backward compatibility
             let mut name_map: HashMap<&str, usize> = HashMap::with_capacity(chunk.names.len());
             for (i, name) in chunk.names.iter().enumerate() { name_map.insert(name.as_str(), i); }
             for (i, name) in chunk.names.iter().enumerate() {
@@ -232,7 +242,7 @@ impl<'a> VM<'a> {
                     if let Some(prev) = prev_slots[slot] { slots[prev] = Some(v); }
 
                     if self.heap.needs_gc() {
-                        self.collect(slots);
+                        self.collect(slots); // Garbage collector safepoint; store is the only opcode that grows the heap unboundedly
                     }
                 }
                 OpCode::LoadTrue => self.push(Val::bool(true)),
@@ -478,6 +488,7 @@ impl<'a> VM<'a> {
                     let mut fn_slots = self.fill_builtins(&body.names);
                     let mut body_map: HashMap<&str, usize> = HashMap::with_capacity(body.names.len());
                     for (i, n) in body.names.iter().enumerate() { body_map.insert(n.as_str(), i); }
+                    // Bind args to params: detects keyword args (HeapObj::Str matching a param name) and consumes key+value pairs
                     let mut pi = 0usize;
                     for (_, p) in params.iter().enumerate() {
                         if pi >= args.len() { break; }
@@ -515,6 +526,7 @@ impl<'a> VM<'a> {
                             }
                         }
                     }
+                    // Inject callee into body slots so the function can call itself by name
                     let name_idx = *name_idx;
                     if name_idx != u16::MAX {
                         let raw = &self.chunk.names[name_idx as usize];
@@ -532,6 +544,7 @@ impl<'a> VM<'a> {
                     self.live_slots.truncate(snap);
                     self.depth -= 1;
 
+                    // Collect yielded values into a list; otherwise cache pure results via templates
                     if self.yields.len() > yields_before {
                         let fn_yields = self.yields.split_off(yields_before);
                         let val = self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(fn_yields))))?;

@@ -142,7 +142,7 @@ impl<'a> VM<'a> {
         Err(VmErr::Type(format!("'<' not supported between '{}' and '{}'", self.type_name(a), self.type_name(b))))
     }
 
-    pub fn contains(&self, container: Val, item: Val) -> bool {
+    pub fn contains(&self, container: Val, item: Val) -> bool { // Checks item presence in list, tuple, dict, set, or substring in str
         if !container.is_heap() { return false; }
         match self.heap.get(container) {
             HeapObj::List(v) => v.borrow().iter().any(|x| self.eq_vals(*x, item)),

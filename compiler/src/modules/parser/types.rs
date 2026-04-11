@@ -104,7 +104,7 @@ pub struct SSAChunk {
 
 impl SSAChunk {
     pub(super) fn emit(&mut self, op: OpCode, operand: u16) {
-        // silently drops instead of panicking
+        // Sets overflow flag for post-parse diagnostic instead of panicking
         if self.instructions.len() >= MAX_INSTRUCTIONS {
             self.overflow = true;
             return;

@@ -247,6 +247,11 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
     }
 
+    /*
+    Block Compilation
+        Compiles indented statement sequence between Indent and Dedent tokens.
+    */
+
     pub(super) fn compile_block(&mut self) {
         let indented = self.eat_if(TokenType::Indent);
         while !self.at_end() {
@@ -426,6 +431,11 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             _ => None,
         }
     }
+
+    /*
+    Simple Assignment
+        Consumes = token, compiles RHS expression, stores into new SSA version.
+    */
 
     pub(super) fn assign(&mut self, name: String) {
         self.advance();

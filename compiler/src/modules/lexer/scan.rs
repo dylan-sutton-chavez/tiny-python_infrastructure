@@ -303,8 +303,8 @@ impl<'a> Scanner<'a> {
     }
 
     /*
-    Brace Handling
-        Closes `}` distinguishing nested dict braces from f-string expression boundaries.
+    Close Brace
+        Routes `}` to f-string body resume or plain Rbrace based on nesting depth.
     */
 
     fn close_brace(&mut self, start: usize) {

@@ -55,12 +55,11 @@ impl InlineCache {
 
     pub fn get(&self, ip: usize) -> Option<FastOp> { self.slots.get(ip).and_then(|s| s.fast) }
     pub fn invalidate(&mut self, ip: usize) { if let Some(s) = self.slots.get_mut(ip) { *s = Slot::empty(); } }
-    pub fn count(&self) -> usize { self.slots.iter().filter(|s| s.fast.is_some()).count() }
 }
 
 /*
 Template Memoization
-    Caches pure function results by argument signature after four repeated calls.
+    Caches pure function results by deep-equal argument matching after four repeated calls.
 */
 
 const TPL_THRESH: u32 = 4;
@@ -70,6 +69,7 @@ struct TplEntry { args: Vec<Val>, result: Val, hits: u32 }
 fn eq_vals_heap(a: Val, b: Val, heap: &super::types::HeapPool) -> bool {
     use super::types::HeapObj;
     if !a.is_heap() || !b.is_heap() { return a.0 == b.0; }
+    // Content-based Val comparison for cache lookups, recursing into collections.
     match (heap.get(a), heap.get(b)) {
         (HeapObj::Str(x),   HeapObj::Str(y))   => x == y,
         (HeapObj::Tuple(x), HeapObj::Tuple(y)) => eq_seq(x, y, |a,b| eq_vals_heap(a,b,heap)),
