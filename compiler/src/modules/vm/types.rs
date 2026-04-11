@@ -189,7 +189,7 @@ impl HeapPool {
                 if let Some(&idx) = self.strings.get(s) { return Ok(Val::heap(idx)); }
             }
         }
-        if self.usage() >= self.limit { return Err(VmErr::Heap); }
+        if self.usage() >= self.limit { return Err(cold_heap()); }
         if self.objects.len() >= (1 << 28)  { return Err(VmErr::Heap); }
 
         let idx = if let Some(i) = self.free_list.pop() {
@@ -381,3 +381,12 @@ pub fn fpowf(base: f64, exp: f64) -> f64 {
     }
     fexp(exp * fln(base))
 }
+
+/*
+Cold Error Constructors
+    Out-of-line error paths keep hot dispatch loop linear for instruction cache.
+*/
+
+#[cold] #[inline(never)] pub fn cold_heap() -> VmErr { VmErr::Heap }
+#[cold] #[inline(never)] pub fn cold_budget() -> VmErr { VmErr::Budget }
+#[cold] #[inline(never)] pub fn cold_depth() -> VmErr { VmErr::CallDepth }

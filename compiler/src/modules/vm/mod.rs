@@ -358,7 +358,7 @@ impl<'a> VM<'a> {
                 OpCode::JumpIfFalse => {
                     let v = self.pop()?;
                     if !self.truthy(v) {
-                        if self.budget == 0 { return Err(VmErr::Budget); }
+                        if self.budget == 0 { return Err(cold_budget()); }
                         self.budget -= 1;
                         let target = op as usize;
                         if target > chunk.instructions.len() { return Err(VmErr::Runtime("jump target out of bounds".into())); }
@@ -366,7 +366,7 @@ impl<'a> VM<'a> {
                     }
                 }
                 OpCode::Jump => {
-                    if self.budget == 0 { return Err(VmErr::Budget); }
+                    if self.budget == 0 { return Err(cold_budget()); }
                     self.budget -= 1;
                     let target = op as usize;
                     if target > chunk.instructions.len() {
@@ -463,7 +463,7 @@ impl<'a> VM<'a> {
                     self.iter_stack.push(frame);
                 }
                 OpCode::ForIter => {
-                    if self.budget == 0 { return Err(VmErr::Budget); }
+                    if self.budget == 0 { return Err(cold_budget()); }
                     self.budget -= 1;
                     if self.heap.needs_gc() { self.collect(slots); }
                     match self.iter_stack.last_mut().and_then(|f| f.next_item()) {
@@ -496,7 +496,7 @@ impl<'a> VM<'a> {
                 }
                 OpCode::Call => {
                     let argc = op as usize;
-                    if self.depth >= self.max_calls { return Err(VmErr::CallDepth); }
+                    if self.depth >= self.max_calls { return Err(cold_depth()); }
                     let mut args: Vec<Val> = (0..argc).map(|_| self.pop()).collect::<Result<_,_>>()?;
                     args.reverse();
                     let callee = self.pop()?;
