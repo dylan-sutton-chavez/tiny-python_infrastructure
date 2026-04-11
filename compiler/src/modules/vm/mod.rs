@@ -235,7 +235,7 @@ impl<'a> VM<'a> {
                     let v = self.pop()?;
                     let slot = op as usize;
                     slots[slot] = Some(v);
-                    if let Some(prev) = prev_slots[slot] { slots[prev] = Some(v); }
+                    if let Some(prev) = prev_slots[slot] { slots[prev as usize] = Some(v); }
 
                     if self.heap.needs_gc() {
                         self.collect(slots); // Garbage collector safepoint; store is the only opcode that grows the heap unboundedly

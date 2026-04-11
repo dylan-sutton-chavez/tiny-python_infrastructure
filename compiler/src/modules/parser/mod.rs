@@ -267,6 +267,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
 
         self.chunk.emit(OpCode::ReturnValue, 0);
+        self.chunk.finalize_prev_slots();
         (self.chunk, self.errors)
     }
 }
