@@ -128,7 +128,7 @@ impl<'a> VM<'a> {
 
     pub(crate) fn to_val(&mut self, v: &Value) -> Result<Val, VmErr> {
         Ok(match v {
-            Value::Int(i) => Val::int(*i),
+            Value::Int(i) => Val::int_checked(*i).unwrap_or_else(|| Val::float(*i as f64)),
             Value::Float(f) => Val::float(*f),
             Value::Bool(b) => Val::bool(*b),
             Value::None => Val::none(),
@@ -310,7 +310,14 @@ impl<'a> VM<'a> {
                 }
                 OpCode::Minus => {
                     let v = self.pop()?;
-                    if v.is_int() { self.push(Val::int(-v.as_int())); }
+                    if v.is_int() {
+                        let r = -(v.as_int() as i128);
+                        self.push(if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 {
+                            Val::int(r as i64)
+                        } else {
+                            Val::float(r as f64)
+                        });
+                    }
                     else if v.is_float() { self.push(Val::float(-v.as_float())); }
                     else { return Err(VmErr::Type("unary -".into())); }
                 }
