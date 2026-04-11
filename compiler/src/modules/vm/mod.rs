@@ -145,11 +145,23 @@ impl<'a> VM<'a> {
     fn exec_fast(&mut self, fast: FastOp) -> Result<bool, VmErr> {
         let (a, b) = self.pop2()?;
         let hit = match fast {
-            FastOp::AddInt if a.is_int() && b.is_int() => { self.push(Val::int(a.as_int() + b.as_int())); true }
+            FastOp::AddInt if a.is_int() && b.is_int() => {
+                let r = a.as_int() as i128 + b.as_int() as i128;
+                self.push(if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 { Val::int(r as i64) } else { Val::float(r as f64) });
+                true
+            }
             FastOp::AddFloat if a.is_float() && b.is_float() => { self.push(Val::float(a.as_float() + b.as_float())); true }
-            FastOp::SubInt if a.is_int() && b.is_int() => { self.push(Val::int(a.as_int() - b.as_int())); true }
+            FastOp::SubInt if a.is_int() && b.is_int() => {
+                let r = a.as_int() as i128 - b.as_int() as i128;
+                self.push(if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 { Val::int(r as i64) } else { Val::float(r as f64) });
+                true
+            }
             FastOp::SubFloat if a.is_float() && b.is_float() => { self.push(Val::float(a.as_float() - b.as_float())); true }
-            FastOp::MulInt if a.is_int() && b.is_int() => { self.push(Val::int(a.as_int() * b.as_int())); true }
+            FastOp::MulInt if a.is_int() && b.is_int() => {
+                let r = a.as_int() as i128 * b.as_int() as i128;
+                self.push(if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 { Val::int(r as i64) } else { Val::float(r as f64) });
+                true
+            }
             FastOp::MulFloat if a.is_float() && b.is_float() => { self.push(Val::float(a.as_float() * b.as_float())); true }
             FastOp::LtInt if a.is_int() && b.is_int() => { self.push(Val::bool(a.as_int() < b.as_int())); true }
             FastOp::LtFloat  if a.is_float() && b.is_float() => { self.push(Val::bool(a.as_float() < b.as_float())); true }
