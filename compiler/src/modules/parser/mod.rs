@@ -166,6 +166,16 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             .map(|t| (t.line, t.start, t.end))
             .unwrap_or((0, 0, 0));
         self.errors.push(Diagnostic { line, col, end, msg: msg.to_string() });
+
+        loop {
+            match self.tokens.peek().map(|t| t.kind) {
+                None
+                | Some(TokenType::Newline)
+                | Some(TokenType::Dedent)
+                | Some(TokenType::Endmarker) => break,
+                _ => { self.tokens.next(); }
+            }
+        }
     }
 
     pub(super) fn at_end(&mut self) -> bool {
