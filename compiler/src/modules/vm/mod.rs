@@ -616,11 +616,13 @@ impl<'a> VM<'a> {
                 OpCode::ImportFrom => { self.pop()?; self.push(Val::none()); }
                 OpCode::SetupExcept | OpCode::PopExcept => {}
                 OpCode::Raise | OpCode::RaiseFrom => { return Err(VmErr::Runtime("exception raised".into())); }
-                OpCode::SetupWith | OpCode::ExitWith => {}
+                OpCode::SetupWith | OpCode::ExitWith => { return Err(VmErr::Runtime("with/as not yet supported".into())); }
                 OpCode::Await | OpCode::YieldFrom => {}
-                OpCode::UnpackArgs => {}
-                OpCode::MakeClass | OpCode::LoadAttr | OpCode::StoreAttr => {}
-                OpCode::ListComp | OpCode::SetComp | OpCode::DictComp | OpCode::GenExpr => {}
+                OpCode::UnpackArgs => { return Err(VmErr::Runtime("*args/**kwargs not yet supported".into())); }
+                OpCode::MakeClass => { return Err(VmErr::Runtime("classes not yet supported".into())); }
+                OpCode::LoadAttr | OpCode::StoreAttr => { return Err(VmErr::Runtime("attribute access not yet supported".into())); }
+                OpCode::ListComp | OpCode::SetComp | OpCode::DictComp => { return Err(VmErr::Runtime("comprehensions not yet supported".into())); }
+                OpCode::GenExpr => { return Err(VmErr::Runtime("generator expressions not yet supported".into())); }
             }
         }
     }
