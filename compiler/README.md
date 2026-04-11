@@ -43,10 +43,10 @@ def fib(n):
 print(fib(45))
 ```
 
-| Runtime      | $\text{fib}(45)$ real | $\text{fib}(45)$ user | sys      | $\text{fib}(90)$ real |
-|--------------|------------------------|------------------------|----------|------------------------|
-| CPython 3.13 | 1m56.345s              | 1m56.324s              | 0m0.009s | n/a                    |
-| Edge Python  | 0m0.011s               | 0m0.000s               | 0m0.003s | 0m0.013s               |
+| Runtime      | $\text{fib}(45)$ real  | $\text{fib}(45)$ user  | sys      |
+|--------------|------------------------|------------------------|----------|
+| CPython 3.13 | 1m56.345s              | 1m56.324s              | 0m0.009s |
+| Edge Python  | 0m0.011s               | 0m0.000s               | 0m0.003s |
 
 One Million Iterations — $10^6$:
 
