@@ -173,6 +173,12 @@ pub(super) fn parse_string(s: &str) -> String {
 fn unescape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
+
+    let mut take_hex = |chars: &mut core::iter::Peekable<core::str::Chars>, n: usize| -> char {
+        let hex: String = chars.by_ref().take(n).collect();
+        u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32).unwrap_or('\u{FFFD}')
+    };
+
     while let Some(c) = chars.next() {
         if c != '\\' { out.push(c); continue; }
         match chars.next() {
@@ -182,6 +188,9 @@ fn unescape(s: &str) -> String {
             Some('\\') => out.push('\\'),
             Some('\'') => out.push('\''),
             Some('"') => out.push('"'),
+            Some('x') => out.push(take_hex(&mut chars, 2)),
+            Some('u') => out.push(take_hex(&mut chars, 4)),
+            Some('U') => out.push(take_hex(&mut chars, 8)),
             Some('0') => out.push('\0'),
             Some(c) => { out.push('\\'); out.push(c); }
             None => out.push('\\'),

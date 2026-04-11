@@ -1604,5 +1604,19 @@
     "instructions": [["ReturnValue", 0]],
     "annotations": {},
     "errors": ["expected Rpar"]
+  },
+  {
+    "src": "x = '\\x41'", 
+    "constants": ["A"], 
+    "names": ["x_1"], 
+    "instructions": [["LoadConst",0], ["StoreName",0], ["ReturnValue",0]], 
+    "annotations": {}
+  },
+  {
+    "src": "x = '\\u00e9'", 
+    "constants": ["é"], 
+    "names": ["x_1"], 
+    "instructions": [["LoadConst",0], ["StoreName",0], ["ReturnValue",0]], 
+    "annotations": {}
   }
 ]
