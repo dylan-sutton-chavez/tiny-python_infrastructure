@@ -138,51 +138,50 @@ impl<'a> VM<'a> {
 
     /*
     Fast-Path Execution
-        Runs specialized ops from inline cache or adaptive overlay; returns false to trigger deopt.
+        Peeks stack without popping; returns false with stack untouched to trigger deopt.
     */
 
     #[inline]
     fn exec_fast(&mut self, fast: FastOp) -> Result<bool, VmErr> {
-        let (a, b) = self.pop2()?;
-        let hit = match fast {
+        let len = self.stack.len();
+        if len < 2 { return Ok(false); }
+        let a = self.stack[len - 2];
+        let b = self.stack[len - 1];
+        let result = match fast {
             FastOp::AddInt if a.is_int() && b.is_int() => {
                 let r = a.as_int() as i128 + b.as_int() as i128;
-                self.push(if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 { Val::int(r as i64) } else { Val::float(r as f64) });
-                true
+                if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 { Val::int(r as i64) } else { Val::float(r as f64) }
             }
-            FastOp::AddFloat if a.is_float() && b.is_float() => { self.push(Val::float(a.as_float() + b.as_float())); true }
+            FastOp::AddFloat if a.is_float() && b.is_float() => Val::float(a.as_float() + b.as_float()),
             FastOp::SubInt if a.is_int() && b.is_int() => {
                 let r = a.as_int() as i128 - b.as_int() as i128;
-                self.push(if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 { Val::int(r as i64) } else { Val::float(r as f64) });
-                true
+                if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 { Val::int(r as i64) } else { Val::float(r as f64) }
             }
-            FastOp::SubFloat if a.is_float() && b.is_float() => { self.push(Val::float(a.as_float() - b.as_float())); true }
+            FastOp::SubFloat if a.is_float() && b.is_float() => Val::float(a.as_float() - b.as_float()),
             FastOp::MulInt if a.is_int() && b.is_int() => {
                 let r = a.as_int() as i128 * b.as_int() as i128;
-                self.push(if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 { Val::int(r as i64) } else { Val::float(r as f64) });
-                true
+                if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 { Val::int(r as i64) } else { Val::float(r as f64) }
             }
-            FastOp::MulFloat if a.is_float() && b.is_float() => { self.push(Val::float(a.as_float() * b.as_float())); true }
-            FastOp::LtInt if a.is_int() && b.is_int() => { self.push(Val::bool(a.as_int() < b.as_int())); true }
-            FastOp::LtFloat  if a.is_float() && b.is_float() => { self.push(Val::bool(a.as_float() < b.as_float())); true }
-            FastOp::EqInt if a.is_int() && b.is_int() => { self.push(Val::bool(a.as_int() == b.as_int())); true }
-            FastOp::AddStr | FastOp::EqStr => {
-                if a.is_heap() && b.is_heap() {
-                    let (sa, sb) = match (self.heap.get(a), self.heap.get(b)) {
-                        (HeapObj::Str(x), HeapObj::Str(y)) => (x.clone(), y.clone()),
-                        _ => { self.push(a); self.push(b); return Ok(false); }
-                    };
-                    match fast {
-                        FastOp::AddStr => { let v = self.heap.alloc(HeapObj::Str(format!("{}{}", sa, sb)))?; self.push(v); }
-                        _ => { self.push(Val::bool(sa == sb)); }
-                    }
-                    true
-                } else { false }
+            FastOp::MulFloat if a.is_float() && b.is_float() => Val::float(a.as_float() * b.as_float()),
+            FastOp::LtInt if a.is_int() && b.is_int() => Val::bool(a.as_int() < b.as_int()),
+            FastOp::LtFloat if a.is_float() && b.is_float() => Val::bool(a.as_float() < b.as_float()),
+            FastOp::EqInt if a.is_int() && b.is_int() => Val::bool(a.as_int() == b.as_int()),
+            FastOp::AddStr | FastOp::EqStr if a.is_heap() && b.is_heap() => {
+                let (sa, sb) = match (self.heap.get(a), self.heap.get(b)) {
+                    (HeapObj::Str(x), HeapObj::Str(y)) => (x.clone(), y.clone()),
+                    _ => return Ok(false),
+                };
+                match fast {
+                    FastOp::AddStr => self.heap.alloc(HeapObj::Str(format!("{}{}", sa, sb)))?,
+                    _ => Val::bool(sa == sb),
+                }
             }
-            _ => false,
+            _ => return Ok(false),
         };
-        if !hit { self.push(a); self.push(b); }
-        Ok(hit)
+        // Replace both operands with computed result.
+        self.stack.truncate(len - 2);
+        self.push(result);
+        Ok(true)
     }
 
     /*
