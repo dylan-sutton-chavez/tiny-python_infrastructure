@@ -20,7 +20,7 @@ fn parse_args() -> (String, usize, bool, bool) {
     (p, if v > 0 { v + 2 } else { 0 }, args.contains(&"-q".into()), args.contains(&"--sandbox".into()))
 }
 
-fn run(path: &str, v: usize, q: bool, sandbox: bool) -> Result<(), String> {
+fn run(path: &str, _q: bool, sandbox: bool) -> Result<(), String> {
     let src = if path.ends_with(".py") {
         fs::read_to_string(path).map_err(|e| format!("io: cannot access '{}' because {}", path, e))?
     } else {
@@ -60,7 +60,7 @@ fn main() {
     let default_level = if q { "error" } else { "info" };
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(default_level)).init();
     
-    if let Err(e) = run(&p, v, q, sandbox) {
+    if let Err(e) = run(&p, q, sandbox) {
         error!("process terminated: {}", e);
         exit(1);
     }
