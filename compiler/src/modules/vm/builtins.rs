@@ -48,10 +48,21 @@ impl<'a> VM<'a> {
         let o = self.pop()?;
         if o.is_int() {
             let r = (o.as_int() as i128).abs();
-            self.push(if r <= Val::INT_MAX as i128 { Val::int(r as i64) } else { Val::float(r as f64) });
+            let v = self.i128_to_val(r)?;
+            self.push(v);
+        } else if o.is_float() {
+            self.push(Val::float(o.as_float().abs()));
+        } else if o.is_heap() {
+            if let HeapObj::BigInt(b) = self.heap.get(o) {
+                let ab = b.abs();
+                let v = self.bigint_to_val(ab)?;
+                self.push(v);
+            } else {
+                return Err(VmErr::Type("abs()".into()));
+            }
+        } else {
+            return Err(VmErr::Type("abs()".into()));
         }
-        else if o.is_float() { self.push(Val::float(o.as_float().abs())); }
-        else { return Err(VmErr::Type("abs()".into())); }
         Ok(())
     }
 
@@ -72,6 +83,16 @@ impl<'a> VM<'a> {
     
     pub fn call_int(&mut self) -> Result<(), VmErr> {
         let o = self.pop()?;
+        if o.is_heap() {
+            if let HeapObj::BigInt(b) = self.heap.get(o) {
+                let pushed = {
+                    let b = b.clone();
+                    self.bigint_to_val(b)?
+                };
+                self.push(pushed);
+                return Ok(());
+            }
+        }
         let i = if o.is_int() { o.as_int() }
             else if o.is_float() { o.as_float() as i64 }
             else if o.is_bool() { o.as_bool() as i64 }
@@ -80,7 +101,8 @@ impl<'a> VM<'a> {
                 _ => return Err(VmErr::Type("int()".into())),
             }}
             else { return Err(VmErr::Type("int()".into())); };
-        self.push(Val::int(i)); Ok(())
+        let v = self.bigint_to_val(BigInt::from_i64(i))?;
+        self.push(v); Ok(())
     }
 
     /*
@@ -94,7 +116,8 @@ impl<'a> VM<'a> {
             else if o.is_int() { o.as_int() as f64 }
             else if o.is_heap() { match self.heap.get(o) {
                 HeapObj::Str(s) => s.trim().parse().map_err(|_| VmErr::Value(format!("float: '{}'", s)))?,
-                _ => return Err(VmErr::Type("float()".into())),
+                HeapObj::BigInt(b) => b.to_f64(),
+                _ => return Err(VmErr::Type("float()".into()))
             }}
             else { return Err(VmErr::Type("float()".into())); };
         self.push(Val::float(f)); Ok(())
@@ -105,8 +128,12 @@ impl<'a> VM<'a> {
     }
 
     pub fn call_type(&mut self) -> Result<(), VmErr> {
-        let o = self.pop()?; let s = self.type_name(o);
-        let v = self.heap.alloc(HeapObj::Str(s.into()))?; self.push(v); Ok(())
+        let o = self.pop()?;
+        let s = self.type_name(o);
+        let full = format!("<class '{}'>", s);
+        let v = self.heap.alloc(HeapObj::Str(full))?;
+        self.push(v);
+        Ok(())
     }
 
     pub fn call_chr(&mut self) -> Result<(), VmErr> {
@@ -164,6 +191,7 @@ impl<'a> VM<'a> {
             }
             (Some(o), None) if o.is_float() => Val::int(fround(o.as_float()) as i64),
             (Some(o), _) if o.is_int() => *o,
+            (Some(o), _) if o.is_heap() && matches!(self.heap.get(*o), HeapObj::BigInt(_)) => *o,
             _ => return Err(VmErr::Type("round()".into())),
         };
         self.push(v); Ok(())

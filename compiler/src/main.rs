@@ -55,7 +55,7 @@ fn run(path: &str, _q: bool, sandbox: bool) -> Result<(), String> {
 }
 
 fn main() {
-    let (p, v, q, sandbox) = parse_args();
+    let (p, _v, q, sandbox) = parse_args();
 
     let default_level = if q { "error" } else { "info" };
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(default_level)).init();

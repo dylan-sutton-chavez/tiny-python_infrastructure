@@ -84,6 +84,252 @@ impl Val {
 }
 
 /*
+BigInt Arbitrary Precision Integer
+    Implements signed arbitrary precision integers using base-2^32 little-endian limb storage.
+*/
+
+#[derive(Clone, Debug)]
+pub struct BigInt {
+    pub neg: bool,
+    pub limbs: Vec<u32>,
+}
+
+impl BigInt {
+    pub fn zero() -> Self { Self { neg: false, limbs: Vec::new() } }
+    pub fn is_zero(&self) -> bool { self.limbs.is_empty() }
+
+    pub fn from_i64(v: i64) -> Self {
+        if v == 0 { return Self::zero(); }
+        let neg = v < 0;
+        let abs = (v as i128).unsigned_abs() as u64;
+        let mut limbs = vec![(abs & 0xFFFF_FFFF) as u32];
+        if abs >> 32 != 0 { limbs.push((abs >> 32) as u32); }
+        Self { neg, limbs }
+    }
+
+    pub fn from_i128(v: i128) -> Self {
+        if v == 0 { return Self::zero(); }
+        let neg = v < 0;
+        let mut abs = v.unsigned_abs() as u128;
+        let mut limbs = Vec::new();
+        while abs != 0 { limbs.push((abs & 0xFFFF_FFFF) as u32); abs >>= 32; }
+        Self { neg, limbs }
+    }
+
+    pub fn from_decimal(s: &str) -> Self {
+        let (neg, digits) = if s.starts_with('-') { (true, &s[1..]) } else { (false, s) };
+        let mut r = Self::zero();
+        for c in digits.chars() {
+            let d = (c as u8).wrapping_sub(b'0') as u32;
+            r = r.mul_u32(10);
+            if d != 0 { r = r.add(&Self { neg: false, limbs: vec![d] }); }
+        }
+        r.neg = neg && !r.is_zero();
+        r
+    }
+
+    pub fn to_i64_checked(&self) -> Option<i64> {
+        match self.limbs.len() {
+            0 => Some(0),
+            1 => Some(if self.neg { -(self.limbs[0] as i64) } else { self.limbs[0] as i64 }),
+            2 => {
+                let abs = self.limbs[0] as u64 | ((self.limbs[1] as u64) << 32);
+                if self.neg {
+                    if abs > i64::MIN.unsigned_abs() { 
+                        None 
+                    } else if abs == i64::MIN.unsigned_abs() {
+                        Some(i64::MIN)
+                    } else { 
+                        Some(-(abs as i64)) 
+                    }
+                } else {
+                    if abs > i64::MAX as u64 { None } else { Some(abs as i64) }
+                }
+            }
+            _ => None,
+        }
+    }
+
+    pub fn to_f64(&self) -> f64 {
+        let (mut r, mut base) = (0.0f64, 1.0f64);
+        for &l in &self.limbs { r += l as f64 * base; base *= 4_294_967_296.0; }
+        if self.neg { -r } else { r }
+    }
+
+    pub fn neg(&self) -> Self {
+        if self.is_zero() { self.clone() }
+        else { Self { neg: !self.neg, limbs: self.limbs.clone() } }
+    }
+    pub fn abs(&self) -> Self { Self { neg: false, limbs: self.limbs.clone() } }
+
+    fn trim(v: &mut Vec<u32>) { while v.last() == Some(&0) { v.pop(); } }
+
+    fn cmp_mag(a: &[u32], b: &[u32]) -> core::cmp::Ordering {
+        use core::cmp::Ordering::*;
+        if a.len() != b.len() { return a.len().cmp(&b.len()); }
+        for (&x, &y) in a.iter().rev().zip(b.iter().rev()) {
+            match x.cmp(&y) { Equal => {} o => return o }
+        }
+        Equal
+    }
+
+    fn add_mag(a: &[u32], b: &[u32]) -> Vec<u32> {
+        let mut out = Vec::with_capacity(a.len().max(b.len()) + 1);
+        let mut carry = 0u64;
+        for i in 0..a.len().max(b.len()) {
+            let s = a.get(i).copied().unwrap_or(0) as u64
+                  + b.get(i).copied().unwrap_or(0) as u64
+                  + carry;
+            out.push(s as u32); carry = s >> 32;
+        }
+        if carry != 0 { out.push(carry as u32); }
+        out
+    }
+
+    fn sub_mag(a: &[u32], b: &[u32]) -> Vec<u32> {
+        let mut out = Vec::with_capacity(a.len());
+        let mut borrow = 0i64;
+        for i in 0..a.len() {
+            let d = a[i] as i64 - b.get(i).copied().unwrap_or(0) as i64 - borrow;
+            borrow = if d < 0 { 1 } else { 0 };
+            out.push((d + if d < 0 { 0x1_0000_0000 } else { 0 }) as u32);
+        }
+        Self::trim(&mut out); out
+    }
+
+    pub fn add(&self, other: &Self) -> Self {
+        if self.neg == other.neg {
+            return Self { neg: self.neg, limbs: Self::add_mag(&self.limbs, &other.limbs) };
+        }
+        match Self::cmp_mag(&self.limbs, &other.limbs) {
+            core::cmp::Ordering::Equal => Self::zero(),
+            core::cmp::Ordering::Greater => Self { neg: self.neg,  limbs: Self::sub_mag(&self.limbs,  &other.limbs) },
+            core::cmp::Ordering::Less => Self { neg: other.neg, limbs: Self::sub_mag(&other.limbs, &self.limbs)  },
+        }
+    }
+    pub fn sub(&self, other: &Self) -> Self { self.add(&other.neg()) }
+
+    pub fn mul(&self, other: &Self) -> Self {
+        if self.is_zero() || other.is_zero() { return Self::zero(); }
+        let (n, m) = (self.limbs.len(), other.limbs.len());
+        let mut tmp = vec![0u64; n + m];
+        for (i, &ai) in self.limbs.iter().enumerate() {
+            for (j, &bj) in other.limbs.iter().enumerate() {
+                tmp[i + j] += ai as u64 * bj as u64;
+            }
+        }
+        let mut limbs = Vec::with_capacity(n + m);
+        let mut carry = 0u64;
+        for &d in &tmp { let s = d + carry; limbs.push(s as u32); carry = s >> 32; }
+        if carry != 0 { limbs.push(carry as u32); }
+        Self::trim(&mut limbs);
+        Self { neg: self.neg != other.neg, limbs }
+    }
+
+    pub fn mul_u32(&self, d: u32) -> Self {
+        if d == 0 || self.is_zero() { return Self::zero(); }
+        let mut carry = 0u64;
+        let mut limbs = Vec::with_capacity(self.limbs.len() + 1);
+        for &l in &self.limbs { let s = l as u64 * d as u64 + carry; limbs.push(s as u32); carry = s >> 32; }
+        if carry != 0 { limbs.push(carry as u32); }
+        Self { neg: self.neg, limbs }
+    }
+
+    fn div_mag(num: &[u32], den: &[u32]) -> (Vec<u32>, Vec<u32>) {
+        if Self::cmp_mag(num, den) == core::cmp::Ordering::Less {
+            return (vec![], num.to_vec());
+        }
+        let q_len = num.len() - den.len() + 1;
+        let mut rem_limbs = num.to_vec();
+        let mut q_limbs = vec![0u32; q_len];
+        let den_b = Self { neg: false, limbs: den.to_vec() };
+
+        for i in (0..q_len).rev() {
+            let mut shifted_limbs = vec![0u32; i];
+            shifted_limbs.extend_from_slice(den);
+            let shifted = Self { neg: false, limbs: shifted_limbs };
+
+            let (mut lo, mut hi) = (0u64, u32::MAX as u64);
+            while lo < hi {
+                let mid = (lo + hi + 1) / 2;
+                let trial = shifted.mul_u32(mid as u32);
+                if Self::cmp_mag(&trial.limbs, &rem_limbs) != core::cmp::Ordering::Greater {
+                    lo = mid;
+                } else {
+                    hi = mid - 1;
+                }
+            }
+            q_limbs[i] = lo as u32;
+            if lo > 0 {
+                let sub = shifted.mul_u32(lo as u32);
+                rem_limbs = Self::sub_mag(&rem_limbs, &sub.limbs);
+            }
+        }
+        Self::trim(&mut q_limbs);
+        (q_limbs, rem_limbs)
+    }
+
+    pub fn divmod(&self, other: &Self) -> Option<(Self, Self)> {
+        if other.is_zero() { return None; }
+        if self.is_zero()  { return Some((Self::zero(), Self::zero())); }
+
+        let (q_l, r_l) = Self::div_mag(&self.limbs, &other.limbs);
+        let mut q = Self { neg: self.neg != other.neg, limbs: q_l };
+        let mut r = Self { neg: self.neg, limbs: r_l };
+
+        if !r.is_zero() && r.neg != other.neg {
+            q = q.sub(&Self { neg: false, limbs: vec![1] });
+            r = r.add(other);
+        }
+        Some((q, r))
+    }
+
+    pub fn pow_u32(&self, mut exp: u32) -> Self {
+        if exp == 0 { return Self { neg: false, limbs: vec![1] }; }
+        let mut base = self.clone();
+        let mut result = Self { neg: false, limbs: vec![1] };
+        while exp > 0 {
+            if exp & 1 != 0 { result = result.mul(&base); }
+            base = base.mul(&base);
+            exp >>= 1;
+        }
+        result
+    }
+
+    pub fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        if self.neg != other.neg {
+            return if self.neg { core::cmp::Ordering::Less } else { core::cmp::Ordering::Greater };
+        }
+        let m = Self::cmp_mag(&self.limbs, &other.limbs);
+        if self.neg { m.reverse() } else { m }
+    }
+
+    pub fn to_decimal(&self) -> alloc::string::String {
+        if self.is_zero() { return alloc::string::String::from("0"); }
+        const BASE: u64 = 1_000_000_000;
+        let mut limbs = self.limbs.clone();
+        let mut groups: alloc::vec::Vec<u32> = alloc::vec::Vec::new();
+        while !limbs.is_empty() {
+            let mut rem = 0u64;
+            let mut nl: alloc::vec::Vec<u32> = alloc::vec::Vec::new();
+            for &l in limbs.iter().rev() {
+                let cur = (rem << 32) | l as u64;
+                let q = cur / BASE; rem = cur % BASE;
+                if !nl.is_empty() || q != 0 { nl.push(q as u32); }
+            }
+            nl.reverse(); groups.push(rem as u32); limbs = nl;
+        }
+        let mut s = alloc::string::String::new();
+        if self.neg { s.push('-'); }
+        for (i, &g) in groups.iter().rev().enumerate() {
+            if i == 0 { s.push_str(&alloc::format!("{}", g)); }
+            else { s.push_str(&alloc::format!("{:09}", g)); }
+        }
+        s
+    }
+}
+
+/*
 Heap Objects
     Str, List, Dict, Set, Tuple, Func, Range and Slice stored in arena.
 */
@@ -98,7 +344,8 @@ pub enum HeapObj {
     Func(usize, Vec<Val>),
     Range(i64, i64, i64),
     Slice(Val, Val, Val),
-    Type(String)
+    Type(String),
+    BigInt(BigInt)
 }
 
 /*
@@ -266,11 +513,12 @@ impl HeapPool {
         if v.is_int() { 1 } else if v.is_float() { 2 } else if v.is_bool() { 3 }
         else if v.is_none() { 4 } else if v.is_heap() {
             match self.objects[v.as_heap() as usize].as_ref() {
-                Some(HeapObj::Str(_))    => 5,  Some(HeapObj::List(_))  => 6,
-                Some(HeapObj::Dict(_))   => 7,  Some(HeapObj::Set(_))   => 8,
-                Some(HeapObj::Tuple(_))  => 9,  Some(HeapObj::Func(_, _))  => 10,
-                Some(HeapObj::Range(..)) => 11, Some(HeapObj::Slice(..))=> 12,
-                Some(HeapObj::Type(_))   => 13, None => 0,
+                Some(HeapObj::Str(_)) => 5, Some(HeapObj::List(_)) => 6,
+                Some(HeapObj::Dict(_)) => 7, Some(HeapObj::Set(_)) => 8,
+                Some(HeapObj::Tuple(_)) => 9, Some(HeapObj::Func(_, _)) => 10,
+                Some(HeapObj::Range(..)) => 11, Some(HeapObj::Slice(..)) => 12,
+                Some(HeapObj::Type(_)) => 13, Some(HeapObj::BigInt(_)) => 14, 
+                None => 0
             }
         } else { 0 }
     }

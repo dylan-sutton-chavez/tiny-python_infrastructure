@@ -36,6 +36,7 @@ impl<'a> VM<'a> {
         if v.is_float() { return v.as_float() != 0.0; }
         match self.heap.get(v) {
             HeapObj::Str(s) => !s.is_empty(),
+            HeapObj::BigInt(b) => !b.is_zero(),
             HeapObj::List(l) => !l.borrow().is_empty(),
             HeapObj::Tuple(t) => !t.is_empty(),
             HeapObj::Dict(d) => !d.borrow().is_empty(),
@@ -54,6 +55,7 @@ impl<'a> VM<'a> {
         else if v.is_none() { "NoneType" }
         else { match self.heap.get(v) {
             HeapObj::Str(_) => "str",
+            HeapObj::BigInt(_) => "int",
             HeapObj::List(_) => "list",
             HeapObj::Dict(_) => "dict",
             HeapObj::Set(_) => "set",
@@ -98,7 +100,8 @@ impl<'a> VM<'a> {
                 .map(|x| self.repr(*x)).collect::<Vec<_>>().join(", ")),
             HeapObj::Slice(s, e, st) => format!("slice({}, {}, {})",
                 self.display(*s), self.display(*e), self.display(*st)),
-            HeapObj::Type(name) => format!("<class '{}'>", name),
+            HeapObj::BigInt(b)  => b.to_decimal(),
+            HeapObj::Type(name) => format!("<class '{}'>", name)
         }
     }
 
@@ -108,29 +111,35 @@ impl<'a> VM<'a> {
     }
 
     pub fn eq_vals(&self, a: Val, b: Val) -> bool {
+        if let (Some(ba), Some(bb)) = (self.to_bigint(a), self.to_bigint(b)) {
+            return ba.cmp(&bb) == core::cmp::Ordering::Equal;
+        }
         if !a.is_heap() || !b.is_heap() {
-            if a.is_int()   && b.is_int()   { return a.as_int()   == b.as_int(); }
+            if a.is_int() && b.is_int() { return a.as_int() == b.as_int(); }
             if a.is_float() && b.is_float() { return a.as_float() == b.as_float(); }
-            if a.is_int()   && b.is_float() { return (a.as_int() as f64) == b.as_float(); }
-            if a.is_float() && b.is_int()   { return a.as_float() == (b.as_int() as f64); }
+            if a.is_int() && b.is_float() { return (a.as_int() as f64) == b.as_float(); }
+            if a.is_float() && b.is_int() { return a.as_float() == (b.as_int() as f64); }
             return a.0 == b.0;
         }
         let eq = |a,b| self.eq_vals(a,b);
         match (self.heap.get(a), self.heap.get(b)) {
-            (HeapObj::Str(x),   HeapObj::Str(y))   => x == y,
-            (HeapObj::Tuple(x), HeapObj::Tuple(y)) => eq_seq(x, y, eq),
-            (HeapObj::List(x),  HeapObj::List(y))  => eq_seq(&x.borrow(), &y.borrow(), eq),
-            (HeapObj::Set(x),   HeapObj::Set(y))   => eq_set(&x.borrow(), &y.borrow(), eq),
-            (HeapObj::Dict(x),  HeapObj::Dict(y))  => {
-                let xb = x.borrow();
-                let yb = y.borrow();
-                xb.len() == yb.len() && xb.iter().all(|(k, v)| yb.get(k).map_or(false, |v2| eq(*v, *v2)))
-            },
+            (HeapObj::BigInt(x), HeapObj::BigInt(y)) => x.cmp(y) == core::cmp::Ordering::Equal,
+            (HeapObj::Str(x), HeapObj::Str(y)) => x == y,
+            (HeapObj::Tuple(x), HeapObj::Tuple(y))  => eq_seq(x, y, eq),
+            (HeapObj::List(x), HeapObj::List(y)) => eq_seq(&x.borrow(), &y.borrow(), eq),
+            (HeapObj::Set(x), HeapObj::Set(y)) => eq_set(&x.borrow(), &y.borrow(), eq),
+            (HeapObj::Dict(x), HeapObj::Dict(y)) => {
+                let xb = x.borrow(); let yb = y.borrow();
+                xb.len() == yb.len() && xb.iter().all(|(k,v)| yb.get(k).map_or(false, |v2| eq(*v,*v2)))
+            }
             _ => false,
         }
     }
 
     pub fn lt_vals(&self, a: Val, b: Val) -> Result<bool, VmErr> {
+        if let (Some(ba), Some(bb)) = (self.to_bigint(a), self.to_bigint(b)) {
+            return Ok(ba.cmp(&bb) == core::cmp::Ordering::Less);
+        }
         if a.is_int() && b.is_int() { return Ok(a.as_int() < b.as_int()); }
         if a.is_float() && b.is_float() { return Ok(a.as_float() < b.as_float()); }
         if a.is_int() && b.is_float() { return Ok((a.as_int() as f64) < b.as_float()); }
@@ -159,65 +168,53 @@ impl<'a> VM<'a> {
     }
 
     pub fn add_vals(&mut self, a: Val, b: Val) -> Result<Val, VmErr> {
-        if a.is_int() && b.is_int() {
-            let r = a.as_int() as i128 + b.as_int() as i128;
-            return Ok(if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 {
-                Val::int(r as i64)
-            } else {
-                Val::float(r as f64)
-            });
+        if let (Some(ba), Some(bb)) = (self.to_bigint(a), self.to_bigint(b)) {
+            let result = ba.add(&bb);
+            return self.bigint_to_val(result);
         }
-        if a.is_numeric() && b.is_numeric() {
-            let fa = if a.is_int() { a.as_int() as f64 } else { a.as_float() };
-            let fb = if b.is_int() { b.as_int() as f64 } else { b.as_float() };
+        if (a.is_numeric() || self.is_int_type(a)) && (b.is_numeric() || self.is_int_type(b)) {
+            let fa = self.to_f64_coerce(a)?;
+            let fb = self.to_f64_coerce(b)?;
             return Ok(Val::float(fa + fb));
         }
-
         if a.is_heap() && b.is_heap() {
             match (self.heap.get(a), self.heap.get(b)) {
                 (HeapObj::Str(sa), HeapObj::Str(sb)) => {
                     return self.heap.alloc(HeapObj::Str(format!("{}{}", sa, sb)));
                 }
                 (HeapObj::List(va), HeapObj::List(vb)) => {
-                    let mut lst = va.borrow().clone();
-                    lst.extend_from_slice(&vb.borrow());
+                    let mut lst = va.borrow().clone(); lst.extend_from_slice(&vb.borrow());
                     return self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(lst))));
                 }
                 (HeapObj::Tuple(va), HeapObj::Tuple(vb)) => {
-                    let mut tup = va.clone();
-                    tup.extend_from_slice(vb);
+                    let mut tup = va.clone(); tup.extend_from_slice(vb);
                     return self.heap.alloc(HeapObj::Tuple(tup));
                 }
                 _ => {}
             }
         }
-
         Err(VmErr::Type(format!("'+' not supported between '{}' and '{}'", self.type_name(a), self.type_name(b))))
     }
 
-    pub fn sub_vals(&self, a: Val, b: Val) -> Result<Val, VmErr> {
-        if a.is_int() && b.is_int() {
-            let r = a.as_int() as i128 - b.as_int() as i128;
-            return Ok(if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 {
-                Val::int(r as i64)
-            } else {
-                Val::float(r as f64)
-            });
+    pub fn sub_vals(&mut self, a: Val, b: Val) -> Result<Val, VmErr> {
+        if let (Some(ba), Some(bb)) = (self.to_bigint(a), self.to_bigint(b)) {
+            let result = ba.sub(&bb);
+            return self.bigint_to_val(result);
         }
         if a.is_float() && b.is_float() { return Ok(Val::float(a.as_float() - b.as_float())); }
-        if a.is_int() && b.is_float() { return Ok(Val::float(a.as_int() as f64 - b.as_float())); }
-        if a.is_float() && b.is_int() { return Ok(Val::float(a.as_float() - b.as_int() as f64)); }
+        if a.is_int()   && b.is_float() { return Ok(Val::float(a.as_int() as f64 - b.as_float())); }
+        if a.is_float() && b.is_int()   { return Ok(Val::float(a.as_float() - b.as_int() as f64)); }
+        if self.is_int_type(a) || a.is_float() {
+            let fa = self.to_f64_coerce(a)?; let fb = self.to_f64_coerce(b)?;
+            return Ok(Val::float(fa - fb));
+        }
         Err(VmErr::Type(format!("'-' not supported between '{}' and '{}'", self.type_name(a), self.type_name(b))))
     }
 
     pub fn mul_vals(&mut self, a: Val, b: Val) -> Result<Val, VmErr> {
-        if a.is_int() && b.is_int() {
-            let r = a.as_int() as i128 * b.as_int() as i128;
-            return Ok(if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 {
-                Val::int(r as i64)
-            } else {
-                Val::float(r as f64)
-            });
+        if let (Some(ba), Some(bb)) = (self.to_bigint(a), self.to_bigint(b)) {
+            let result = ba.mul(&bb);
+            return self.bigint_to_val(result);
         }
         if a.is_float() && b.is_float() { return Ok(Val::float(a.as_float() * b.as_float())); }
         if a.is_int() && b.is_float() { return Ok(Val::float(a.as_int() as f64 * b.as_float())); }
@@ -238,13 +235,44 @@ impl<'a> VM<'a> {
     }
 
     pub fn div_vals(&self, a: Val, b: Val) -> Result<Val, VmErr> {
-        let bv = if b.is_int() { b.as_int() as f64 }
-            else if b.is_float() { b.as_float() }
-            else { return Err(VmErr::Type("'/' requires numeric operands".into())); };
+        let bv = self.to_f64_coerce(b).map_err(|_| VmErr::Type("'/' requires numeric operands".into()))?;
         if bv == 0.0 { return Err(VmErr::ZeroDiv); }
-        let av = if a.is_int() { a.as_int() as f64 }
-            else if a.is_float() { a.as_float() }
-            else { return Err(VmErr::Type("'/' requires numeric operands".into())); };
+        let av = self.to_f64_coerce(a).map_err(|_| VmErr::Type("'/' requires numeric operands".into()))?;
         Ok(Val::float(av / bv))
+    }
+
+    pub(crate) fn to_bigint(&self, v: Val) -> Option<BigInt> {
+        if v.is_int() { return Some(BigInt::from_i64(v.as_int())); }
+        if v.is_heap() {
+            if let HeapObj::BigInt(b) = self.heap.get(v) { return Some(b.clone()); }
+        }
+        None
+    }
+
+    pub(crate) fn is_int_type(&self, v: Val) -> bool {
+        v.is_int() || (v.is_heap() && matches!(self.heap.get(v), HeapObj::BigInt(_)))
+    }
+
+    pub(crate) fn bigint_to_val(&mut self, b: BigInt) -> Result<Val, VmErr> {
+        if let Some(i) = b.to_i64_checked() {
+            if i >= Val::INT_MIN && i <= Val::INT_MAX { return Ok(Val::int(i)); }
+        }
+        self.heap.alloc(HeapObj::BigInt(b))
+    }
+
+    fn to_f64_coerce(&self, v: Val) -> Result<f64, VmErr> {
+        if v.is_int()   { return Ok(v.as_int() as f64); }
+        if v.is_float() { return Ok(v.as_float()); }
+        if v.is_heap() {
+            if let HeapObj::BigInt(b) = self.heap.get(v) { return Ok(b.to_f64()); }
+        }
+        Err(VmErr::Type("numeric operand required".into()))
+    }
+
+    pub(crate) fn i128_to_val(&mut self, r: i128) -> Result<Val, VmErr> {
+        if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 {
+            return Ok(Val::int(r as i64));
+        }
+        self.heap.alloc(HeapObj::BigInt(BigInt::from_i128(r)))
     }
 }

@@ -67,6 +67,7 @@ Value
 pub enum Value {
     Str(String),
     Int(i64),
+    BigInt(String),
     Float(f64),
     Bool(bool),
     None,

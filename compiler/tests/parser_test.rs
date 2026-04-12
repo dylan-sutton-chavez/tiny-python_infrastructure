@@ -41,6 +41,7 @@ mod parser_test {
                     Value::Float(f) => f.to_string(),
                     Value::Bool(b) => b.to_string(),
                     Value::None => "None".to_string(),
+                    Value::BigInt(s) => s.clone(),
                 })
                 .collect();
 

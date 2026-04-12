@@ -128,7 +128,14 @@ impl<'a> VM<'a> {
 
     pub(crate) fn to_val(&mut self, v: &Value) -> Result<Val, VmErr> {
         Ok(match v {
-            Value::Int(i) => Val::int_checked(*i).unwrap_or_else(|| Val::float(*i as f64)),
+            Value::Int(i) => {
+                if *i >= Val::INT_MIN && *i <= Val::INT_MAX {
+                    Val::int(*i)
+                } else {
+                    self.heap.alloc(HeapObj::BigInt(BigInt::from_i64(*i)))?
+                }
+            }
+            Value::BigInt(s) => self.heap.alloc(HeapObj::BigInt(BigInt::from_decimal(s)))?,
             Value::Float(f) => Val::float(*f),
             Value::Bool(b) => Val::bool(*b),
             Value::None => Val::none(),
@@ -252,57 +259,64 @@ impl<'a> VM<'a> {
                 OpCode::Mul => { let (a, b) = self.pop2()?; cached_binop!(self.heap, rip, &ins.opcode, a, b, cache, adaptive); let v = self.mul_vals(a, b)?; self.push(v); }
                 OpCode::Div => { let (a, b) = self.pop2()?; let v = self.div_vals(a, b)?; self.push(v); }
                 OpCode::Mod => {
-                    let (a, b) = self.pop2()?;
-                    if !a.is_int() || !b.is_int() { return Err(VmErr::Type("mod requires int".into())); }
-                    let d = b.as_int(); if d == 0 { return Err(VmErr::ZeroDiv); }
-                    let r = a.as_int() % d;
-                    self.push(Val::int(if r != 0 && (r < 0) != (d < 0) { r + d } else { r }));
+                let (a, b) = self.pop2()?;
+                if let (Some(ba), Some(bb)) = (self.to_bigint(a), self.to_bigint(b)) {
+                    let (_, r) = ba.divmod(&bb).ok_or(VmErr::ZeroDiv)?;
+                    let v = self.bigint_to_val(r)?;
+                    self.push(v);
+                } else {
+                    return Err(VmErr::Type("mod requires int".into()));
+                }
                 }
                 OpCode::Pow => {
                     let (a, b) = self.pop2()?;
-                    let v = match (a.is_int(), b.is_int()) {
-                        (true, true) => {
+                    if let Some(ba) = self.to_bigint(a) {
+                        if b.is_int() {
                             let exp = b.as_int();
                             if exp >= 0 {
-                                match (a.as_int() as i128).checked_pow(exp as u32) {
-                                    Some(result) if result >= Val::INT_MIN as i128
-                                                && result <= Val::INT_MAX as i128 => Val::int(result as i64),
-                                    Some(result) => Val::float(result as f64),
-                                    None => Val::float(fpowi(a.as_int() as f64, exp as i32)),
-                                }
-                            } else {
-                                Val::float(fpowi(a.as_int() as f64, exp as i32))
+                                let result = ba.pow_u32(exp as u32);
+                                let v = self.bigint_to_val(result)?;
+                                self.push(v);
+                                continue;
                             }
+                            self.push(Val::float(fpowi(ba.to_f64(), exp as i32)));
+                            continue;
                         }
-                        _ => {
-                            let fa = if a.is_int() { a.as_int() as f64 } else if a.is_float() { a.as_float() }
-                                    else { return Err(VmErr::Type("'**' requires numeric operands".into())); };
-                            let fb = if b.is_int() { b.as_int() as f64 } else if b.is_float() { b.as_float() }
-                                    else { return Err(VmErr::Type("'**' requires numeric operands".into())); };
-                            Val::float(fpowf(fa, fb))
-                        }
-                    };
-                    self.push(v);
+                    }
+                    let fa = if a.is_int() { a.as_int() as f64 } else if a.is_float() { a.as_float() }
+                            else { return Err(VmErr::Type("'**' requires numeric operands".into())); };
+                    let fb = if b.is_int() { b.as_int() as f64 } else if b.is_float() { b.as_float() }
+                            else { return Err(VmErr::Type("'**' requires numeric operands".into())); };
+                    self.push(Val::float(fpowf(fa, fb)));
                 }
                 OpCode::FloorDiv => {
                     let (a, b) = self.pop2()?;
-                    if !a.is_int() || !b.is_int() { return Err(VmErr::Type("// requires int".into())); }
-                    let d = b.as_int(); if d == 0 { return Err(VmErr::ZeroDiv); }
-                    let (q, r) = (a.as_int() / d, a.as_int() % d);
-                    self.push(Val::int(if r != 0 && (r < 0) != (d < 0) { q - 1 } else { q }));
+                    if let (Some(ba), Some(bb)) = (self.to_bigint(a), self.to_bigint(b)) {
+                        let (q, _) = ba.divmod(&bb).ok_or(VmErr::ZeroDiv)?;
+                        let v = self.bigint_to_val(q)?;
+                        self.push(v);
+                    } else {
+                        return Err(VmErr::Type("// requires int".into()));
+                    }
                 }
                 OpCode::Minus => {
                     let v = self.pop()?;
                     if v.is_int() {
-                        let r = -(v.as_int() as i128);
-                        self.push(if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 {
-                            Val::int(r as i64)
+                        let pushed = self.i128_to_val(-(v.as_int() as i128))?;
+                        self.push(pushed);
+                    } else if v.is_float() {
+                        self.push(Val::float(-v.as_float()));
+                    } else if v.is_heap() {
+                        if let HeapObj::BigInt(b) = self.heap.get(v) {
+                            let neg = b.neg();
+                            let pushed = self.bigint_to_val(neg)?;
+                            self.push(pushed);
                         } else {
-                            Val::float(r as f64)
-                        });
+                            return Err(VmErr::Type("unary -".into()));
+                        }
+                    } else {
+                        return Err(VmErr::Type("unary -".into()));
                     }
-                    else if v.is_float() { self.push(Val::float(-v.as_float())); }
-                    else { return Err(VmErr::Type("unary -".into())); }
                 }
 
                 // Bitwise

@@ -1,6 +1,6 @@
 ## Edge Python
 
-Single-pass SSA compiler for Python on the edge computing: hand-written lexer, token-to-bytecode parser, adaptive virtual machine with NaN-boxed values, inline caching, template memoization, mark-sweep garbage collector, and configurable sandbox limits. Native and WASM targets.
+Single-pass SSA compiler for Python 3.13: hand-written lexer, token-to-bytecode parser, adaptive virtual machine with NaN-boxed values, inline caching, template memoization, mark-sweep garbage collector, and configurable sandbox limits. Native and WASM targets.
 
 ---
 
@@ -74,7 +74,7 @@ print(counter)
 
 ### Value Representation
 
-NaN-boxed 64-bit: integers are 48-bit signed ($\pm 2^{47}$), overflow promotes to float (Gudeman, 1993). Results exceeding 48-bit range lose integer precision, consistent with Lua 5.3 and PHP 8. Heap index is 28-bit ($2^{28}$ objects max, returns `MemoryError` beyond).
+NaN-boxed 64-bit: integers are 48-bit signed ($\pm 2^{47}$) for inline storage; values outside this range are heap-allocated as arbitrary-precision `BigInt` (base-$2^{32}$ limb array, sign-magnitude), matching Python's unbounded `int` semantics. True division (`/`) always yields `float`. Heap index is 28-bit ($2^{28}$ objects max, returns `MemoryError` beyond).
 
 ### Building for WebAssembly
 

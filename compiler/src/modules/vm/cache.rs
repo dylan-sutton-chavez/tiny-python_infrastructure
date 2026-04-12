@@ -71,6 +71,7 @@ fn eq_vals_heap(a: Val, b: Val, heap: &super::types::HeapPool) -> bool {
     if !a.is_heap() || !b.is_heap() { return a.0 == b.0; }
     // Content-based Val comparison for cache lookups, recursing into collections.
     match (heap.get(a), heap.get(b)) {
+        (HeapObj::BigInt(x), HeapObj::BigInt(y)) => x.cmp(y) == core::cmp::Ordering::Equal,
         (HeapObj::Str(x),   HeapObj::Str(y))   => x == y,
         (HeapObj::Tuple(x), HeapObj::Tuple(y)) => eq_seq(x, y, |a,b| eq_vals_heap(a,b,heap)),
         (HeapObj::List(x),  HeapObj::List(y))  => eq_seq(&x.borrow(), &y.borrow(), |a,b| eq_vals_heap(a,b,heap)),

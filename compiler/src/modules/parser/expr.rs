@@ -243,18 +243,57 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         let s = raw.replace('_', "");
         if kind == TokenType::Float {
             self.emit_const(Value::Float(s.parse().unwrap_or(0.0)));
-        } else {
-            let v = if let Some(s) = s.strip_prefix("0x").or(s.strip_prefix("0X")) {
-                i64::from_str_radix(s, 16).unwrap_or(0)
-            } else if let Some(s) = s.strip_prefix("0o").or(s.strip_prefix("0O")) {
-                i64::from_str_radix(s, 8).unwrap_or(0)
-            } else if let Some(s) = s.strip_prefix("0b").or(s.strip_prefix("0B")) {
-                i64::from_str_radix(s, 2).unwrap_or(0)
-            } else {
-                s.parse().unwrap_or(0)
-            };
-            self.emit_const(Value::Int(v));
+            return;
         }
+        let maybe: Option<i64> =
+            if let Some(h) = s.strip_prefix("0x").or(s.strip_prefix("0X")) {
+                i64::from_str_radix(h, 16).ok()
+            } else if let Some(o) = s.strip_prefix("0o").or(s.strip_prefix("0O")) {
+                i64::from_str_radix(o, 8).ok()
+            } else if let Some(b) = s.strip_prefix("0b").or(s.strip_prefix("0B")) {
+                i64::from_str_radix(b, 2).ok()
+            } else {
+                s.parse().ok()
+            };
+
+        match maybe {
+            Some(v) => self.emit_const(Value::Int(v)),
+            None => {
+                let dec =
+                    if let Some(h) = s.strip_prefix("0x").or(s.strip_prefix("0X")) {
+                        Self::big_base_to_dec(h, 16)
+                    } else if let Some(o) = s.strip_prefix("0o").or(s.strip_prefix("0O")) {
+                        Self::big_base_to_dec(o, 8)
+                    } else if let Some(b) = s.strip_prefix("0b").or(s.strip_prefix("0B")) {
+                        Self::big_base_to_dec(b, 2)
+                    } else {
+                        s
+                    };
+                self.emit_const(Value::BigInt(dec));
+            }
+        }
+    }
+
+    fn big_base_to_dec(s: &str, base: u32) -> String {
+        const DEC: u64 = 1_000_000_000;
+        let mut limbs: Vec<u32> = vec![0];
+        for c in s.chars() {
+            let d = c.to_digit(base).unwrap_or(0) as u64;
+            let mut carry = d;
+            for limb in limbs.iter_mut() {
+                let cur = *limb as u64 * base as u64 + carry;
+                *limb = (cur % DEC) as u32;
+                carry = cur / DEC;
+            }
+            if carry != 0 { limbs.push(carry as u32); }
+        }
+        let mut out = String::new();
+        for (i, &l) in limbs.iter().rev().enumerate() {
+            if i == 0 { out.push_str(&format!("{}", l)); }
+            else { out.push_str(&format!("{:09}", l)); }
+        }
+        if out.is_empty() { out.push('0'); }
+        out
     }
 
     /*
