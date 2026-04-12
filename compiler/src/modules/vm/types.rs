@@ -242,7 +242,6 @@ impl BigInt {
         let q_len = num.len() - den.len() + 1;
         let mut rem_limbs = num.to_vec();
         let mut q_limbs = vec![0u32; q_len];
-        let den_b = Self { neg: false, limbs: den.to_vec() };
 
         for i in (0..q_len).rev() {
             let mut shifted_limbs = vec![0u32; i];
