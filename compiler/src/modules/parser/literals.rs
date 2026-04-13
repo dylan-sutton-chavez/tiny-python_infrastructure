@@ -319,7 +319,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
         let saved_chunk = core::mem::take(&mut self.chunk);
         let saved_ver   = core::mem::take(&mut self.ssa_versions);
-        self.ssa_versions = HashMap::new();
+        self.ssa_versions = saved_ver.clone();
 
         self.compile_block();
 
@@ -426,7 +426,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         let saved_chunk = core::mem::take(&mut self.chunk);
         let saved_ver   = core::mem::take(&mut self.ssa_versions);
 
-        self.ssa_versions = HashMap::new();
+        self.ssa_versions = saved_ver.clone();
         for p in params {
             self.ssa_versions.insert(p.clone(), 0);
         }

@@ -370,8 +370,8 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.eat(TokenType::Colon);
 
         let saved_chunk = core::mem::take(&mut self.chunk);
-        let saved_ver   = core::mem::take(&mut self.ssa_versions);
-        self.ssa_versions = hashbrown::HashMap::new();
+        let saved_ver = core::mem::take(&mut self.ssa_versions);
+        self.ssa_versions = saved_ver.clone();
         for p in &params {
             self.ssa_versions.insert(p.clone(), 0);
         }

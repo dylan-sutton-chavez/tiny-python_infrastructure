@@ -540,10 +540,8 @@ impl<'a> VM<'a> {
                     }
                     for (si, sv) in slots.iter().enumerate() {
                         if let Some(v) = sv {
-                            if v.is_heap() {
-                                if let HeapObj::Func(_, _) = self.heap.get(*v) {
-                                    if let Some(&bs) = body_map.get(chunk.names[si].as_str()) { fn_slots[bs] = Some(*v); }
-                                }
+                            if let Some(&bs) = body_map.get(chunk.names[si].as_str()) {
+                                if fn_slots[bs].is_none() { fn_slots[bs] = Some(*v); }
                             }
                         }
                     }

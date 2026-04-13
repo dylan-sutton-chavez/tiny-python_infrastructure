@@ -211,5 +211,6 @@
   {"src": "print(abs(-2**100))", "output": ["1267650600228229401496703205376"], "result": "None"},
   {"src": "print(int(2**100))", "output": ["1267650600228229401496703205376"], "result": "None"},
   {"src": "x = 99999999999999999999\nprint(x)", "output": ["99999999999999999999"], "result": "None"},
-  {"src": "scale = 1\nfor _ in range(110):\n    scale = scale * 10\nterm_a = scale // 5\nprint(term_a)", "output": ["20000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"], "result": "None"}
+  {"src": "scale = 1\nfor _ in range(110):\n    scale = scale * 10\nterm_a = scale // 5\nprint(term_a)", "output": ["20000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"], "result": "None"},
+  {"src": "x = 42\ndef f():\n    return x\nprint(f())", "output": ["42"], "result": "None"}
 ]
