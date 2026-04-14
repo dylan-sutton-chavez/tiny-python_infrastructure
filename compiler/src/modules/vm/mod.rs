@@ -203,7 +203,17 @@ impl<'a> VM<'a> {
         let mut cache = Box::new(InlineCache::new(n));
         let mut adaptive = Box::new(Adaptive::new(n));
         let mut ip = 0usize;
-        let mut phi_idx = 0usize;
+
+        let mut phi_map = vec![0usize; n];
+        {
+            let mut pidx = 0usize;
+            for (i, ins) in chunk.instructions.iter().enumerate() {
+                if ins.opcode == OpCode::Phi {
+                    phi_map[i] = pidx;
+                    pidx += 1;
+                }
+            }
+        }
 
         let prev_slots = &chunk.prev_slots; // SSA alias table: pre-computed in SSAChunk, maps each versioned slot to its predecessor.
 
@@ -477,9 +487,14 @@ impl<'a> VM<'a> {
 
                 OpCode::Phi => {
                     let target = op as usize;
-                    let (ia, ib) = chunk.phi_sources[phi_idx]; phi_idx += 1;
+                    let (ia, ib) = chunk.phi_sources[phi_map[rip]];
                     let val = slots[ia as usize].or(slots[ib as usize]).unwrap_or(Val::none());
                     slots[target] = Some(val);
+                    let mut cur = target;
+                    while let Some(prev) = prev_slots.get(cur).and_then(|p| *p) {
+                        slots[prev as usize] = Some(val);
+                        cur = prev as usize;
+                    }
                 }
 
                 // Functions
