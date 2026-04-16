@@ -85,11 +85,9 @@ impl<'a> VM<'a> {
         let o = self.pop()?;
         if o.is_heap() {
             if let HeapObj::BigInt(b) = self.heap.get(o) {
-                let pushed = {
-                    let b = b.clone();
-                    self.bigint_to_val(b)?
-                };
-                self.push(pushed);
+                let b = b.clone();
+                let v = self.bigint_to_val(b)?;
+                self.push(v);
                 return Ok(());
             }
         }
@@ -203,11 +201,12 @@ impl<'a> VM<'a> {
     */
     
     pub fn call_min(&mut self, op: u16) -> Result<(), VmErr> {
-        let args = self.pop_n(op as usize)?;
+        let args: Vec<Val> = self.pop_n(op as usize)?;
         let items = self.unwrap_single_iterable(args)?;
         if items.is_empty() { return Err(VmErr::Type("min() arg is empty sequence".into())); }
-        let mut m = items[0];
-        for x in &items[1..] { if self.lt_vals(*x, m)? { m = *x; } }
+        let m = items[1..].iter().try_fold(items[0], |m, &x| {
+            self.lt_vals(x, m).map(|lt| if lt { x } else { m })
+        })?;
         self.push(m); Ok(())
     }
 
@@ -215,8 +214,9 @@ impl<'a> VM<'a> {
         let args = self.pop_n(op as usize)?;
         let items = self.unwrap_single_iterable(args)?;
         if items.is_empty() { return Err(VmErr::Type("max() arg is empty sequence".into())); }
-        let mut m = items[0];
-        for x in &items[1..] { if self.lt_vals(m, *x)? { m = *x; } }
+        let m = items[1..].iter().try_fold(items[0], |m, &x| {
+            self.lt_vals(m, x).map(|lt| if lt { x } else { m })
+        })?;
         self.push(m); Ok(())
     }
 
@@ -363,7 +363,7 @@ impl<'a> VM<'a> {
 
     /*
     Iterable Unwrap
-        If single-arg is list/tuple, returns its items; otherwise returns args as-is.
+        If single-arg is list/tuple/set, returns its items; otherwise returns args as-is.
     */
     
     fn unwrap_single_iterable(&self, args: Vec<Val>) -> Result<Vec<Val>, VmErr> {
@@ -371,6 +371,7 @@ impl<'a> VM<'a> {
             match self.heap.get(args[0]) {
                 HeapObj::List(v) => return Ok(v.borrow().clone()),
                 HeapObj::Tuple(v) => return Ok(v.clone()),
+                HeapObj::Set(v) => return Ok(v.borrow().clone()),
                 _ => {}
             }
         }
