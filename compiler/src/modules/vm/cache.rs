@@ -24,7 +24,7 @@ Opcode Cache
 */
 
 const CACHE_THRESH: u8 = 8;
-const HOT_THRESH: u32 = 1_000;
+const HOT_THRESH: u32 = 517;
 
 #[derive(Clone)]
 struct CacheSlot {
