@@ -1,6 +1,5 @@
 // vm/cache.rs
-
-use super::types::{Val, DictMap};
+use super::types::{Val, eq_vals_deep};
 use crate::modules::parser::OpCode;
 use alloc::{vec, vec::Vec};
 use hashbrown::HashMap;
@@ -20,41 +19,65 @@ pub enum FastOp {
 }
 
 /*
-Inline Cache
-    Per-frame type pair recorder that promotes stable ops after threshold hits.
+Opcode Cache
+    Per-frame slot combining inline-cache type recording with adaptive hot-path rewriting. Collocates both tiers per instruction to avoid split cache lines.
 */
 
 const CACHE_THRESH: u8 = 8;
+const HOT_THRESH: u32 = 1_000;
 
 #[derive(Clone)]
-struct Slot { hits: u8, ta: u8, tb: u8, fast: Option<FastOp> }
-impl Slot { fn empty() -> Self { Self { hits: 0, ta: 0, tb: 0, fast: None } } }
+struct CacheSlot {
+    ic_hits: u8, ta: u8, tb: u8,
+    ic_fast: Option<FastOp>,
+    hot_count: u32,
+    hot_fast: Option<FastOp>,
+}
+impl CacheSlot { fn empty() -> Self { Self { ic_hits: 0, ta: 0, tb: 0, ic_fast: None, hot_count: 0, hot_fast: None } } }
 
-pub struct InlineCache { slots: Vec<Slot> }
+pub struct OpcodeCache { slots: Vec<CacheSlot> }
 
-impl InlineCache {
-    pub fn new(n: usize) -> Self { Self { slots: vec![Slot::empty(); n] } }
+impl OpcodeCache {
+    pub fn new(n: usize) -> Self { Self { slots: vec![CacheSlot::empty(); n] } }
 
-    pub fn record(&mut self, ip: usize, opcode: &OpCode, ta: u8, tb: u8) -> Option<FastOp> {
-        let s = self.slots.get_mut(ip)?;
+    pub fn record(&mut self, ip: usize, opcode: &OpCode, ta: u8, tb: u8) {
+        let Some(s) = self.slots.get_mut(ip) else { return };
         if s.ta == ta && s.tb == tb {
-            s.hits = s.hits.saturating_add(1);
-            if s.hits >= CACHE_THRESH && s.fast.is_none() {
-                s.fast = match (opcode, ta, tb) {
-                    (OpCode::Add, 1, 1) => Some(FastOp::AddInt), (OpCode::Add, 2, 2) => Some(FastOp::AddFloat),
-                    (OpCode::Add, 5, 5) => Some(FastOp::AddStr), (OpCode::Sub, 1, 1) => Some(FastOp::SubInt),
-                    (OpCode::Sub, 2, 2) => Some(FastOp::SubFloat), (OpCode::Mul, 1, 1) => Some(FastOp::MulInt),
-                    (OpCode::Mul, 2, 2) => Some(FastOp::MulFloat), (OpCode::Lt, 1, 1) => Some(FastOp::LtInt),
-                    (OpCode::Lt, 2, 2) => Some(FastOp::LtFloat), (OpCode::Eq, 1, 1) => Some(FastOp::EqInt),
-                    (OpCode::Eq, 5, 5) => Some(FastOp::EqStr), _ => None,
-                };
+            s.ic_hits = s.ic_hits.saturating_add(1);
+            if s.ic_hits >= CACHE_THRESH && s.ic_fast.is_none() {
+                s.ic_fast = Self::specialize(opcode, ta, tb);
             }
-        } else { *s = Slot { hits: 1, ta, tb, fast: None }; }
-        s.fast
+            if s.ic_fast.is_some() {
+                s.hot_count += 1;
+                if s.hot_count == HOT_THRESH { s.hot_fast = s.ic_fast; }
+            }
+        } else {
+            *s = CacheSlot { ta, tb, ic_hits: 1, ..CacheSlot::empty() };
+        }
     }
 
-    pub fn get(&self, ip: usize) -> Option<FastOp> { self.slots.get(ip).and_then(|s| s.fast) }
-    pub fn invalidate(&mut self, ip: usize) { if let Some(s) = self.slots.get_mut(ip) { *s = Slot::empty(); } }
+    #[inline] pub fn get_fast(&self, ip: usize) -> Option<FastOp> {
+        self.slots.get(ip).and_then(|s| s.hot_fast.or(s.ic_fast))
+    }
+
+    pub fn invalidate(&mut self, ip: usize) {
+        if let Some(s) = self.slots.get_mut(ip) { *s = CacheSlot::empty(); }
+    }
+
+    pub fn specialized_count(&self) -> usize {
+        self.slots.iter().filter(|s| s.hot_fast.is_some()).count()
+    }
+
+    fn specialize(opcode: &OpCode, ta: u8, tb: u8) -> Option<FastOp> {
+        match (opcode, ta, tb) {
+            (OpCode::Add, 1, 1) => Some(FastOp::AddInt), (OpCode::Add, 2, 2) => Some(FastOp::AddFloat),
+            (OpCode::Add, 5, 5) => Some(FastOp::AddStr), (OpCode::Sub, 1, 1) => Some(FastOp::SubInt),
+            (OpCode::Sub, 2, 2) => Some(FastOp::SubFloat), (OpCode::Mul, 1, 1) => Some(FastOp::MulInt),
+            (OpCode::Mul, 2, 2) => Some(FastOp::MulFloat), (OpCode::Lt, 1, 1) => Some(FastOp::LtInt),
+            (OpCode::Lt, 2, 2) => Some(FastOp::LtFloat), (OpCode::Eq, 1, 1) => Some(FastOp::EqInt),
+            (OpCode::Eq, 5, 5) => Some(FastOp::EqStr), _ => None,
+        }
+    }
 }
 
 /*
@@ -66,47 +89,17 @@ const TPL_THRESH: u32 = 4;
 
 struct TplEntry { args: Vec<Val>, result: Val, hits: u32 }
 
-fn eq_vals_heap(a: Val, b: Val, heap: &super::types::HeapPool) -> bool {
-    use super::types::HeapObj;
-    if !a.is_heap() || !b.is_heap() { return a.0 == b.0; }
-    // Content-based Val comparison for cache lookups, recursing into collections.
-    match (heap.get(a), heap.get(b)) {
-        (HeapObj::BigInt(x), HeapObj::BigInt(y)) => x.cmp(y) == core::cmp::Ordering::Equal,
-        (HeapObj::Str(x),   HeapObj::Str(y))   => x == y,
-        (HeapObj::Tuple(x), HeapObj::Tuple(y)) => eq_seq(x, y, |a,b| eq_vals_heap(a,b,heap)),
-        (HeapObj::List(x),  HeapObj::List(y))  => eq_seq(&x.borrow(), &y.borrow(), |a,b| eq_vals_heap(a,b,heap)),
-        (HeapObj::Set(x),   HeapObj::Set(y))   => eq_set(&x.borrow(), &y.borrow(), |a,b| eq_vals_heap(a,b,heap)),
-        (HeapObj::Dict(x),  HeapObj::Dict(y))  => eq_dict(&x.borrow(), &y.borrow(), |a,b| eq_vals_heap(a,b,heap)),
-        _ => false
-    }
-}
-
-pub(super) fn eq_seq(a: &[Val], b: &[Val], eq: impl Fn(Val,Val)->bool) -> bool {
-    a.len() == b.len() && a.iter().zip(b).all(|(x,y)| eq(*x,*y))
-}
-pub(super) fn eq_set(a: &[Val], b: &[Val], eq: impl Fn(Val,Val)->bool) -> bool {
-    a.len() == b.len() && a.iter().all(|x| b.iter().any(|y| eq(*x,*y)))
-}
-pub(super) fn eq_dict(a: &DictMap, b: &DictMap, eq: impl Fn(Val,Val)->bool) -> bool {
-    a.len() == b.len() && a.iter().all(|(k,v)| b.get(k).map_or(false, |v2| eq(*v, *v2)))
-}
-
 pub struct Templates { map: HashMap<usize, Vec<TplEntry>> }
 
 impl Templates {
     pub fn new() -> Self { Self { map: HashMap::new() } }
-
-    /*
-    Value-Equality Lookup
-        Finds cached result by content comparison instead of pointer identity.
-    */
 
     pub fn lookup(&self, fi: usize, args: &[Val], heap: &super::types::HeapPool) -> Option<Val> {
         self.map.get(&fi)?.iter()
             .find(|e| {
                 e.hits >= TPL_THRESH
                 && e.args.len() == args.len()
-                && e.args.iter().zip(args).all(|(a, b)| eq_vals_heap(*a, *b, heap))
+                && e.args.iter().zip(args).all(|(a, b)| eq_vals_deep(*a, *b, heap))
             })
             .map(|e| e.result)
     }
@@ -115,7 +108,7 @@ impl Templates {
         let v = self.map.entry(fi).or_default();
         if let Some(e) = v.iter_mut().find(|e| {
             e.args.len() == args.len()
-            && e.args.iter().zip(args).all(|(a, b)| eq_vals_heap(*a, *b, heap))
+            && e.args.iter().zip(args).all(|(a, b)| eq_vals_deep(*a, *b, heap))
         }) {
             e.hits += 1; e.result = result;
         } else if v.len() < 256 {
@@ -126,29 +119,4 @@ impl Templates {
     pub fn count(&self) -> usize {
         self.map.values().flat_map(|v| v.iter()).filter(|e| e.hits >= TPL_THRESH).count()
     }
-}
-
-/*
-Adaptive Engine
-    Rewrites hot instructions with specialized overlays after one thousand executions.
-*/
-
-const HOT_THRESH: u32 = 1_000;
-
-pub struct Adaptive { counts: Vec<u32>, overlay: Vec<Option<FastOp>> }
-
-impl Adaptive {
-    pub fn new(n: usize) -> Self { Self { counts: vec![0; n], overlay: vec![None; n] } }
-    pub fn tick(&mut self, ip: usize) -> bool {
-        if let Some(c) = self.counts.get_mut(ip) { *c += 1; *c == HOT_THRESH } else { false }
-    }
-    pub fn rewrite(&mut self, ip: usize, f: FastOp) {
-        if let Some(s) = self.overlay.get_mut(ip) { *s = Some(f); }
-    }
-    pub fn get(&self, ip: usize) -> Option<FastOp> { self.overlay.get(ip).and_then(|o| *o) }
-    pub fn deopt(&mut self, ip: usize) {
-        if let Some(s) = self.overlay.get_mut(ip) { *s = None; }
-        if let Some(c) = self.counts.get_mut(ip) { *c = 0; }
-    }
-    pub fn count(&self) -> usize { self.overlay.iter().filter(|o| o.is_some()).count() }
 }

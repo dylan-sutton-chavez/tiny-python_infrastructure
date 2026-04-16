@@ -9,7 +9,7 @@ mod collections;
 pub use types::{Val, HeapObj, HeapPool, VmErr, Limits};
 
 use types::*;
-use cache::*;
+use cache::{OpcodeCache, FastOp, Templates};
 use ops::cached_binop;
 
 use crate::modules::parser::{OpCode, SSAChunk, Value, BUILTIN_TYPES};
@@ -79,7 +79,7 @@ impl<'a> VM<'a> {
             HeapObj::Range(s, e, st) => IterFrame::Range { cur: *s, end: *e, step: *st },
             HeapObj::List(v)  => IterFrame::Seq { items: v.borrow().clone(), idx: 0 },
             HeapObj::Tuple(v) => IterFrame::Seq { items: v.clone(), idx: 0 },
-            HeapObj::Dict(p)  => IterFrame::Seq { items: p.borrow().keys().copied().collect(), idx: 0 },
+            HeapObj::Dict(p)  => IterFrame::Seq { items: p.borrow().keys().collect(), idx: 0 },
             HeapObj::Set(s)   => IterFrame::Seq { items: s.borrow().clone(), idx: 0 },
             HeapObj::Str(s) => {
                 let chars: Vec<char> = s.chars().collect();
@@ -279,13 +279,13 @@ impl<'a> VM<'a> {
         Fetches instructions by IP, routes each opcode to its handler arm.
     */
 
-    pub(crate) fn exec(&mut self, chunk: &SSAChunk, slots: &mut Vec<Option<Val>>) -> Result<Val, VmErr> {
+pub(crate) fn exec(&mut self, chunk: &SSAChunk, slots: &mut Vec<Option<Val>>) -> Result<Val, VmErr> {
         let slots_base = self.live_slots.len();
         let n = chunk.instructions.len();
 
-        // Box per-frame caches to reduce stack frame size in debug builds
-        let mut cache = Box::new(InlineCache::new(n));
-        let mut adaptive = Box::new(Adaptive::new(n));
+        // Box per-frame cache to reduce stack frame size in debug builds
+        let mut cache = Box::new(OpcodeCache::new(n));
+
         let mut ip = 0usize;
 
         let mut phi_map = vec![0usize; n];
@@ -299,17 +299,13 @@ impl<'a> VM<'a> {
             }
         }
 
-        let prev_slots = &chunk.prev_slots; // SSA alias table: pre-computed in SSAChunk, maps each versioned slot to its predecessor.
+        let prev_slots = &chunk.prev_slots; // SSA alias table
 
         loop {
             if ip >= n { return Ok(Val::none()); }
 
-            // Adaptive / inline cache fast paths
-            if let Some(fast) = adaptive.get(ip) {
-                ip += 1;
-                if self.exec_fast(fast)? { continue; }
-                adaptive.deopt(ip - 1); cache.invalidate(ip - 1); ip -= 1;
-            } else if let Some(fast) = cache.get(ip) {
+            // Fast path: hot adaptive overlay first, then inline cache promotion
+            if let Some(fast) = cache.get_fast(ip) {
                 ip += 1;
                 if self.exec_fast(fast)? { continue; }
                 cache.invalidate(ip - 1); ip -= 1;
@@ -327,7 +323,6 @@ impl<'a> VM<'a> {
             match ins.opcode {
 
                 // Loads
-
                 OpCode::LoadConst => { let v = self.to_val(&chunk.constants[op as usize])?; self.push(v); }
                 OpCode::LoadName => { let slot = op as usize; self.push(slots[slot].ok_or_else(|| VmErr::Name(chunk.names[slot].clone()))?); }
                 OpCode::StoreName => {
@@ -337,7 +332,7 @@ impl<'a> VM<'a> {
                     if let Some(prev) = prev_slots[slot] { slots[prev as usize] = Some(v); }
 
                     if self.heap.needs_gc() {
-                        self.collect(slots); // Garbage collector safepoint; store is the only opcode that grows the heap unboundedly
+                        self.collect(slots);
                     }
                 }
                 OpCode::LoadTrue => self.push(Val::bool(true)),
@@ -346,20 +341,20 @@ impl<'a> VM<'a> {
                 OpCode::LoadEllipsis => { let v = self.heap.alloc(HeapObj::Str("...".into()))?; self.push(v); }
 
                 // Arithmetic (cached)
-
-                OpCode::Add => { let (a, b) = self.pop2()?; cached_binop!(self.heap, rip, &ins.opcode, a, b, cache, adaptive); let v = self.add_vals(a, b)?; self.push(v); }
-                OpCode::Sub => { let (a, b) = self.pop2()?; cached_binop!(self.heap, rip, &ins.opcode, a, b, cache, adaptive); let v = self.sub_vals(a, b)?; self.push(v); }
-                OpCode::Mul => { let (a, b) = self.pop2()?; cached_binop!(self.heap, rip, &ins.opcode, a, b, cache, adaptive); let v = self.mul_vals(a, b)?; self.push(v); }
+                OpCode::Add => { let (a, b) = self.pop2()?; cached_binop!(self.heap, rip, &ins.opcode, a, b, cache); let v = self.add_vals(a, b)?; self.push(v); }
+                OpCode::Sub => { let (a, b) = self.pop2()?; cached_binop!(self.heap, rip, &ins.opcode, a, b, cache); let v = self.sub_vals(a, b)?; self.push(v); }
+                OpCode::Mul => { let (a, b) = self.pop2()?; cached_binop!(self.heap, rip, &ins.opcode, a, b, cache); let v = self.mul_vals(a, b)?; self.push(v); }
                 OpCode::Div => { let (a, b) = self.pop2()?; let v = self.div_vals(a, b)?; self.push(v); }
+                
                 OpCode::Mod => {
-                let (a, b) = self.pop2()?;
-                if let (Some(ba), Some(bb)) = (self.to_bigint(a), self.to_bigint(b)) {
-                    let (_, r) = ba.divmod(&bb).ok_or(VmErr::ZeroDiv)?;
-                    let v = self.bigint_to_val(r)?;
-                    self.push(v);
-                } else {
-                    return Err(VmErr::Type("mod requires int".into()));
-                }
+                    let (a, b) = self.pop2()?;
+                    if let (Some(ba), Some(bb)) = (self.to_bigint(a), self.to_bigint(b)) {
+                        let (_, r) = ba.divmod(&bb).ok_or(VmErr::ZeroDiv)?;
+                        let v = self.bigint_to_val(r)?;
+                        self.push(v);
+                    } else {
+                        return Err(VmErr::Type("mod requires int".into()));
+                    }
                 }
                 OpCode::Pow => {
                     let (a, b) = self.pop2()?;
@@ -423,9 +418,9 @@ impl<'a> VM<'a> {
 
                 // Comparison (cached)
 
-                OpCode::Eq => { let (a, b) = self.pop2()?; cached_binop!(self.heap, rip, &ins.opcode, a, b, cache, adaptive); self.push(Val::bool(self.eq_vals(a, b))); }
+                OpCode::Eq => { let (a, b) = self.pop2()?; cached_binop!(self.heap, rip, &ins.opcode, a, b, cache); self.push(Val::bool(self.eq_vals(a, b))); }
+                OpCode::Lt => { let (a, b) = self.pop2()?; cached_binop!(self.heap, rip, &ins.opcode, a, b, cache); let r = self.lt_vals(a, b)?; self.push(Val::bool(r)); }
                 OpCode::NotEq => { let (a,b) = self.pop2()?; self.push(Val::bool(!self.eq_vals(a,b))); }
-                OpCode::Lt => { let (a, b) = self.pop2()?; cached_binop!(self.heap, rip, &ins.opcode, a, b, cache, adaptive); let r = self.lt_vals(a, b)?; self.push(Val::bool(r)); }
                 OpCode::Gt => { let (a,b) = self.pop2()?; let r=self.lt_vals(b,a)?; self.push(Val::bool(r)); }
                 OpCode::LtEq => { let (a,b) = self.pop2()?; let r=self.lt_vals(b,a)?; self.push(Val::bool(!r)); }
                 OpCode::GtEq => { let (a,b) = self.pop2()?; let r=self.lt_vals(a,b)?; self.push(Val::bool(!r)); }

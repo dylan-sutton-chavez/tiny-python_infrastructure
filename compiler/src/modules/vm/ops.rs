@@ -3,7 +3,6 @@
 use super::types::*;
 use alloc::{string::{String}, vec::Vec, rc::Rc, format};
 use core::cell::RefCell;
-use super::cache::{eq_seq, eq_set};
 
 /*
 Cache Binop Macro
@@ -11,12 +10,10 @@ Cache Binop Macro
 */
 
 macro_rules! cached_binop {
-    ($heap:expr, $rip:expr, $opcode:expr, $a:expr, $b:expr, $cache:expr, $adaptive:expr) => {{
+    ($heap:expr, $rip:expr, $opcode:expr, $a:expr, $b:expr, $cache:expr) => {{
         let ta = $heap.val_tag($a);
         let tb = $heap.val_tag($b);
-        if let Some(f) = $cache.record($rip, $opcode, ta, tb) {
-            if $adaptive.tick($rip) { $adaptive.rewrite($rip, f); }
-        }
+        $cache.record($rip, $opcode, ta, tb);
     }};
 }
 pub(crate) use cached_binop;
@@ -94,7 +91,7 @@ impl<'a> VM<'a> {
             HeapObj::List(l) => format!("[{}]", l.borrow().iter().map(|x| self.repr(*x)).collect::<Vec<_>>().join(", ")),
             HeapObj::Tuple(t) => if t.len() == 1 { format!("({},)", self.repr(t[0])) } else { format!("({})", t.iter().map(|x| self.repr(*x)).collect::<Vec<_>>().join(", ")) },
             HeapObj::Dict(d) => format!("{{{}}}", d.borrow().iter()
-                .map(|(k,v)| format!("{}: {}", self.repr(*k), self.repr(*v)))
+                .map(|(k,v)| format!("{}: {}", self.repr(k), self.repr(v)))
                 .collect::<Vec<_>>().join(", ")),
             HeapObj::Set(s) => format!("{{{}}}", s.borrow().iter()
                 .map(|x| self.repr(*x)).collect::<Vec<_>>().join(", ")),
@@ -111,29 +108,7 @@ impl<'a> VM<'a> {
     }
 
     pub fn eq_vals(&self, a: Val, b: Val) -> bool {
-        if let (Some(ba), Some(bb)) = (self.to_bigint(a), self.to_bigint(b)) {
-            return ba.cmp(&bb) == core::cmp::Ordering::Equal;
-        }
-        if !a.is_heap() || !b.is_heap() {
-            if a.is_int() && b.is_int() { return a.as_int() == b.as_int(); }
-            if a.is_float() && b.is_float() { return a.as_float() == b.as_float(); }
-            if a.is_int() && b.is_float() { return (a.as_int() as f64) == b.as_float(); }
-            if a.is_float() && b.is_int() { return a.as_float() == (b.as_int() as f64); }
-            return a.0 == b.0;
-        }
-        let eq = |a,b| self.eq_vals(a,b);
-        match (self.heap.get(a), self.heap.get(b)) {
-            (HeapObj::BigInt(x), HeapObj::BigInt(y)) => x.cmp(y) == core::cmp::Ordering::Equal,
-            (HeapObj::Str(x), HeapObj::Str(y)) => x == y,
-            (HeapObj::Tuple(x), HeapObj::Tuple(y))  => eq_seq(x, y, eq),
-            (HeapObj::List(x), HeapObj::List(y)) => eq_seq(&x.borrow(), &y.borrow(), eq),
-            (HeapObj::Set(x), HeapObj::Set(y)) => eq_set(&x.borrow(), &y.borrow(), eq),
-            (HeapObj::Dict(x), HeapObj::Dict(y)) => {
-                let xb = x.borrow(); let yb = y.borrow();
-                xb.len() == yb.len() && xb.iter().all(|(k,v)| yb.get(k).map_or(false, |v2| eq(*v,*v2)))
-            }
-            _ => false,
-        }
+        super::types::eq_vals_deep(a, b, &self.heap)
     }
 
     pub fn lt_vals(&self, a: Val, b: Val) -> Result<bool, VmErr> {
@@ -169,12 +144,9 @@ impl<'a> VM<'a> {
 
     pub fn add_vals(&mut self, a: Val, b: Val) -> Result<Val, VmErr> {
         if let (Some(ba), Some(bb)) = (self.to_bigint(a), self.to_bigint(b)) {
-            let result = ba.add(&bb);
-            return self.bigint_to_val(result);
+            return self.bigint_to_val(ba.add(&bb));
         }
-        if (a.is_numeric() || self.is_int_type(a)) && (b.is_numeric() || self.is_int_type(b)) {
-            let fa = self.to_f64_coerce(a)?;
-            let fb = self.to_f64_coerce(b)?;
+        if let (Ok(fa), Ok(fb)) = (self.to_f64_coerce(a), self.to_f64_coerce(b)) {
             return Ok(Val::float(fa + fb));
         }
         if a.is_heap() && b.is_heap() {
@@ -198,14 +170,9 @@ impl<'a> VM<'a> {
 
     pub fn sub_vals(&mut self, a: Val, b: Val) -> Result<Val, VmErr> {
         if let (Some(ba), Some(bb)) = (self.to_bigint(a), self.to_bigint(b)) {
-            let result = ba.sub(&bb);
-            return self.bigint_to_val(result);
+            return self.bigint_to_val(ba.sub(&bb));
         }
-        if a.is_float() && b.is_float() { return Ok(Val::float(a.as_float() - b.as_float())); }
-        if a.is_int()   && b.is_float() { return Ok(Val::float(a.as_int() as f64 - b.as_float())); }
-        if a.is_float() && b.is_int()   { return Ok(Val::float(a.as_float() - b.as_int() as f64)); }
-        if self.is_int_type(a) || a.is_float() {
-            let fa = self.to_f64_coerce(a)?; let fb = self.to_f64_coerce(b)?;
+        if let (Ok(fa), Ok(fb)) = (self.to_f64_coerce(a), self.to_f64_coerce(b)) {
             return Ok(Val::float(fa - fb));
         }
         Err(VmErr::Type(format!("'-' not supported between '{}' and '{}'", self.type_name(a), self.type_name(b))))

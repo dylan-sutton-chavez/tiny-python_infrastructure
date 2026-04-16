@@ -386,12 +386,12 @@ impl DictMap {
     pub fn len(&self) -> usize { self.entries.len() }
     pub fn is_empty(&self) -> bool { self.entries.is_empty() }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&Val, &Val)> {
-        self.entries.iter().map(|(k, v)| (k, v))
+    pub fn iter(&self) -> impl Iterator<Item = (Val, Val)> + '_ {
+        self.entries.iter().map(|&(k, v)| (k, v))
     }
 
-    pub fn keys(&self) -> impl Iterator<Item = &Val> {
-        self.entries.iter().map(|(k, _)| k)
+    pub fn keys(&self) -> impl Iterator<Item = Val> + '_ {
+        self.entries.iter().map(|&(k, _)| k)
     }
 
     pub fn from_pairs(pairs: Vec<(Val, Val)>) -> Self {
@@ -406,10 +406,15 @@ Heap Pool
     Arena allocator with mark-sweep GC, string interning, and per-type tagging for inline cache.
 */
 
+struct HeapSlot {
+    obj: Option<HeapObj>,
+    marked: bool,
+}
+
 pub struct HeapPool {
-    objects: Vec<Option<HeapObj>>,
-    marked: Vec<bool>,
+    slots: Vec<HeapSlot>,
     free_list: Vec<u32>,
+    live: usize,
     pub gc_threshold: usize,
     alloc_count: usize,
     limit: usize,
@@ -419,9 +424,9 @@ pub struct HeapPool {
 impl HeapPool {
     pub fn new(limit: usize) -> Self {
         Self {
-            objects: Vec::new(),
-            marked: Vec::new(),
+            slots: Vec::new(),
             free_list: Vec::new(),
+            live: 0,
             gc_threshold: 512,
             alloc_count: 0,
             limit,
@@ -435,23 +440,23 @@ impl HeapPool {
                 if let Some(&idx) = self.strings.get(s) { return Ok(Val::heap(idx)); }
             }
         }
-        if self.usage() >= self.limit { return Err(cold_heap()); }
-        if self.objects.len() >= (1 << 28)  { return Err(VmErr::Heap); }
+        if self.live >= self.limit { return Err(cold_heap()); }
+        if self.slots.len() >= (1 << 28) { return Err(VmErr::Heap); }
 
         let idx = if let Some(i) = self.free_list.pop() {
-            self.objects[i as usize] = Some(obj);
-            self.marked[i as usize]  = false;
+            self.slots[i as usize] = HeapSlot { obj: Some(obj), marked: false };
             i
         } else {
-            let i = self.objects.len() as u32;
-            self.objects.push(Some(obj));
-            self.marked.push(false);
+            let i = self.slots.len() as u32;
+            self.slots.push(HeapSlot { obj: Some(obj), marked: false });
             i
         };
 
-        if let HeapObj::Str(s) = self.objects[idx as usize].as_ref().unwrap() {
+        if let HeapObj::Str(s) = self.slots[idx as usize].obj.as_ref().unwrap() {
             if s.len() <= 64 { self.strings.insert(s.clone(), idx); }
         }
+
+        self.live += 1;
         self.alloc_count += 1;
         Ok(Val::heap(idx))
     }
@@ -461,10 +466,9 @@ impl HeapPool {
         let mut worklist = vec![v.as_heap()];
         while let Some(idx) = worklist.pop() {
             let idx = idx as usize;
-            if self.marked[idx] { continue; }
-            self.marked[idx] = true;
-            // Empujar hijos Val al worklist
-            match &self.objects[idx] {
+            if self.slots[idx].marked { continue; }
+            self.slots[idx].marked = true;
+            match &self.slots[idx].obj {
                 Some(HeapObj::Tuple(items)) => {
                     for v in items { if v.is_heap() { worklist.push(v.as_heap()); } }
                 }
@@ -478,49 +482,109 @@ impl HeapPool {
     }
 
     pub fn sweep(&mut self) {
-        for idx in 0..self.objects.len() {
-            match &self.objects[idx] {
+        for idx in 0..self.slots.len() {
+            let slot = &mut self.slots[idx];
+            match &slot.obj {
                 None => {}
-                Some(_) if self.marked[idx] => { self.marked[idx] = false; } // reset
-                Some(HeapObj::Str(s)) => { self.strings.remove(s); self.objects[idx] = None; self.free_list.push(idx as u32); }
-                Some(_) => { self.objects[idx] = None; self.free_list.push(idx as u32); }
+                Some(_) if slot.marked => { slot.marked = false; }
+                Some(HeapObj::Str(s)) => {
+                    self.strings.remove(s);
+                    slot.obj = None;
+                    self.free_list.push(idx as u32);
+                    self.live -= 1;
+                }
+                Some(_) => {
+                    slot.obj = None;
+                    self.free_list.push(idx as u32);
+                    self.live -= 1;
+                }
             }
         }
-        self.gc_threshold = (self.usage() * 2).max(512);
+
+        self.gc_threshold = (self.live * 2).max(512);
         self.alloc_count  = 0;
         if self.free_list.len() > 65_536 { self.free_list.truncate(65_536); }
     }
 
     pub fn needs_gc(&self) -> bool {
-        self.usage() >= self.gc_threshold || self.alloc_count >= 1024
+        self.live >= self.gc_threshold || self.alloc_count >= 1024
     }
 
+    pub fn usage(&self) -> usize { self.live }
+
     #[inline(always)] pub fn get(&self, v: Val) -> &HeapObj {
-        self.objects[v.as_heap() as usize]
+        self.slots[v.as_heap() as usize].obj
             .as_ref()
             .expect("garbage collector invariant violated: live Val references a freed heap slot")
     }
     #[inline(always)] pub fn get_mut(&mut self, v: Val) -> &mut HeapObj {
-        self.objects[v.as_heap() as usize]
+        self.slots[v.as_heap() as usize].obj
             .as_mut()
             .expect("garbage collector invariant violated: live Val references a freed heap slot (mut)")
     }
-    pub fn usage(&self) -> usize { self.objects.len() - self.free_list.len() }
+    
 
     #[inline(always)]
-    pub fn val_tag(&self, v: Val) -> u8 {
-        if v.is_int() { 1 } else if v.is_float() { 2 } else if v.is_bool() { 3 }
-        else if v.is_none() { 4 } else if v.is_heap() {
-            match self.objects[v.as_heap() as usize].as_ref() {
-                Some(HeapObj::Str(_)) => 5, Some(HeapObj::List(_)) => 6,
-                Some(HeapObj::Dict(_)) => 7, Some(HeapObj::Set(_)) => 8,
-                Some(HeapObj::Tuple(_)) => 9, Some(HeapObj::Func(_, _)) => 10,
-                Some(HeapObj::Range(..)) => 11, Some(HeapObj::Slice(..)) => 12,
-                Some(HeapObj::Type(_)) => 13, Some(HeapObj::BigInt(_)) => 14, 
-                None => 0
-            }
-        } else { 0 }
+        pub fn val_tag(&self, v: Val) -> u8 {
+            if v.is_int() { 1 } else if v.is_float() { 2 } else if v.is_bool() { 3 }
+            else if v.is_none() { 4 } else if v.is_heap() {
+                match self.slots[v.as_heap() as usize].obj.as_ref() {
+                    Some(HeapObj::Str(_)) => 5,
+                    Some(HeapObj::List(_)) => 6,
+                    Some(HeapObj::Dict(_)) => 7,
+                    Some(HeapObj::Set(_)) => 8,
+                    Some(HeapObj::Tuple(_)) => 9,
+                    Some(HeapObj::Func(_, _)) => 10,
+                    Some(HeapObj::Range(..)) => 11,
+                    Some(HeapObj::Slice(..)) => 12,
+                    Some(HeapObj::Type(_)) => 13,
+                    Some(HeapObj::BigInt(_)) => 14,
+                    None => 0,
+                }
+            } else { 0 }
+        }
     }
+
+/*
+Deep Value Equality
+    Content-based equality over the heap; canonical implementation used by both.
+*/
+
+pub(super) fn eq_seq(a: &[Val], b: &[Val], eq: impl Fn(Val,Val)->bool) -> bool {
+    a.len() == b.len() && a.iter().zip(b).all(|(x,y)| eq(*x,*y))
+}
+pub(super) fn eq_set(a: &[Val], b: &[Val], eq: impl Fn(Val,Val)->bool) -> bool {
+    a.len() == b.len() && a.iter().all(|x| b.iter().any(|y| eq(*x,*y)))
+}
+pub(super) fn eq_dict(a: &DictMap, b: &DictMap, eq: impl Fn(Val,Val)->bool) -> bool {
+    a.len() == b.len() && a.iter().all(|(k,v)| b.get(&k).map_or(false, |&v2| eq(v,v2)))
+}
+
+pub fn eq_vals_deep(a: Val, b: Val, heap: &HeapPool) -> bool {
+    if let (Some(ba), Some(bb)) = (bigint_of(a, heap), bigint_of(b, heap)) {
+        return ba.cmp(&bb) == core::cmp::Ordering::Equal;
+    }
+    if !a.is_heap() || !b.is_heap() {
+        if a.is_int() && b.is_int() { return a.as_int() == b.as_int(); }
+        if a.is_float() && b.is_float() { return a.as_float() == b.as_float(); }
+        if a.is_int() && b.is_float() { return (a.as_int() as f64) == b.as_float(); }
+        if a.is_float() && b.is_int() { return a.as_float() == (b.as_int() as f64); }
+        return a.0 == b.0;
+    }
+    match (heap.get(a), heap.get(b)) {
+        (HeapObj::BigInt(x), HeapObj::BigInt(y)) => x.cmp(y) == core::cmp::Ordering::Equal,
+        (HeapObj::Str(x),   HeapObj::Str(y))   => x == y,
+        (HeapObj::Tuple(x), HeapObj::Tuple(y)) => eq_seq(x, y, |a,b| eq_vals_deep(a,b,heap)),
+        (HeapObj::List(x),  HeapObj::List(y))  => eq_seq(&x.borrow(), &y.borrow(), |a,b| eq_vals_deep(a,b,heap)),
+        (HeapObj::Set(x),   HeapObj::Set(y))   => eq_set(&x.borrow(), &y.borrow(), |a,b| eq_vals_deep(a,b,heap)),
+        (HeapObj::Dict(x),  HeapObj::Dict(y))  => eq_dict(&x.borrow(), &y.borrow(), |a,b| eq_vals_deep(a,b,heap)),
+        _ => false,
+    }
+}
+
+fn bigint_of(v: Val, heap: &HeapPool) -> Option<&BigInt> {
+    if v.is_heap() { if let HeapObj::BigInt(b) = heap.get(v) { return Some(b); } }
+    None
 }
 
 /*
