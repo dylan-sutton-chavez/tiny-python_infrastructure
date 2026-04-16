@@ -55,6 +55,90 @@ impl<'a> VM<'a> {
         slots
     }
 
+    /*
+    Budget-Checked Jump
+        Decrements op budget, validates target, returns new ip.
+    */
+    
+    #[inline]
+    fn checked_jump(&mut self, target: usize, limit: usize) -> Result<usize, VmErr> {
+        if self.budget == 0 { return Err(cold_budget()); }
+        self.budget -= 1;
+        if target > limit { return Err(VmErr::Runtime("jump target out of bounds".into())); }
+        Ok(target)
+    }
+
+    /*
+    Iterator Frame Construction
+        Converts a heap object to the appropriate IterFrame for ForIter dispatch.
+    */
+    
+    fn make_iter_frame(&mut self, obj: Val) -> Result<IterFrame, VmErr> {
+        if !obj.is_heap() { return Err(VmErr::Type("not iterable".into())); }
+        Ok(match self.heap.get(obj) {
+            HeapObj::Range(s, e, st) => IterFrame::Range { cur: *s, end: *e, step: *st },
+            HeapObj::List(v)  => IterFrame::Seq { items: v.borrow().clone(), idx: 0 },
+            HeapObj::Tuple(v) => IterFrame::Seq { items: v.clone(), idx: 0 },
+            HeapObj::Dict(p)  => IterFrame::Seq { items: p.borrow().keys().copied().collect(), idx: 0 },
+            HeapObj::Set(s)   => IterFrame::Seq { items: s.borrow().clone(), idx: 0 },
+            HeapObj::Str(s) => {
+                let chars: Vec<char> = s.chars().collect();
+                drop(s);
+                let mut items = Vec::with_capacity(chars.len());
+                for c in chars { items.push(self.heap.alloc(HeapObj::Str(c.to_string()))?); }
+                IterFrame::Seq { items, idx: 0 }
+            }
+            _ => return Err(VmErr::Type("not iterable".into())),
+        })
+    }
+
+    /*
+    Sequence Unpack
+        Destructures list, tuple, or string into exactly `expected` stack values.
+    */
+    
+    fn exec_unpack_seq(&mut self, expected: usize) -> Result<(), VmErr> {
+        let obj = self.pop()?;
+        if !obj.is_heap() { return Err(VmErr::Type("cannot unpack non-sequence".into())); }
+        let items: Vec<Val> = match self.heap.get(obj) {
+            HeapObj::List(v)  => v.borrow().clone(),
+            HeapObj::Tuple(v) => v.clone(),
+            HeapObj::Str(s) => {
+                let chars: Vec<char> = s.chars().collect();
+                drop(s);
+                if chars.len() != expected {
+                    return Err(VmErr::Value(format!("expected {} values to unpack, got {}", expected, chars.len())));
+                }
+                let mut out = Vec::with_capacity(expected);
+                for c in chars { out.push(self.heap.alloc(HeapObj::Str(c.to_string()))?); }
+                out
+            }
+            _ => return Err(VmErr::Type("unpack".into())),
+        };
+        if items.len() != expected {
+            return Err(VmErr::Value(format!("expected {} values to unpack, got {}", expected, items.len())));
+        }
+        for item in items.into_iter().rev() { self.push(item); }
+        Ok(())
+    }
+
+    /*
+    SSA Phi Propagation
+        Merges two SSA branches into target slot and back-propagates through prev_slots chain.
+    */
+    
+    fn exec_phi(op: u16, rip: usize, phi_map: &[usize], slots: &mut Vec<Option<Val>>, prev_slots: &[Option<u16>], phi_sources: &[(u16, u16)]) {
+        let target = op as usize;
+        let (ia, ib) = phi_sources[phi_map[rip]];
+        let val = slots[ia as usize].or(slots[ib as usize]).unwrap_or(Val::none());
+        slots[target] = Some(val);
+        let mut cur = target;
+        while let Some(prev) = prev_slots.get(cur).and_then(|p| *p) {
+            slots[prev as usize] = Some(val);
+            cur = prev as usize;
+        }
+    }
+
     pub fn with_limits(chunk: &'a SSAChunk, limits: Limits) -> Self {
         let mut vm = Self {
             stack: Vec::with_capacity(256),
@@ -363,23 +447,9 @@ impl<'a> VM<'a> {
 
                 OpCode::JumpIfFalse => {
                     let v = self.pop()?;
-                    if !self.truthy(v) {
-                        if self.budget == 0 { return Err(cold_budget()); }
-                        self.budget -= 1;
-                        let target = op as usize;
-                        if target > chunk.instructions.len() { return Err(VmErr::Runtime("jump target out of bounds".into())); }
-                        ip = target;
-                    }
+                    if !self.truthy(v) { ip = self.checked_jump(op as usize, n)?; }
                 }
-                OpCode::Jump => {
-                    if self.budget == 0 { return Err(cold_budget()); }
-                    self.budget -= 1;
-                    let target = op as usize;
-                    if target > chunk.instructions.len() {
-                        return Err(VmErr::Runtime("jump target out of bounds".into()));
-                    }
-                    ip = target;
-                }
+                OpCode::Jump => { ip = self.checked_jump(op as usize, n)?; }
                 OpCode::PopTop => { self.pop()?; }
                 OpCode::Dup2 => {
                     let b = self.pop()?;
@@ -405,11 +475,9 @@ impl<'a> VM<'a> {
 
                 OpCode::BuildList  => { let v = self.pop_n(op as usize)?; let val = self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(v))))?; self.push(val); }
                 OpCode::BuildTuple => { let v = self.pop_n(op as usize)?; let val = self.heap.alloc(HeapObj::Tuple(v))?; self.push(val); }
-                OpCode::BuildDict  => {
-                    let mut pairs: Vec<(Val, Val)> = Vec::with_capacity(op as usize);
-                    for _ in 0..op { let v = self.pop()?; let k = self.pop()?; pairs.push((k, v)); }
-                    pairs.reverse();
-                    let dm = DictMap::from_pairs(pairs);
+                OpCode::BuildDict => {
+                    let flat = self.pop_n(op as usize * 2)?;
+                    let dm = DictMap::from_pairs(flat.chunks(2).map(|c| (c[0], c[1])).collect());
                     let val = self.heap.alloc(HeapObj::Dict(Rc::new(RefCell::new(dm))))?; self.push(val);
                 }
                 OpCode::BuildString => {
@@ -421,25 +489,7 @@ impl<'a> VM<'a> {
                 OpCode::BuildSlice => { self.build_slice(op)?; }
                 OpCode::GetItem => { self.get_item()?; }
                 OpCode::StoreItem => { self.store_item()?; }
-                OpCode::UnpackSequence => {
-                    let obj = self.pop()?; let expected = op as usize;
-                    if !obj.is_heap() { return Err(VmErr::Type("cannot unpack non-sequence".into())); }
-                    let items: Vec<Val> = match self.heap.get(obj) {
-                        HeapObj::List(v) => v.borrow().clone(),
-                        HeapObj::Tuple(v) => v.clone(),
-                        HeapObj::Str(s) => {
-                            let chars: Vec<char> = s.chars().collect();
-                            if chars.len() != expected { return Err(VmErr::Value(format!("expected {} values to unpack, got {}", expected, chars.len()))); }
-                            let chars = chars; drop(s);
-                            let mut out = Vec::with_capacity(chars.len());
-                            for c in chars { out.push(self.heap.alloc(HeapObj::Str(c.to_string()))?); }
-                            out
-                        }
-                        _ => return Err(VmErr::Type("unpack".into())),
-                    };
-                    if items.len() != expected { return Err(VmErr::Value(format!("expected {} values to unpack, got {}", expected, items.len()))); }
-                    for item in items.into_iter().rev() { self.push(item); }
-                }
+                OpCode::UnpackSequence => { self.exec_unpack_seq(op as usize)?; }
                 OpCode::UnpackEx => { self.unpack_ex(op)?; }
                 OpCode::FormatValue => {
                     if op == 1 { self.pop()?; }
@@ -451,21 +501,7 @@ impl<'a> VM<'a> {
 
                 OpCode::GetIter => {
                     let obj = self.pop()?;
-                    if !obj.is_heap() { return Err(VmErr::Type("not iterable".into())); }
-                    let frame = match self.heap.get(obj) {
-                        HeapObj::Range(s, e, st) => IterFrame::Range { cur: *s, end: *e, step: *st },
-                        HeapObj::List(v)  => IterFrame::Seq { items: v.borrow().clone(), idx: 0 },
-                        HeapObj::Tuple(v) => IterFrame::Seq { items: v.clone(), idx: 0 },
-                        HeapObj::Dict(p) => IterFrame::Seq { items: p.borrow().keys().copied().collect(), idx: 0 },
-                        HeapObj::Set(s) => IterFrame::Seq { items: s.borrow().clone(), idx: 0 },
-                        HeapObj::Str(s) => {
-                            let chars: Vec<char> = s.chars().collect(); drop(s);
-                            let mut items = Vec::with_capacity(chars.len());
-                            for c in chars { items.push(self.heap.alloc(HeapObj::Str(c.to_string()))?); }
-                            IterFrame::Seq { items, idx: 0 }
-                        }
-                        _ => return Err(VmErr::Type("not iterable".into())),
-                    };
+                    let frame = self.make_iter_frame(obj)?;
                     self.iter_stack.push(frame);
                 }
                 OpCode::ForIter => {
@@ -476,26 +512,15 @@ impl<'a> VM<'a> {
                         Some(item) => self.push(item),
                         None => {
                             self.iter_stack.pop();
-                            let target = op as usize;
-                            if target > chunk.instructions.len() { return Err(VmErr::Runtime("for iter target out of bounds".into())); }
-                            ip = target;
+                            if op as usize > n { return Err(VmErr::Runtime("jump target out of bounds".into())); }
+                            ip = op as usize;
                         }
                     }
                 }
 
                 // SSA Phi
 
-                OpCode::Phi => {
-                    let target = op as usize;
-                    let (ia, ib) = chunk.phi_sources[phi_map[rip]];
-                    let val = slots[ia as usize].or(slots[ib as usize]).unwrap_or(Val::none());
-                    slots[target] = Some(val);
-                    let mut cur = target;
-                    while let Some(prev) = prev_slots.get(cur).and_then(|p| *p) {
-                        slots[prev as usize] = Some(val);
-                        cur = prev as usize;
-                    }
-                }
+                OpCode::Phi => { Self::exec_phi(op, rip, &phi_map, slots, prev_slots, &chunk.phi_sources); }
 
                 // Functions
 
