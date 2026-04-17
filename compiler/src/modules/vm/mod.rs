@@ -417,9 +417,12 @@ pub(crate) fn exec(&mut self, chunk: &SSAChunk, slots: &mut Vec<Option<Val>>) ->
 
                 // Comparison (cached)
 
-                OpCode::Eq => { let (a, b) = self.pop2()?; cached_binop!(self.heap, rip, &ins.opcode, a, b, cache); self.push(Val::bool(self.eq_vals(a, b))); }
+                OpCode::Eq => { let (a, b) = self.pop2()?; cached_binop!(self.heap, rip, &ins.opcode, a, b, cache); self.push(Val::bool(eq_vals_with_heap(a, b, &self.heap))); }
                 OpCode::Lt => { let (a, b) = self.pop2()?; cached_binop!(self.heap, rip, &ins.opcode, a, b, cache); let r = self.lt_vals(a, b)?; self.push(Val::bool(r)); }
-                OpCode::NotEq => { let (a,b) = self.pop2()?; self.push(Val::bool(!self.eq_vals(a,b))); }
+                OpCode::NotEq => { 
+                    let (a, b) = self.pop2()?; 
+                    self.push(Val::bool(!eq_vals_with_heap(a, b, &self.heap))); 
+                }
                 OpCode::Gt => { let (a,b) = self.pop2()?; let r=self.lt_vals(b,a)?; self.push(Val::bool(r)); }
                 OpCode::LtEq => { let (a,b) = self.pop2()?; let r=self.lt_vals(b,a)?; self.push(Val::bool(!r)); }
                 OpCode::GtEq => { let (a,b) = self.pop2()?; let r=self.lt_vals(a,b)?; self.push(Val::bool(!r)); }

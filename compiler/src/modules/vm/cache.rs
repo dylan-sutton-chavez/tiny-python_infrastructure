@@ -1,6 +1,6 @@
 // vm/cache.rs
 
-use super::types::{Val, eq_vals_deep};
+use super::types::{Val, eq_vals_with_heap};
 use crate::modules::parser::OpCode;
 use alloc::{vec, vec::Vec};
 use hashbrown::HashMap;
@@ -96,7 +96,7 @@ impl Templates {
             .find(|e| {
                 e.hits >= TPL_THRESH
                 && e.args.len() == args.len()
-                && e.args.iter().zip(args).all(|(a, b)| eq_vals_deep(*a, *b, heap))
+                && e.args.iter().zip(args).all(|(a, b)| eq_vals_with_heap(*a, *b, heap))
             })
             .map(|e| e.result)
     }
@@ -105,7 +105,7 @@ impl Templates {
         let v = self.map.entry(fi).or_default();
         if let Some(e) = v.iter_mut().find(|e| {
             e.args.len() == args.len()
-            && e.args.iter().zip(args).all(|(a, b)| eq_vals_deep(*a, *b, heap))
+            && e.args.iter().zip(args).all(|(a, b)| eq_vals_with_heap(*a, *b, heap))
         }) {
             e.hits += 1; e.result = result;
         } else if v.len() < 256 {

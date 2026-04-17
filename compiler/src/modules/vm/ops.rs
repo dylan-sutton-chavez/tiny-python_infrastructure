@@ -107,10 +107,6 @@ impl<'a> VM<'a> {
         self.display(v)
     }
 
-    pub fn eq_vals(&self, a: Val, b: Val) -> bool {
-        super::types::eq_vals_deep(a, b, &self.heap)
-    }
-
     pub fn lt_vals(&self, a: Val, b: Val) -> Result<bool, VmErr> {
         if let (Some(ba), Some(bb)) = (self.to_bigint(a), self.to_bigint(b)) {
             return Ok(ba.cmp(&bb) == core::cmp::Ordering::Less);
@@ -131,10 +127,10 @@ impl<'a> VM<'a> {
     pub fn contains(&self, container: Val, item: Val) -> bool {
         if !container.is_heap() { return false; }
         match self.heap.get(container) {
-            HeapObj::List(v) => v.borrow().iter().any(|x| self.eq_vals(*x, item)),
-            HeapObj::Tuple(v) => v.iter().any(|x| self.eq_vals(*x, item)),
+            HeapObj::List(v) => v.borrow().iter().any(|x| eq_vals_with_heap(*x, item, &self.heap)),
+            HeapObj::Tuple(v) => v.iter().any(|x| eq_vals_with_heap(*x, item, &self.heap)),
             HeapObj::Dict(p) => p.borrow().contains_key(&item),
-            HeapObj::Set(s) => s.borrow().iter().any(|x| self.eq_vals(*x, item)),
+            HeapObj::Set(s) => s.borrow().iter().any(|x| eq_vals_with_heap(*x, item, &self.heap)),
             HeapObj::Str(s) => {
                 if item.is_heap() { if let HeapObj::Str(sub) = self.heap.get(item) { return s.contains(sub.as_str()); } }
                 false
@@ -142,7 +138,6 @@ impl<'a> VM<'a> {
             _ => false,
         }
     }
-
     pub fn add_vals(&mut self, a: Val, b: Val) -> Result<Val, VmErr> {
         if let (Some(ba), Some(bb)) = (self.to_bigint(a), self.to_bigint(b)) {
             return self.bigint_to_val(ba.add(&bb));

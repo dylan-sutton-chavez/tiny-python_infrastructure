@@ -561,10 +561,11 @@ pub(super) fn eq_dict(a: &DictMap, b: &DictMap, eq: impl Fn(Val,Val)->bool) -> b
     a.len() == b.len() && a.iter().all(|(k,v)| b.get(&k).map_or(false, |&v2| eq(v,v2)))
 }
 
-pub fn eq_vals_deep(a: Val, b: Val, heap: &HeapPool) -> bool {
+pub fn eq_vals_with_heap(a: Val, b: Val, heap: &HeapPool) -> bool {
     if let (Some(ba), Some(bb)) = (bigint_of(a, heap), bigint_of(b, heap)) {
         return ba.cmp(&bb) == core::cmp::Ordering::Equal;
     }
+
     if !a.is_heap() || !b.is_heap() {
         if a.is_int() && b.is_int() { return a.as_int() == b.as_int(); }
         if a.is_float() && b.is_float() { return a.as_float() == b.as_float(); }
@@ -572,13 +573,14 @@ pub fn eq_vals_deep(a: Val, b: Val, heap: &HeapPool) -> bool {
         if a.is_float() && b.is_int() { return a.as_float() == (b.as_int() as f64); }
         return a.0 == b.0;
     }
+
     match (heap.get(a), heap.get(b)) {
         (HeapObj::BigInt(x), HeapObj::BigInt(y)) => x.cmp(y) == core::cmp::Ordering::Equal,
-        (HeapObj::Str(x),   HeapObj::Str(y))   => x == y,
-        (HeapObj::Tuple(x), HeapObj::Tuple(y)) => eq_seq(x, y, |a,b| eq_vals_deep(a,b,heap)),
-        (HeapObj::List(x),  HeapObj::List(y))  => eq_seq(&x.borrow(), &y.borrow(), |a,b| eq_vals_deep(a,b,heap)),
-        (HeapObj::Set(x),   HeapObj::Set(y))   => eq_set(&x.borrow(), &y.borrow(), |a,b| eq_vals_deep(a,b,heap)),
-        (HeapObj::Dict(x),  HeapObj::Dict(y))  => eq_dict(&x.borrow(), &y.borrow(), |a,b| eq_vals_deep(a,b,heap)),
+        (HeapObj::Str(x), HeapObj::Str(y)) => x == y,
+        (HeapObj::Tuple(x), HeapObj::Tuple(y)) => eq_seq(x, y, |a,b| eq_vals_with_heap(a, b, heap)),
+        (HeapObj::List(x), HeapObj::List(y)) => eq_seq(&x.borrow(), &y.borrow(), |a,b| eq_vals_with_heap(a, b, heap)),
+        (HeapObj::Set(x), HeapObj::Set(y)) => eq_set(&x.borrow(), &y.borrow(), |a,b| eq_vals_with_heap(a, b, heap)),
+        (HeapObj::Dict(x), HeapObj::Dict(y)) => eq_dict(&x.borrow(), &y.borrow(), |a,b| eq_vals_with_heap(a, b, heap)),
         _ => false,
     }
 }
