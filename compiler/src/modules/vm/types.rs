@@ -501,6 +501,7 @@ impl HeapPool {
             }
         }
 
+        // Garbage collector threshold doubles after each sweep: fewer collections but temporary 2x memory spikes.
         self.gc_threshold = (self.live * 2).max(512);
         self.alloc_count  = 0;
         if self.free_list.len() > 65_536 { self.free_list.truncate(65_536); }
