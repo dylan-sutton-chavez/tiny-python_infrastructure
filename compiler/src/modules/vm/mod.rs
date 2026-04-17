@@ -30,11 +30,11 @@ pub struct VM<'a> {
     pub(crate) chunk: &'a SSAChunk,
     pub(crate) globals: HashMap<String, Val>,
     pub(crate) live_slots: Vec<Val>,
+    pub output: Vec<String>,
     templates: Templates,
     budget:usize,
     depth: usize,
-    max_calls: usize,
-    pub output: Vec<String>,
+    max_calls: usize
 }
 
 impl<'a> VM<'a> {
@@ -83,7 +83,6 @@ impl<'a> VM<'a> {
             HeapObj::Set(s)   => IterFrame::Seq { items: s.borrow().clone(), idx: 0 },
             HeapObj::Str(s) => {
                 let chars: Vec<char> = s.chars().collect();
-                drop(s);
                 let mut items = Vec::with_capacity(chars.len());
                 for c in chars { items.push(self.heap.alloc(HeapObj::Str(c.to_string()))?); }
                 IterFrame::Seq { items, idx: 0 }
@@ -105,7 +104,6 @@ impl<'a> VM<'a> {
             HeapObj::Tuple(v) => v.clone(),
             HeapObj::Str(s) => {
                 let chars: Vec<char> = s.chars().collect();
-                drop(s);
                 if chars.len() != expected {
                     return Err(VmErr::Value(format!("expected {} values to unpack, got {}", expected, chars.len())));
                 }
@@ -168,7 +166,8 @@ impl<'a> VM<'a> {
         self.exec(self.chunk, &mut slots)
     }
 
-    fn collect(&mut self, current_slots: &[Option<Val>]) { // Marks all reachable values from stack, globals, iterators and slots, then sweeps.
+    // Marks all reachable values from stack, globals, iterators and slots, then sweeps.
+    fn collect(&mut self, current_slots: &[Option<Val>]) {
         for &v in &self.stack { self.heap.mark(v); }
         for &v in self.globals.values() { self.heap.mark(v); }
         for frame in &self.iter_stack {

@@ -1,4 +1,5 @@
 // vm/cache.rs
+
 use super::types::{Val, eq_vals_deep};
 use crate::modules::parser::OpCode;
 use alloc::{vec, vec::Vec};
@@ -62,10 +63,6 @@ impl OpcodeCache {
 
     pub fn invalidate(&mut self, ip: usize) {
         if let Some(s) = self.slots.get_mut(ip) { *s = CacheSlot::empty(); }
-    }
-
-    pub fn specialized_count(&self) -> usize {
-        self.slots.iter().filter(|s| s.hot_fast.is_some()).count()
     }
 
     fn specialize(opcode: &OpCode, ta: u8, tb: u8) -> Option<FastOp> {

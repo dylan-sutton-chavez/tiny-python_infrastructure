@@ -97,7 +97,7 @@ impl<'a> VM<'a> {
                 .map(|x| self.repr(*x)).collect::<Vec<_>>().join(", ")),
             HeapObj::Slice(s, e, st) => format!("slice({}, {}, {})",
                 self.display(*s), self.display(*e), self.display(*st)),
-            HeapObj::BigInt(b)  => b.to_decimal(),
+            HeapObj::BigInt(b) => b.to_decimal(),
             HeapObj::Type(name) => format!("<class '{}'>", name)
         }
     }
@@ -127,7 +127,8 @@ impl<'a> VM<'a> {
         Err(VmErr::Type(format!("'<' not supported between '{}' and '{}'", self.type_name(a), self.type_name(b))))
     }
 
-    pub fn contains(&self, container: Val, item: Val) -> bool { // Checks item presence in list, tuple, dict, set, or substring in str
+    // Checks item presence in list, tuple, dict, set, or substring in string.
+    pub fn contains(&self, container: Val, item: Val) -> bool {
         if !container.is_heap() { return false; }
         match self.heap.get(container) {
             HeapObj::List(v) => v.borrow().iter().any(|x| self.eq_vals(*x, item)),
@@ -214,10 +215,6 @@ impl<'a> VM<'a> {
             if let HeapObj::BigInt(b) = self.heap.get(v) { return Some(b.clone()); }
         }
         None
-    }
-
-    pub(crate) fn is_int_type(&self, v: Val) -> bool {
-        v.is_int() || (v.is_heap() && matches!(self.heap.get(v), HeapObj::BigInt(_)))
     }
 
     pub(crate) fn bigint_to_val(&mut self, b: BigInt) -> Result<Val, VmErr> {

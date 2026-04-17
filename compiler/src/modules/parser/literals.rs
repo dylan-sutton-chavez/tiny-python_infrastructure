@@ -5,7 +5,6 @@ use super::types::{OpCode, Value, SSAChunk};
 use super::types::builtin;
 use crate::modules::lexer::{Token, TokenType};
 use alloc::{string::{String, ToString}, vec::Vec, format};
-use hashbrown::HashMap;
 
 impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
@@ -323,7 +322,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
         self.compile_block();
 
-        let mut body = core::mem::take(&mut self.chunk);
+        let body = core::mem::take(&mut self.chunk);
         self.chunk = saved_chunk;
         self.ssa_versions  = saved_ver;
 

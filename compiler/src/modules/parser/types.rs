@@ -196,7 +196,7 @@ fn unescape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
 
-    let mut take_hex = |chars: &mut core::iter::Peekable<core::str::Chars>, n: usize| -> char {
+    let take_hex = |chars: &mut core::iter::Peekable<core::str::Chars>, n: usize| -> char {
         let hex: String = chars.by_ref().take(n).collect();
         u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32).unwrap_or('\u{FFFD}')
     };

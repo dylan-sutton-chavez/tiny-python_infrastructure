@@ -30,8 +30,8 @@ impl<'a> VM<'a> {
     */
 
     pub fn build_slice(&mut self, op: u16) -> Result<(), VmErr> {
-        let step  = if op == 3 { self.pop()? } else { Val::none() };
-        let stop  = self.pop()?;
+        let step = if op == 3 { self.pop()? } else { Val::none() };
+        let stop = self.pop()?;
         let start = self.pop()?;
         let val = self.heap.alloc(HeapObj::Slice(start, stop, step))?;
         self.push(val); Ok(())
@@ -52,7 +52,7 @@ impl<'a> VM<'a> {
             _ => return Err(VmErr::Type("cannot unpack".into())),
         };
         let before = (op >> 8) as usize;
-        let after  = (op & 0xFF) as usize;
+        let after = (op & 0xFF) as usize;
         if items.len() < before + after {
             return Err(VmErr::Value("not enough values to unpack".into()));
         }
@@ -239,9 +239,9 @@ impl<'a> VM<'a> {
     */
     
     pub fn store_item(&mut self) -> Result<(), VmErr> {
-        let value   = self.pop()?;
+        let value = self.pop()?;
         let idx_val = self.pop()?;
-        let cont    = self.pop()?;
+        let cont = self.pop()?;
         if !cont.is_heap() { return Err(VmErr::Type("item assignment on non-container".into())); }
         match self.heap.get_mut(cont) {
             HeapObj::List(v) => {

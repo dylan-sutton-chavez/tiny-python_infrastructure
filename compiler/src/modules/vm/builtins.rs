@@ -110,7 +110,7 @@ impl<'a> VM<'a> {
     
     pub fn call_float(&mut self) -> Result<(), VmErr> {
         let o = self.pop()?;
-        let f = if o.is_float()  { o.as_float() }
+        let f = if o.is_float() { o.as_float() }
             else if o.is_int() { o.as_int() as f64 }
             else if o.is_heap() { match self.heap.get(o) {
                 HeapObj::Str(s) => s.trim().parse().map_err(|_| VmErr::Value(format!("float: '{}'", s)))?,
