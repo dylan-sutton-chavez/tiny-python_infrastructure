@@ -436,7 +436,7 @@ impl HeapPool {
 
     pub fn alloc(&mut self, obj: HeapObj) -> Result<Val, VmErr> {
         if let HeapObj::Str(ref s) = obj {
-            if s.len() <= 64 {
+            if s.len() <= 128 {
                 if let Some(&idx) = self.strings.get(s) { return Ok(Val::heap(idx)); }
             }
         }
@@ -453,7 +453,7 @@ impl HeapPool {
         };
 
         if let HeapObj::Str(s) = self.slots[idx as usize].obj.as_ref().unwrap() {
-            if s.len() <= 64 { self.strings.insert(s.clone(), idx); }
+            if s.len() <= 128 { self.strings.insert(s.clone(), idx); }
         }
 
         self.live += 1;
