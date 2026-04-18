@@ -11,6 +11,7 @@ pub use types::*;
 
 use crate::modules::lexer::{Token, TokenType};
 use alloc::{string::{String, ToString}, vec::Vec, format};
+
 use hashbrown::HashMap;
 use core::iter::Peekable;
 
@@ -117,7 +118,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
         let (a, b) = match j.then {
             Some(t) => (t, post),
-            None    => (post, j.backup.clone()),
+            None => (post, j.backup.clone()),
         };
 
         let mut divergent: Vec<&String> = a
@@ -136,7 +137,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             let mut bx = [0u8; 128];
             let ia = self.chunk.push_name(Self::ssa_name(name, va, &mut ba));
             let ib = self.chunk.push_name(Self::ssa_name(name, vb, &mut bb));
-            let v  = self.increment_version(name);
+            let v = self.increment_version(name);
             let ix = self.chunk.push_name(Self::ssa_name(name, v, &mut bx));
             self.chunk.phi_sources.push((ia, ib));
             self.chunk.emit(OpCode::Phi, ix);
@@ -195,8 +196,8 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                     self.tokens.next();
                 }
                 Some(TokenType::Nl | TokenType::Comment) => { self.tokens.next(); }
-                Some(k)  => return Some(k),
-                None     => return None,
+                Some(k) => return Some(k),
+                None => return None,
             }
         }
     }
@@ -256,7 +257,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             let line = self.errors.last().map(|e| e.line).unwrap_or(0);
             self.errors.push(Diagnostic {
                 line, col: 0, end: 0,
-                msg: "program too large: exceeded maximum instruction limit".into(),
+                msg: "program too large: exceeded maximum instruction limit".into()
             });
         }
 

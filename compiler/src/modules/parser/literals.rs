@@ -1,8 +1,9 @@
 // parser/literals.rs
 
 use super::Parser;
-use super::types::{OpCode, Value, SSAChunk};
 use super::types::builtin;
+
+use super::types::{OpCode, Value, SSAChunk};
 use crate::modules::lexer::{Token, TokenType};
 use alloc::{string::{String, ToString}, vec::Vec, format};
 
@@ -204,7 +205,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                     self.advance();
                     break;
                 }
-                _ => break,
+                _ => break
             }
         }
         if parts > 0 {
@@ -317,14 +318,14 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.eat(TokenType::Colon);
 
         let saved_chunk = core::mem::take(&mut self.chunk);
-        let saved_ver   = core::mem::take(&mut self.ssa_versions);
+        let saved_ver = core::mem::take(&mut self.ssa_versions);
         self.ssa_versions = saved_ver.clone();
 
         self.compile_block();
 
         let body = core::mem::take(&mut self.chunk);
         self.chunk = saved_chunk;
-        self.ssa_versions  = saved_ver;
+        self.ssa_versions = saved_ver;
 
         let ci = self.chunk.classes.len() as u16;
         self.chunk.classes.push(body);
@@ -423,7 +424,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
     pub(super) fn compile_body(&mut self, params: &[String]) -> SSAChunk {
         let saved_chunk = core::mem::take(&mut self.chunk);
-        let saved_ver   = core::mem::take(&mut self.ssa_versions);
+        let saved_ver = core::mem::take(&mut self.ssa_versions);
 
         self.ssa_versions = saved_ver.clone();
         for p in params {

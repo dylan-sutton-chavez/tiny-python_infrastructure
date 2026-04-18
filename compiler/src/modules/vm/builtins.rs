@@ -1,9 +1,11 @@
 // vm/builtins.rs
 
 use super::VM;
-use super::types::*;
-use alloc::{string::{String, ToString}, vec::Vec, vec, rc::Rc, format};
 use core::cell::RefCell;
+
+use super::types::*;
+
+use alloc::{string::{String, ToString}, vec::Vec, vec, rc::Rc, format};
 
 impl<'a> VM<'a> {
 

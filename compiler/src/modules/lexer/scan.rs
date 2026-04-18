@@ -1,9 +1,10 @@
 // lexer/scan.rs
 
 use super::TokenType;
-use super::tables::*;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
+
+use super::tables::*;
 
 const MAX_INDENT_DEPTH: usize = 100;
 const MAX_FSTRING_DEPTH: usize = 200;

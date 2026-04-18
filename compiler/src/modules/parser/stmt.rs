@@ -397,7 +397,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                     }
                     if let Some(sp) = star_pos {
                         let before = sp as u16;
-                        let after  = (targets.len() - sp - 1) as u16;
+                        let after = (targets.len() - sp - 1) as u16;
                         self.chunk.emit(OpCode::UnpackEx, (before << 8) | after);
                     } else {
                         self.chunk.emit(OpCode::UnpackSequence, targets.len() as u16);

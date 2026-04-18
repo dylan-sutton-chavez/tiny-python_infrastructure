@@ -128,7 +128,7 @@ pub fn keyword(s: &[u8]) -> Option<TokenType> {
         (8, b'c') => if s == b"continue" { Some(TokenType::Continue) } else { None },
         (8, b'n') => if s == b"nonlocal" { Some(TokenType::Nonlocal) } else { None },
 
-        _ => None,
+        _ => None
     }
 }
 
@@ -145,7 +145,7 @@ pub fn is_fstring_prefix(s: &[u8]) -> bool {
             (s[0], s[1]),
             (b'f' | b'F', b'r' | b'R') | (b'r' | b'R', b'f' | b'F')
         ),
-        _ => false,
+        _ => false
     }
 }
 
@@ -157,7 +157,7 @@ pub fn is_string_prefix(s: &[u8]) -> bool {
             (s[0], s[1]),
             (b'b' | b'B', b'r' | b'R') | (b'r' | b'R', b'b' | b'B')
         ),
-        _ => false,
+        _ => false
     }
 }
 
@@ -172,6 +172,6 @@ pub fn utf8_char_len(first: u8) -> usize {
         0x00..=0x7F => 1,
         0xC0..=0xDF => 2,
         0xE0..=0xEF => 3,
-        _ => 4,
+        _ => 4
     }
 }

@@ -11,12 +11,7 @@ mod lexer_test {
 
     #[test]
     fn test_cases() {
-        /*
-        Loads lexer cases from JSON and asserts each source produces the expected token sequence.
-        */
-
-        let cases: Vec<Case> =
-            serde_json::from_str(include_str!("cases/lexer_cases.json")).expect("invalid JSON");
+        let cases: Vec<Case> = serde_json::from_str(include_str!("cases/lexer_cases.json")).expect("invalid JSON");
 
         for case in cases {
             let got: Vec<String> = lexer(&case.src).map(|t| format!("{:?}", t.kind)).collect();

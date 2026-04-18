@@ -16,8 +16,7 @@ mod vm_test {
 
     #[test]
     fn test_cases() {
-        let cases: Vec<Case> =
-            serde_json::from_str(include_str!("cases/vm_cases.json")).expect("invalid JSON");
+        let cases: Vec<Case> = serde_json::from_str(include_str!("cases/vm_cases.json")).expect("invalid JSON");
 
         for case in cases {
             let (chunk, _errors) = Parser::new(&case.src, lexer(&case.src)).parse();

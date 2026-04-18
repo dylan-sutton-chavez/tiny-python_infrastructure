@@ -3,7 +3,7 @@
 pub mod tables;
 mod scan;
 
-use scan::Scanner;
+use scan::{Scanner};
 
 const MAX_SOURCE_SIZE: usize = 10 * 1024 * 1024;
 
@@ -17,7 +17,7 @@ pub struct Token {
     pub kind: TokenType,
     pub line: usize,
     pub start: usize,
-    pub end: usize,
+    pub end: usize
 }
 
 /*
@@ -92,8 +92,7 @@ pub fn lexer(source: &str) -> impl Iterator<Item = Token> + '_ {
         let next_demotes = matches!(
             stream.peek(),
             Some((
-                TokenType::Lpar | TokenType::Colon | TokenType::Equal | TokenType::Comma
-                    | TokenType::Rpar | TokenType::Rsqb | TokenType::Newline,
+                TokenType::Lpar | TokenType::Colon | TokenType::Equal | TokenType::Comma | TokenType::Rpar | TokenType::Rsqb | TokenType::Newline,
                 _, _, _
             )) | Option::None
         );

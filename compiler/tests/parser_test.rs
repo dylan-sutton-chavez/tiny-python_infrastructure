@@ -22,10 +22,6 @@ mod parser_test {
 
     #[test]
     fn test_cases() {
-        /*
-        Loads parser cases from JSON and asserts constants, names, instructions, annotations, functions, and classes match.
-        */
-
         let cases: Vec<Case> =
             serde_json::from_str(include_str!("cases/parser_cases.json")).expect("invalid JSON");
 

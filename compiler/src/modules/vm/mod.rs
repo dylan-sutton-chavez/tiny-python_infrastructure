@@ -278,11 +278,10 @@ impl<'a> VM<'a> {
         Fetches instructions by IP, routes each opcode to its handler arm.
     */
 
-pub(crate) fn exec(&mut self, chunk: &SSAChunk, slots: &mut Vec<Option<Val>>) -> Result<Val, VmErr> {
+    pub(crate) fn exec(&mut self, chunk: &SSAChunk, slots: &mut Vec<Option<Val>>) -> Result<Val, VmErr> {
         let slots_base = self.live_slots.len();
         let n = chunk.instructions.len();
 
-        // Box per-frame cache to reduce stack frame size in debug builds
         let mut cache = Box::new(OpcodeCache::new(n));
 
         let mut ip = 0usize;
@@ -298,12 +297,11 @@ pub(crate) fn exec(&mut self, chunk: &SSAChunk, slots: &mut Vec<Option<Val>>) ->
             }
         }
 
-        let prev_slots = &chunk.prev_slots; // SSA alias table
+        let prev_slots = &chunk.prev_slots;
 
         loop {
             if ip >= n { return Ok(Val::none()); }
 
-            // Fast path: hot adaptive overlay first, then inline cache promotion
             if let Some(fast) = cache.get_fast(ip) {
                 ip += 1;
                 if self.exec_fast(fast)? { continue; }

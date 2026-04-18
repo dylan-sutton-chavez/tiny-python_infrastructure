@@ -27,7 +27,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             self.advance();
             self.expr_bp(0);
             self.chunk.emit(OpCode::JumpIfFalse, 0);
-            let jf  = self.chunk.instructions.len() - 1;
+            let jf = self.chunk.instructions.len() - 1;
             self.chunk.emit(OpCode::Jump, 0);
             let jmp = self.chunk.instructions.len() - 1;
             self.patch(jf);
@@ -119,8 +119,8 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             TokenType::Slash => Some((19, 20, OpCode::Div)),
             TokenType::Percent => Some((19, 20, OpCode::Mod)),
             TokenType::DoubleSlash => Some((19, 20, OpCode::FloorDiv)),
-            TokenType::DoubleStar => Some((22, 21, OpCode::Pow)), // l_bp > r_bp -> right-assoc: 2**3**2 == 2**(3**2)
-            _ => None,
+            TokenType::DoubleStar => Some((22, 21, OpCode::Pow)),
+            _ => None
         }
     }
 
@@ -169,7 +169,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             }
             TokenType::Complex => {
                 let raw = self.lexeme(&t).replace('_', "");
-                let s   = raw.trim_end_matches(|c: char| c == 'j' || c == 'J');
+                let s = raw.trim_end_matches(|c: char| c == 'j' || c == 'J');
                 self.emit_const(Value::Float(s.parse().unwrap_or(0.0)));
             }
             TokenType::Int | TokenType::Float => {
@@ -229,7 +229,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 let mut buf = [0u8; 128];
                 let i = self.chunk.push_name(Self::ssa_name(&name, ver, &mut buf));
                 self.chunk.emit(OpCode::StoreName, i);
-                self.chunk.emit(OpCode::LoadName,  i);
+                self.chunk.emit(OpCode::LoadName, i);
             }
             Some(TokenType::Lpar) => {
                 let _ = self.call(name);
@@ -379,8 +379,8 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.expr();
         self.chunk.emit(OpCode::ReturnValue, 0);
 
-        let body    = core::mem::take(&mut self.chunk);
-        self.chunk  = saved_chunk;
+        let body = core::mem::take(&mut self.chunk);
+        self.chunk = saved_chunk;
         self.ssa_versions = saved_ver;
 
         let fi = self.chunk.functions.len() as u16;

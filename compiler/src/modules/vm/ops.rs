@@ -135,7 +135,7 @@ impl<'a> VM<'a> {
                 if item.is_heap() { if let HeapObj::Str(sub) = self.heap.get(item) { return s.contains(sub.as_str()); } }
                 false
             }
-            _ => false,
+            _ => false
         }
     }
     pub fn add_vals(&mut self, a: Val, b: Val) -> Result<Val, VmErr> {
@@ -220,7 +220,7 @@ impl<'a> VM<'a> {
     }
 
     fn to_f64_coerce(&self, v: Val) -> Result<f64, VmErr> {
-        if v.is_int()   { return Ok(v.as_int() as f64); }
+        if v.is_int() { return Ok(v.as_int() as f64); }
         if v.is_float() { return Ok(v.as_float()); }
         if v.is_heap() {
             if let HeapObj::BigInt(b) = self.heap.get(v) { return Ok(b.to_f64()); }

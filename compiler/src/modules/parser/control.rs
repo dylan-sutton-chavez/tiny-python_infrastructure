@@ -2,6 +2,7 @@
 
 use super::Parser;
 use super::types::OpCode;
+
 use crate::modules::lexer::{Token, TokenType};
 use alloc::{string::{String, ToString}, vec, vec::Vec, format};
 
@@ -300,11 +301,11 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     pub(super) fn import_stmt(&mut self) {
         self.advance();
         loop {
-            let module  = self.dotted_name();
+            let module = self.dotted_name();
             let mod_idx = self.chunk.push_name(&module);
             self.chunk.emit(OpCode::Import, mod_idx);
             if self.eat_if(TokenType::As) {
-                let t     = self.advance();
+                let t = self.advance();
                 let alias = self.lexeme(&t).to_string();
                 self.store_name(alias);
             } else {
@@ -319,7 +320,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
     pub(super) fn from_stmt(&mut self) {
         self.advance();
-        let module  = self.dotted_name();
+        let module = self.dotted_name();
         let mod_idx = self.chunk.push_name(&module);
         self.chunk.emit(OpCode::Import, mod_idx);
         self.eat(TokenType::Import);
@@ -328,12 +329,12 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             self.chunk.emit(OpCode::ImportFrom, star);
         } else {
             loop {
-                let t        = self.advance();
-                let name     = self.lexeme(&t).to_string();
+                let t = self.advance();
+                let name = self.lexeme(&t).to_string();
                 let name_idx = self.chunk.push_name(&name);
                 self.chunk.emit(OpCode::ImportFrom, name_idx);
                 if self.eat_if(TokenType::As) {
-                    let t     = self.advance();
+                    let t = self.advance();
                     let alias = self.lexeme(&t).to_string();
                     self.store_name(alias);
                 } else {
@@ -348,7 +349,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     }
 
     pub(super) fn dotted_name(&mut self) -> String {
-        let t    = self.advance();
+        let t = self.advance();
         let mut name = self.lexeme(&t).to_string();
         while self.eat_if(TokenType::Dot) {
             let t = self.advance();
