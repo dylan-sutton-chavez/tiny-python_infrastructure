@@ -5,14 +5,16 @@ jobs:
   build:
     name: WebAssembly
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: compiler
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v5
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: compiler
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -20,21 +22,26 @@ jobs:
 
       - name: Install target
         run: rustup target add wasm32-unknown-unknown
+        working-directory: compiler
 
       - name: Install CLI Tools
         run: |
           cargo install cargo-shear
           sudo apt update
           sudo apt-get install -y binaryen
+        working-directory: compiler
 
       - name: Build
         run: cargo build --target wasm32-unknown-unknown --features wasm --lib --release
+        working-directory: compiler
 
       - name: Unused Code
         run: cargo shear && cargo clippy --lib --target wasm32-unknown-unknown --features wasm
+        working-directory: compiler
 
       - name: Size
         run: ls -lh target/wasm32-unknown-unknown/release/compiler_lib.wasm
+        working-directory: compiler
 
       - name: Optimize
         run: |
@@ -44,13 +51,16 @@ jobs:
             --enable-sign-ext \
             -o target/wasm32-unknown-unknown/release/compiler_lib.wasm \
             target/wasm32-unknown-unknown/release/compiler_lib.wasm
+        working-directory: compiler
 
       - name: Size (optimized)
         run: ls -lh target/wasm32-unknown-unknown/release/compiler_lib.wasm
+        working-directory: compiler
 
       - name: Test
         run: cargo test --features wasm-tests
-      
+        working-directory: compiler
+
       - name: Upload WASM Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')

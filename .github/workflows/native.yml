@@ -23,12 +23,16 @@ jobs:
 
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        working-directory: compiler
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v5
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: compiler
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -36,27 +40,32 @@ jobs:
 
       - name: Install target
         run: rustup target add ${{ matrix.target }}
-
-      - uses: Swatinem/rust-cache@v2
+        working-directory: compiler
 
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
+        working-directory: compiler
 
       - name: Size
         run: ls -lh target/${{ matrix.target }}/release/${{ matrix.binary }}
         shell: bash
+        working-directory: compiler
 
       - name: Test
         run: cargo test
+        working-directory: compiler
 
       - name: Install CLI Tools
         run: cargo install cargo-shear cargo-bloat
+        working-directory: compiler
 
       - name: Unused Code
         run: cargo shear && cargo clippy --target ${{ matrix.target }}
+        working-directory: compiler
 
       - name: Bloat
         run: cargo bloat --release --target ${{ matrix.target }} --crates -n 7
+        working-directory: compiler
 
       - name: Upload Native Release
         uses: softprops/action-gh-release@v2
