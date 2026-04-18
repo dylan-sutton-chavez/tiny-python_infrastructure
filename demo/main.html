@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edge Python Code Edior</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" type="image/svg" href="icon.svg">
+    <style>
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .code-font {
+            font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+            line-height: 1.625;
+        }
+    </style>
+</head>
+<body class="bg-[#161616] text-[#ffffff] h-screen flex flex-col p-4 gap-4 overflow-hidden">
+
+    <div class="w-full bg-[#222222] border border-[#2d2d2d] rounded-md flex flex-col flex-[70] basis-0 overflow-hidden">
+        
+        <div class="bg-[#1c1c1c] border-t border-[#2d2d2d] px-3 py-2 flex justify-between items-center">
+            <div class="text-[12px] tracking-tighter font-semibold text-zinc-500 flex items-center gap-1 w-full">
+                <p>editor</p>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="ml-auto w-3 h-3">
+                    <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/>
+                    <path d="M14 2v5a1 1 0 0 0 1 1h5"/>
+                </svg>
+            </div>
+        </div>
+
+        <div class="flex flex-1 code-font text-sm overflow-hidden">
+            <pre id="ln" class="no-scrollbar pt-2 pb-2 text-[#525252] text-center bg-[#2d2d2d] select-none border-r border-[#2d2d2d] overflow-y-hidden flex-none w-[35px]"></pre>
+
+            <textarea id="ed" 
+                class="no-scrollbar w-full bg-transparent p-2 outline-none resize-none text-[#c2c2c2] placeholder-[#404040] overflow-y-auto"
+                spellcheck="false"
+                placeholder="Type your Python code here..."
+            ></textarea>
+        </div>
+    </div>
+
+    <div class="w-full bg-[#222222] border border-[#2d2d2d] rounded-md flex flex-col flex-[30] basis-0 overflow-hidden">
+        
+        <div class="bg-[#1c1c1c] border-b border-[#2d2d2d] px-3 py-2 flex justify-between items-center">
+            <div class="text-[12px] tracking-tighter font-semibold text-zinc-500 flex items-center gap-1 w-full">
+                <p>terminal</p>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="ml-auto w-3 h-3">
+                    <path d="M12 19h8"/>
+                    <path d="m4 17 6-6-6-6"/>
+                </svg>
+            </div>
+        </div>
+
+        <div class="code-font text-sm p-3 text-[#c2c2c2] flex-1 overflow-y-auto no-scrollbar">
+            <p>[2026-04-18T04:45:39Z INFO  edge] emit: snapshot created [ops=3 consts=1]</p>
+            <p>Hello, world!</p>
+        </div>
+    </div>
+    
+    <script>
+        const ed = document.getElementById('ed');
+        const ln = document.getElementById('ln');
+
+        // Bloquea añadir más líneas después de la 99 (Enter o paste)
+        ed.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const currentLines = ed.value.split('\n').length;
+                if (currentLines >= 99) {
+                    e.preventDefault();
+                }
+            }
+        });
+
+        const sync = () => {
+            let lines = ed.value.split('\n');
+
+            // Si se intenta pasar de 99 (por paste, etc.), cortamos automáticamente
+            if (lines.length > 99) {
+                ed.value = lines.slice(0, 99).join('\n');
+                lines = ed.value.split('\n');
+            }
+
+            const count = lines.length;
+            // Números con 2 dígitos (01, 02, ..., 99)
+            ln.textContent = Array.from({length: count}, (_, i) => 
+                String(i + 1).padStart(2, '0')
+            ).join('\n');
+
+            // Sincronizamos el scroll
+            ln.scrollTop = ed.scrollTop;
+        };
+
+        // El evento 'input' cubre escribir, borrar y pegar
+        ed.oninput = sync;
+        ed.onscroll = sync;
+
+        // Inicialización inmediata
+        sync();
+    </script>
+
+</body>
+</html>

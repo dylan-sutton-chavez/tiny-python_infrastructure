@@ -58,7 +58,9 @@ jobs:
       - name: Bloat
         run: cargo bloat --release --target ${{ matrix.target }} --crates -n 7
 
-      - uses: softprops/action-gh-release@v2
+      - name: Upload Native Release
+        uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: compiler/target/${{ matrix.target }}/release/${{ matrix.binary }}
+          token: ${{ secrets.RELEASE_TOKEN }}

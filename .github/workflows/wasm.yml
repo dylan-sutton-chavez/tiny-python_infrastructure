@@ -51,7 +51,9 @@ jobs:
       - name: Test
         run: cargo test --features wasm-tests
       
-      - uses: softprops/action-gh-release@v2
+      - name: Upload WASM Release
+        uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: compiler/target/wasm32-unknown-unknown/release/compiler_lib.wasm
+          token: ${{ secrets.RELEASE_TOKEN }}
