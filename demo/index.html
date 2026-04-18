@@ -5,64 +5,89 @@
 <head>
 
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#161616">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
 
-    <title>Edge Python Demo</title>
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+    <meta name="googlebot" content="index, follow">
+    <meta name="author" content="Dylan Sutton Chavez">
+    <meta name="generator" content="Edge Python">
 
+    <title>Edge Python - Online Playground for a Python 3.13 Compiler in Rust</title>
+    <meta name="description" content="Run Python 3.13 in your browser. Edge Python is a single-pass SSA compiler with adaptive inline caching and template memoization, compiled to WebAssembly. Free, open source, no signup.">
+    <link rel="canonical" href="https://demo.edgepython.com/">
+
+    <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
+    <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
+    <link rel="modulepreload" href="./main.js">
+    <link rel="preload" href="./compiler_lib.wasm" as="fetch" type="application/wasm" crossorigin>
+
+    <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
+    <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
+    <link rel="modulepreload" href="./main.js">
+    <link rel="preload" href="./compiler_lib.wasm" as="fetch" type="application/wasm" crossorigin>
+
+    <link rel="icon" type="image/svg+xml" href="./icon.svg">
+
+    <link rel="stylesheet" href="./style.css">
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module" src="./main.js" defer></script>
-
-    <link rel="icon" type="image/svg" href="icon.svg">
-    <link rel="stylesheet" href="./style.css">
 
 </head>
 
 <body class="bg-[#161616] text-[#ffffff] h-screen flex flex-col p-4 gap-4 overflow-hidden">
 
-    <div class="w-full bg-[#222222] border border-[#2d2d2d] rounded-md flex flex-col flex-[70] basis-0 overflow-hidden">
-        
-        <div class="bg-[#1c1c1c] border-t border-[#2d2d2d] flex justify-between items-center">
-            <div class="text-[12px] tracking-tighter font-semibold text-zinc-500 flex items-center gap-1 w-full">
-                
-                <section class="px-3 py-2">
-                    <p>editor</p>
-                </section>
+    <h1 class="sr-only">Edge Python — Online Python 3.13 Playground</h1>
 
-                <section class="px-1.5 py-0.5 ml-auto">
-                    <button id="run" disabled class="flex items-center gap-2 px-2.5 py-0.5 bg-[#d97757] text-[#ffffff] rounded-md hover:bg-[#c16644] disabled:opacity-40 disabled:cursor-not-allowed transition">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#ffffff" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-2.5">
-                            <path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/>
-                        </svg>
-                        
-                        <span>Run</span>
-                    </button>
-                </section>
+    <main class="contents">
+        <section aria-label="Code editor" class="w-full bg-[#222222] border border-[#2d2d2d] rounded-md flex flex-col flex-[70] basis-0 overflow-hidden">
+            <header class="bg-[#1c1c1c] border-t border-[#2d2d2d] flex justify-between items-center">
+                <div class="text-[12px] tracking-tighter font-semibold text-zinc-500 flex items-center gap-1 w-full">
+                    <span class="px-3 py-2">
+                        <p aria-hidden="true">editor</p>
+                    </span>
 
+                    <span class="px-1.5 py-0.5 ml-auto">
+                        <button id="run" type="button" disabled aria-label="Run Python code" class="ml-auto flex items-center gap-2 px-2.5 py-0.5 bg-[#d97757] text-[#ffffff] rounded-md hover:bg-[#c16644] disabled:opacity-40 disabled:cursor-not-allowed transition">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#ffffff" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-2.5" aria-hidden="true" focusable="false">
+                                <path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/>
+                            </svg>
+                            <span>Run</span>
+                        </button>
+                    </span>
+            </header>
+
+            <div class="flex flex-1 code-font text-sm overflow-hidden">
+                <pre id="ln" aria-hidden="true" class="no-scrollbar pt-2 pb-2 text-[#525252] text-center bg-[#2d2d2d] select-none border-r border-[#2d2d2d] overflow-y-hidden flex-none w-[35px]"></pre>
+
+                <label for="ed" class="sr-only">Python source code</label>
+                <textarea id="ed"
+                    class="no-scrollbar w-full bg-transparent p-2 outline-none resize-none text-[#c2c2c2] placeholder-[#404040] overflow-y-auto"
+                    spellcheck="false"
+                    autocomplete="off"
+                    autocorrect="off"
+                    autocapitalize="off"
+                    aria-label="Python source code editor"
+                    placeholder="Type your Python code here..."></textarea>
             </div>
-        </div>
+        </section>
 
-        <div class="flex flex-1 code-font text-sm overflow-hidden">
-            <pre id="ln" class="no-scrollbar pt-2 pb-2 text-[#525252] text-center bg-[#2d2d2d] select-none border-r border-[#2d2d2d] overflow-y-hidden flex-none w-[35px]"></pre>
+        <section aria-label="Output terminal" aria-live="polite" class="w-full bg-[#222222] border border-[#2d2d2d] rounded-md flex flex-col flex-[30] basis-0 overflow-hidden">
+            <header class="bg-[#1c1c1c] border-b border-[#2d2d2d] px-3 py-2 flex justify-between items-center">
+                <div class="text-[12px] tracking-tighter font-semibold text-zinc-500 flex items-center gap-1 w-full">
+                    <h2 class="sr-only">Terminal</h2>
+                    <p aria-hidden="true">terminal</p>
+                    <span id="status" role="status" class="ml-auto text-[#525252]">loading wasm…</span>
+                </div>
+            </header>
 
-            <textarea id="ed" 
-                class="no-scrollbar w-full bg-transparent p-2 outline-none resize-none text-[#c2c2c2] placeholder-[#404040] overflow-y-auto"
-                spellcheck="false"
-                placeholder="Type your Python code here...">
-            </textarea>
-        </div>
-    </div>
-
-    <div class="w-full bg-[#222222] border border-[#2d2d2d] rounded-md flex flex-col flex-[30] basis-0 overflow-hidden">
-        
-        <div class="bg-[#1c1c1c] border-b border-[#2d2d2d] px-3 py-2 flex justify-between items-center">
-            <div class="text-[12px] tracking-tighter font-semibold text-zinc-500 flex items-center gap-1 w-full">
-                <p>terminal</p>
-                <span id="status" class="ml-auto text-[#525252]">loading wasm…</span>
-            </div>
-        </div>
-
-        <div id="term" class="code-font text-sm p-3 text-[#c2c2c2] flex-1 overflow-y-auto no-scrollbar whitespace-pre-wrap"></div>
-    </div>
+            <output id="term" class="code-font text-sm p-3 text-[#c2c2c2] flex-1 overflow-y-auto no-scrollbar whitespace-pre-wrap block"></output>
+        </section>
+    </main>
 
 </body>
 
