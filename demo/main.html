@@ -63,7 +63,6 @@
         const ed = document.getElementById('ed');
         const ln = document.getElementById('ln');
 
-        // Bloquea añadir más líneas después de la 99 (Enter o paste)
         ed.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 const currentLines = ed.value.split('\n').length;
@@ -76,27 +75,23 @@
         const sync = () => {
             let lines = ed.value.split('\n');
 
-            // Si se intenta pasar de 99 (por paste, etc.), cortamos automáticamente
             if (lines.length > 99) {
                 ed.value = lines.slice(0, 99).join('\n');
                 lines = ed.value.split('\n');
             }
 
             const count = lines.length;
-            // Números con 2 dígitos (01, 02, ..., 99)
+
             ln.textContent = Array.from({length: count}, (_, i) => 
                 String(i + 1).padStart(2, '0')
             ).join('\n');
 
-            // Sincronizamos el scroll
             ln.scrollTop = ed.scrollTop;
         };
 
-        // El evento 'input' cubre escribir, borrar y pegar
         ed.oninput = sync;
         ed.onscroll = sync;
 
-        // Inicialización inmediata
         sync();
     </script>
 
