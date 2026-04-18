@@ -15,14 +15,14 @@ mod runtime {
     static mut SRC: [u8; SZ] = [0; SZ];
     static mut OUT: [u8; SZ] = [0; SZ];
 
-    #[unsafe(no_mangle)] pub unsafe extern "C" fn src_ptr() -> *mut u8   { core::ptr::addr_of_mut!(SRC) as *mut u8 }
-    #[unsafe(no_mangle)] pub unsafe extern "C" fn out_ptr() -> *const u8 { core::ptr::addr_of!(OUT)     as *const u8 }
+    #[unsafe(no_mangle)] pub unsafe extern "C" fn src_ptr() -> *mut u8 { core::ptr::addr_of_mut!(SRC) as *mut u8 }
+    #[unsafe(no_mangle)] pub unsafe extern "C" fn out_ptr() -> *const u8 { core::ptr::addr_of!(OUT) as *const u8 }
 
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn run(len: usize) -> usize {
         let len = len.min(SZ);
         let src = match core::str::from_utf8(core::slice::from_raw_parts(core::ptr::addr_of!(SRC) as *const u8, len)) {
-            Ok(s)  => s,
+            Ok(s) => s,
             Err(e) => return write_out(&alloc::format!("input rejected: not valid utf-8 at byte {}", e.valid_up_to())),
         };
 
