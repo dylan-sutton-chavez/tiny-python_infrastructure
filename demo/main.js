@@ -29,29 +29,37 @@ const instantiate = async (url) => {
 };
 
 const loadWasm = async () => {
-    setStatus('loading wasm…', CLS.ok);
+    setStatus('Loading WASM...', CLS.ok);
     try {
         const [{ instance }, t] = await time(() => Promise.any(WASM_SOURCES.map(instantiate)));
         wasm = instance.exports;
         btn.disabled = false;
-        setStatus(`ready (${t}${DEV ? ' · dev' : ''})`);
+        setStatus(`Ready (${t}${DEV ? ' · Dev' : ''})`);
     } catch (err) {
-        setStatus('load failed', CLS.err);
-        term.textContent = `Could not load wasm.\n\n${err.errors.map(e => e.message).join(' | ')}`;
+        setStatus('Load failed', CLS.err);
+        term.textContent = `Could not load WASM.\n\n${err.errors.map(e => e.message).join(' | ')}`;
     }
 };
 
 const runCode = async () => {
     if (!wasm) return;
     const srcBytes = new TextEncoder().encode(ed.value);
-    if (srcBytes.length > SZ) return void (term.textContent = `error: source exceeds ${SZ} bytes`);
+    if (srcBytes.length > SZ) return void (term.textContent = `Error: Source exceeds ${SZ} bytes`);
+
+    setStatus('Running...', CLS.ok);
+    btn.disabled = true;
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+
     const [out, t] = await time(() => {
         new Uint8Array(wasm.memory.buffer).set(srcBytes, wasm.src_ptr());
         const len = wasm.run(srcBytes.length);
         return new TextDecoder().decode(new Uint8Array(wasm.memory.buffer, wasm.out_ptr(), len));
     });
+
     term.textContent = out;
-    setStatus(`ready (${t})`);
+    setStatus(`Ready (${t})`);
+    btn.disabled = false;
 };
 
 const sync = () => {
