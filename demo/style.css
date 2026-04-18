@@ -1,0 +1,7 @@
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+.code-font {
+    font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+    line-height: 1.625;
+}
