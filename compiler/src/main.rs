@@ -4,7 +4,7 @@ use log::{debug, info, error};
 
 fn parse_args() -> (String, usize, bool, bool) {
     let args: Vec<_> = env::args().skip(1).collect();
-    if args.is_empty() || args.contains(&"-h".into()) {
+    if args.is_empty() || args.iter().any(|a| a == "-h") {
         println!("edge [-c code] [-d] [-dd] [-q] [--sandbox] <file>"); 
         exit(0);
     }
@@ -17,7 +17,7 @@ fn parse_args() -> (String, usize, bool, bool) {
         exit(1);
     });
     let v = args.iter().filter(|&a| a == "-d").count() + (args.iter().filter(|&a| a == "-dd").count() * 2);
-    (p, if v > 0 { v + 2 } else { 0 }, args.contains(&"-q".into()), args.contains(&"--sandbox".into()))
+    (p, if v > 0 { v + 2 } else { 0 }, args.iter().any(|a| a == "-q"), args.iter().any(|a| a == "--sandbox"))
 }
 
 fn run(path: &str, _q: bool, sandbox: bool) -> Result<(), String> {

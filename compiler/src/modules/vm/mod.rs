@@ -64,7 +64,7 @@ impl<'a> VM<'a> {
     fn checked_jump(&mut self, target: usize, limit: usize) -> Result<usize, VmErr> {
         if self.budget == 0 { return Err(cold_budget()); }
         self.budget -= 1;
-        if target > limit { return Err(VmErr::Runtime("jump target out of bounds".into())); }
+        if target > limit { return Err(VmErr::Runtime("jump target out of bounds")); }
         Ok(target)
     }
 
@@ -74,20 +74,20 @@ impl<'a> VM<'a> {
     */
     
     fn make_iter_frame(&mut self, obj: Val) -> Result<IterFrame, VmErr> {
-        if !obj.is_heap() { return Err(VmErr::Type("not iterable".into())); }
+        if !obj.is_heap() { return Err(VmErr::Type("object is not iterable")); }
         Ok(match self.heap.get(obj) {
             HeapObj::Range(s, e, st) => IterFrame::Range { cur: *s, end: *e, step: *st },
-            HeapObj::List(v)  => IterFrame::Seq { items: v.borrow().clone(), idx: 0 },
+            HeapObj::List(v) => IterFrame::Seq { items: v.borrow().clone(), idx: 0 },
             HeapObj::Tuple(v) => IterFrame::Seq { items: v.clone(), idx: 0 },
-            HeapObj::Dict(p)  => IterFrame::Seq { items: p.borrow().keys().collect(), idx: 0 },
-            HeapObj::Set(s)   => IterFrame::Seq { items: s.borrow().clone(), idx: 0 },
+            HeapObj::Dict(p) => IterFrame::Seq { items: p.borrow().keys().collect(), idx: 0 },
+            HeapObj::Set(s) => IterFrame::Seq { items: s.borrow().clone(), idx: 0 },
             HeapObj::Str(s) => {
                 let chars: Vec<char> = s.chars().collect();
                 let mut items = Vec::with_capacity(chars.len());
                 for c in chars { items.push(self.heap.alloc(HeapObj::Str(c.to_string()))?); }
                 IterFrame::Seq { items, idx: 0 }
             }
-            _ => return Err(VmErr::Type("not iterable".into())),
+            _ => return Err(VmErr::Type("object is not iterable")),
         })
     }
 
@@ -98,23 +98,23 @@ impl<'a> VM<'a> {
     
     fn exec_unpack_seq(&mut self, expected: usize) -> Result<(), VmErr> {
         let obj = self.pop()?;
-        if !obj.is_heap() { return Err(VmErr::Type("cannot unpack non-sequence".into())); }
+        if !obj.is_heap() { return Err(VmErr::Type("cannot unpack non-sequence")); }
         let items: Vec<Val> = match self.heap.get(obj) {
             HeapObj::List(v)  => v.borrow().clone(),
             HeapObj::Tuple(v) => v.clone(),
             HeapObj::Str(s) => {
                 let chars: Vec<char> = s.chars().collect();
                 if chars.len() != expected {
-                    return Err(VmErr::Value(format!("expected {} values to unpack, got {}", expected, chars.len())));
+                    return Err(VmErr::Value("not enough values to unpack"));
                 }
                 let mut out = Vec::with_capacity(expected);
                 for c in chars { out.push(self.heap.alloc(HeapObj::Str(c.to_string()))?); }
                 out
             }
-            _ => return Err(VmErr::Type("unpack".into())),
+            _ => return Err(VmErr::Type("cannot unpack non-sequence")),
         };
         if items.len() != expected {
-            return Err(VmErr::Value(format!("expected {} values to unpack, got {}", expected, items.len())));
+            return Err(VmErr::Value("not enough values to unpack"));
         }
         for item in items.into_iter().rev() { self.push(item); }
         Ok(())
@@ -193,14 +193,14 @@ impl<'a> VM<'a> {
     #[inline] pub(crate) fn push(&mut self, v: Val) { self.stack.push(v); }
 
     #[inline] pub(crate) fn pop(&mut self) -> Result<Val, VmErr> {
-        self.stack.pop().ok_or_else(|| VmErr::Runtime("stack underflow".into()))
+        self.stack.pop().ok_or_else(|| VmErr::Runtime("stack underflow"))
     }
     #[inline] pub(crate) fn pop2(&mut self) -> Result<(Val, Val), VmErr> {
         let b = self.pop()?; let a = self.pop()?; Ok((a, b))
     }
     #[inline] pub(crate) fn pop_n(&mut self, n: usize) -> Result<Vec<Val>, VmErr> {
         let at = self.stack.len().checked_sub(n)
-            .ok_or_else(|| VmErr::Runtime("stack underflow".into()))?;
+            .ok_or_else(|| VmErr::Runtime("stack underflow"))?;
         Ok(self.stack.split_off(at))
     }
 
@@ -309,7 +309,7 @@ impl<'a> VM<'a> {
             }
 
             if ip >= n {
-                return Err(VmErr::Runtime("instruction pointer out of bounds".into()));
+                return Err(VmErr::Runtime("instruction pointer out of bounds"));
             }
 
             let ins = &chunk.instructions[ip];
@@ -335,7 +335,7 @@ impl<'a> VM<'a> {
                 OpCode::LoadTrue => self.push(Val::bool(true)),
                 OpCode::LoadFalse => self.push(Val::bool(false)),
                 OpCode::LoadNone => self.push(Val::none()),
-                OpCode::LoadEllipsis => { let v = self.heap.alloc(HeapObj::Str("...".into()))?; self.push(v); }
+                OpCode::LoadEllipsis => { let v = self.heap.alloc(HeapObj::Str("...".to_string()))?; self.push(v); }
 
                 // Arithmetic (cached)
                 OpCode::Add => { let (a, b) = self.pop2()?; cached_binop!(self.heap, rip, &ins.opcode, a, b, cache); let v = self.add_vals(a, b)?; self.push(v); }
@@ -350,7 +350,7 @@ impl<'a> VM<'a> {
                         let v = self.bigint_to_val(r)?;
                         self.push(v);
                     } else {
-                        return Err(VmErr::Type("mod requires int".into()));
+                        return Err(VmErr::Type("% requires integer operands"));
                     }
                 }
                 OpCode::Pow => {
@@ -369,9 +369,9 @@ impl<'a> VM<'a> {
                         }
                     }
                     let fa = if a.is_int() { a.as_int() as f64 } else if a.is_float() { a.as_float() }
-                            else { return Err(VmErr::Type("'**' requires numeric operands".into())); };
+                            else { return Err(VmErr::Type("** requires numeric operands")); };
                     let fb = if b.is_int() { b.as_int() as f64 } else if b.is_float() { b.as_float() }
-                            else { return Err(VmErr::Type("'**' requires numeric operands".into())); };
+                            else { return Err(VmErr::Type("** requires numeric operands")); };
                     self.push(Val::float(fpowf(fa, fb)));
                 }
                 OpCode::FloorDiv => {
@@ -381,7 +381,7 @@ impl<'a> VM<'a> {
                         let v = self.bigint_to_val(q)?;
                         self.push(v);
                     } else {
-                        return Err(VmErr::Type("// requires int".into()));
+                        return Err(VmErr::Type("// requires integer operands"));
                     }
                 }
                 OpCode::Minus => {
@@ -397,10 +397,10 @@ impl<'a> VM<'a> {
                             let pushed = self.bigint_to_val(neg)?;
                             self.push(pushed);
                         } else {
-                            return Err(VmErr::Type("unary -".into()));
+                            return Err(VmErr::Type("unary - requires a number"));
                         }
                     } else {
-                        return Err(VmErr::Type("unary -".into()));
+                        return Err(VmErr::Type("unary - requires a number"));
                     }
                 }
 
@@ -507,7 +507,7 @@ impl<'a> VM<'a> {
                         Some(item) => self.push(item),
                         None => {
                             self.iter_stack.pop();
-                            if op as usize > n { return Err(VmErr::Runtime("jump target out of bounds".into())); }
+                            if op as usize > n { return Err(VmErr::Runtime("jump target out of bounds")); }
                             ip = op as usize;
                         }
                     }
@@ -531,10 +531,10 @@ impl<'a> VM<'a> {
                     let mut args: Vec<Val> = (0..argc).map(|_| self.pop()).collect::<Result<_,_>>()?;
                     args.reverse();
                     let callee = self.pop()?;
-                    if !callee.is_heap() { return Err(VmErr::Type("call non-function".into())); }
+                    if !callee.is_heap() { return Err(VmErr::Type("object is not callable")); }
                     let (fi, captured_defaults) = match self.heap.get(callee) {
                         HeapObj::Func(i, d) => (*i, d.clone()),
-                        _ => return Err(VmErr::Type("call non-function".into())),
+                        _ => return Err(VmErr::Type("object is not callable")),
                     };
                     if let Some(cached) = self.templates.lookup(fi, &args, &self.heap) {
                         self.push(cached); continue;
@@ -640,7 +640,7 @@ impl<'a> VM<'a> {
 
                 // Implemented stubs
 
-                OpCode::Assert => { let v = self.pop()?; if !self.truthy(v) { return Err(VmErr::Runtime("AssertionError".into())); } }
+                OpCode::Assert => { let v = self.pop()?; if !self.truthy(v) { return Err(VmErr::Runtime("AssertionError")); } }
                 OpCode::Del => { let slot = op as usize; if slot < slots.len() { slots[slot] = None; } }
 
                 // No-op stubs (safe for sandbox/WASM)
@@ -650,14 +650,14 @@ impl<'a> VM<'a> {
                 OpCode::Import => { self.push(Val::none()); }
                 OpCode::ImportFrom => { self.pop()?; self.push(Val::none()); }
                 OpCode::SetupExcept | OpCode::PopExcept => {}
-                OpCode::Raise | OpCode::RaiseFrom => { return Err(VmErr::Runtime("exception raised".into())); }
-                OpCode::SetupWith | OpCode::ExitWith => { return Err(VmErr::Runtime("with/as not yet supported".into())); }
+                OpCode::Raise | OpCode::RaiseFrom => { return Err(VmErr::Runtime("exception raised")); }
+                OpCode::SetupWith | OpCode::ExitWith => { return Err(VmErr::Runtime("with/as not yet supported")); }
                 OpCode::Await | OpCode::YieldFrom => {}
-                OpCode::UnpackArgs => { return Err(VmErr::Runtime("*args/**kwargs not yet supported".into())); }
-                OpCode::MakeClass => { return Err(VmErr::Runtime("classes not yet supported".into())); }
-                OpCode::LoadAttr | OpCode::StoreAttr => { return Err(VmErr::Runtime("attribute access not yet supported".into())); }
-                OpCode::ListComp | OpCode::SetComp | OpCode::DictComp => { return Err(VmErr::Runtime("comprehensions not yet supported".into())); }
-                OpCode::GenExpr => { return Err(VmErr::Runtime("generator expressions not yet supported".into())); }
+                OpCode::UnpackArgs => { return Err(VmErr::Runtime("*args/**kwargs not yet supported")); }
+                OpCode::MakeClass => { return Err(VmErr::Runtime("classes not yet supported")); }
+                OpCode::LoadAttr | OpCode::StoreAttr => { return Err(VmErr::Runtime("attribute access not yet supported")); }
+                OpCode::ListComp | OpCode::SetComp | OpCode::DictComp => { return Err(VmErr::Runtime("comprehensions not yet supported")); }
+                OpCode::GenExpr => { return Err(VmErr::Runtime("generator expressions not yet supported")); }
             }
         }
     }

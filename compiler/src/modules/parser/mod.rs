@@ -27,6 +27,7 @@ pub struct Parser<'src, I: Iterator<Item = Token>> {
     pub(super) ssa_versions: HashMap<String, u32>,
     pub(super) join_stack: Vec<JoinNode>,
     pub(super) loop_starts: Vec<u16>,
+    pub(super) last_line: usize,
     pub(super) loop_breaks: Vec<Vec<usize>>,
     pub(super) expr_depth: usize,
     pub(super) saw_newline: bool,
@@ -152,12 +153,12 @@ Token Helpers
 
 impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     pub(super) fn advance(&mut self) -> Token {
-        self.tokens.next().unwrap_or(Token {
+        let tok = self.tokens.next().unwrap_or(Token {
             kind: TokenType::Endmarker,
-            line: 0,
-            start: 0,
-            end: 0,
-        })
+            line: 0, start: 0, end: 0,
+        });
+        self.last_line = tok.line;
+        tok
     }
 
     pub(super) fn error(&mut self, msg: &str) {
@@ -165,7 +166,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             .tokens
             .peek()
             .map(|t| (t.line, t.start, t.end))
-            .unwrap_or((0, 0, 0));
+            .unwrap_or((self.last_line, 0, 0));
         self.errors.push(Diagnostic { line, col, end, msg: msg.to_string() });
 
         // Sync to next statement boundary to suppress cascading false positives.
@@ -241,6 +242,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             loop_breaks: Vec::new(),
             saw_newline: false,
             expr_depth: 0,
+            last_line: 0,
             errors: Vec::new(),
         }
     }
@@ -257,7 +259,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             let line = self.errors.last().map(|e| e.line).unwrap_or(0);
             self.errors.push(Diagnostic {
                 line, col: 0, end: 0,
-                msg: "program too large: exceeded maximum instruction limit".into()
+                msg: "program too large: exceeded maximum instruction limit".to_string()
             });
         }
 

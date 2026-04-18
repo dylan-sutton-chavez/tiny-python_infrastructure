@@ -595,11 +595,12 @@ Runtime Errors
     CallDepth, Heap, Budget, Name, Type, Value, ZeroDiv and Runtime variants.
 */
 
-#[derive(Debug)]
 pub enum VmErr {
-    CallDepth, Heap, Budget,
-    Name(String), Type(String), Value(String),
-    ZeroDiv, Runtime(String)
+    CallDepth, Heap, Budget, ZeroDiv,
+    Name(String),
+    Type(&'static str),
+    Value(&'static str),
+    Runtime(&'static str),
 }
 
 impl fmt::Display for VmErr {
@@ -608,11 +609,11 @@ impl fmt::Display for VmErr {
             Self::CallDepth => write!(f, "RecursionError: max depth"),
             Self::Heap => write!(f, "MemoryError: heap limit"),
             Self::Budget => write!(f, "RuntimeError: budget exceeded"),
+            Self::ZeroDiv => write!(f, "ZeroDivisionError: division by zero"),
             Self::Name(s) => write!(f, "NameError: '{}'", s),
             Self::Type(s) => write!(f, "TypeError: {}", s),
             Self::Value(s) => write!(f, "ValueError: {}", s),
-            Self::ZeroDiv => write!(f, "ZeroDivisionError: division by zero"),
-            Self::Runtime(s) => write!(f, "RuntimeError: {}", s)
+            Self::Runtime(s)=> write!(f, "RuntimeError: {}", s),
         }
     }
 }

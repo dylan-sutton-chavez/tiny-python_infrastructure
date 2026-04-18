@@ -1,7 +1,7 @@
 // vm/ops.rs
 
 use super::types::*;
-use alloc::{string::{String}, vec::Vec, rc::Rc, format};
+use alloc::{string::String, vec::Vec, rc::Rc, format};
 use core::cell::RefCell;
 
 /*
@@ -120,7 +120,7 @@ impl<'a> VM<'a> {
                 return Ok(x < y);
             }
         }
-        Err(VmErr::Type(format!("'<' not supported between '{}' and '{}'", self.type_name(a), self.type_name(b))))
+        Err(VmErr::Type("'<' not supported between these types"))
     }
 
     // Checks item presence in list, tuple, dict, set, or substring in string.
@@ -161,7 +161,7 @@ impl<'a> VM<'a> {
                 _ => {}
             }
         }
-        Err(VmErr::Type(format!("'+' not supported between '{}' and '{}'", self.type_name(a), self.type_name(b))))
+        Err(VmErr::Type("unsupported operand type(s) for '+'"))
     }
 
     pub fn sub_vals(&mut self, a: Val, b: Val) -> Result<Val, VmErr> {
@@ -171,7 +171,7 @@ impl<'a> VM<'a> {
         if let (Ok(fa), Ok(fb)) = (self.to_f64_coerce(a), self.to_f64_coerce(b)) {
             return Ok(Val::float(fa - fb));
         }
-        Err(VmErr::Type(format!("'-' not supported between '{}' and '{}'", self.type_name(a), self.type_name(b))))
+        Err(VmErr::Type("unsupported operand type(s) for '-'"))
     }
 
     pub fn mul_vals(&mut self, a: Val, b: Val) -> Result<Val, VmErr> {
@@ -194,13 +194,13 @@ impl<'a> VM<'a> {
                 return self.heap.alloc(HeapObj::Str(r));
             }
         }
-        Err(VmErr::Type(format!("'*' not supported between '{}' and '{}'", self.type_name(a), self.type_name(b))))
+        Err(VmErr::Type("unsupported operand type(s) for '*'"))
     }
 
     pub fn div_vals(&self, a: Val, b: Val) -> Result<Val, VmErr> {
-        let bv = self.to_f64_coerce(b).map_err(|_| VmErr::Type("'/' requires numeric operands".into()))?;
+        let bv = self.to_f64_coerce(b).map_err(|_| VmErr::Type("'/' requires numeric operands"))?;
         if bv == 0.0 { return Err(VmErr::ZeroDiv); }
-        let av = self.to_f64_coerce(a).map_err(|_| VmErr::Type("'/' requires numeric operands".into()))?;
+        let av = self.to_f64_coerce(a).map_err(|_| VmErr::Type("'/' requires numeric operands"))?;
         Ok(Val::float(av / bv))
     }
 
@@ -225,7 +225,7 @@ impl<'a> VM<'a> {
         if v.is_heap() {
             if let HeapObj::BigInt(b) = self.heap.get(v) { return Ok(b.to_f64()); }
         }
-        Err(VmErr::Type("numeric operand required".into()))
+        Err(VmErr::Type("numeric operand required"))
     }
 
     pub(crate) fn i128_to_val(&mut self, r: i128) -> Result<Val, VmErr> {
