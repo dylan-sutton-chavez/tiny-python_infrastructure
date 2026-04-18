@@ -12,6 +12,10 @@
         "label": "GitHub",
         "href": "https://github.com/dylan-sutton-chavez/edge-python",
         "icon": "github" 
+      },
+      {
+        "label": "Demo",
+        "href": "https://demo.edgepython.com/"
       }
     ]
   },
