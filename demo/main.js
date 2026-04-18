@@ -39,19 +39,30 @@ const TOKEN_RE = /(#[^\n]*)|((?:\b[fFrRbBuU]{1,2})?(?:"""[\s\S]*?"""|'''[\s\S]*?
 
 const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 
-const highlight = (src) => esc(src).replace(TOKEN_RE, (m, com, str, num, word) => {
-    if (com)  return `<span class="tk-com">${com}</span>`;
-    if (str)  return `<span class="tk-str">${str}</span>`;
-    if (num)  return `<span class="tk-num">${num}</span>`;
-    if (word) {
-        if (KW.has(word))  return `<span class="tk-kw">${word}</span>`;
-        if (LIT.has(word)) return `<span class="tk-lit">${word}</span>`;
-        if (BI.has(word))  return `<span class="tk-bi">${word}</span>`;
-        return word;
-    }
-    return m;
-});
+const highlight = (src) => {
+    const escaped = esc(src);
+    return escaped.replace(TOKEN_RE, (m, com, str, num, word, offset, fullStr) => {
+        if (com)  return `<span class="tk-com">${com}</span>`;
+        if (str)  return `<span class="tk-str">${str}</span>`;
+        if (num)  return `<span class="tk-num">${num}</span>`;
+        if (word) {        
+            const isEntity = fullStr[offset - 1] === '&' && fullStr[offset + word.length] === ';';
+            if (isEntity) return word;
 
+            if (KW.has(word))  return `<span class="tk-kw">${word}</span>`;
+            if (LIT.has(word)) return `<span class="tk-lit">${word}</span>`;
+            if (BI.has(word))  return `<span class="tk-bi">${word}</span>`;
+
+            const isFunction = /^\s*\(/.test(fullStr.slice(offset + word.length));
+            if (isFunction) {
+                return `<span class="tk-func">${word}</span>`;
+            } else {
+                return `<span class="tk-var">${word}</span>`;
+            }
+        }
+        return m;
+    });
+};
 const jar = CodeJar(ed, (editor) => {
     editor.innerHTML = highlight(editor.textContent);
 }, {
