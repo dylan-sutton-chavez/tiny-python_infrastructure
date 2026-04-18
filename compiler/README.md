@@ -2,6 +2,8 @@
 
 Single-pass SSA compiler for Python 3.13: hand-written lexer, token-to-bytecode parser, adaptive virtual machine with NaN-boxed values, inline caching, template memoization, mark-sweep garbage collector, and configurable sandbox limits. Native and WASM targets.
 
+*demo.edgepython.com*
+
 ---
 
 ### Architecture
