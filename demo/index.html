@@ -56,7 +56,6 @@
     </div>
 
     <script>
-        const WASM_URL = 'https://github.com/dylan-sutton-chavez/edge-python/releases/latest/download/compiler_lib.wasm';
         const SZ = 1 << 20;
 
         const ed = document.getElementById('ed');
@@ -69,11 +68,10 @@
 
         async function loadWasm() {
             try {
-                status.textContent = 'fetching latest wasm…';
-                const res = await fetch(WASM_URL, { cache: 'no-cache' });
+                status.textContent = 'loading wasm…';
+                const res = await fetch('./compiler_lib.wasm');
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const bytes = await res.arrayBuffer();
-                const { instance } = await WebAssembly.instantiate(bytes, {});
+                const { instance } = await WebAssembly.instantiateStreaming(res, {});
                 wasm = instance.exports;
                 btn.disabled = false;
                 status.textContent = 'ready';

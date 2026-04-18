@@ -3,8 +3,6 @@ name: pages
 on:
   push:
     branches: [main]
-  release:
-    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -24,6 +22,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: compiler
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install wasm target
+        run: rustup target add wasm32-unknown-unknown
+        working-directory: compiler
+
+      - name: Install wasm-opt
+        run: sudo apt-get update && sudo apt-get install -y binaryen
+
+      - name: Build wasm
+        run: cargo build --target wasm32-unknown-unknown --features wasm --lib --release
+        working-directory: compiler
+
+      - name: Optimize wasm
+        run: |
+          wasm-opt -Oz --converge --strip-debug \
+            --enable-bulk-memory \
+            --enable-nontrapping-float-to-int \
+            --enable-sign-ext \
+            -o compiler/target/wasm32-unknown-unknown/release/compiler_lib.wasm \
+            compiler/target/wasm32-unknown-unknown/release/compiler_lib.wasm
+
+      - name: Stage demo
+        run: cp compiler/target/wasm32-unknown-unknown/release/compiler_lib.wasm demo/
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
