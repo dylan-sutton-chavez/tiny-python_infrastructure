@@ -4,22 +4,26 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - name: Linux
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary: edge
+            asset: edge-linux-x86_64
 
           - name: Windows
             os: windows-latest
             target: x86_64-pc-windows-msvc
             binary: edge.exe
+            asset: edge-windows-x86_64.exe
 
           - name: Mac
             os: macos-latest
             target: aarch64-apple-darwin
             binary: edge
+            asset: edge-macos-aarch64
 
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -67,9 +71,14 @@ jobs:
         run: cargo bloat --release --target ${{ matrix.target }} --crates -n 7
         working-directory: compiler
 
+      - name: Rename for release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: cp compiler/target/${{ matrix.target }}/release/${{ matrix.binary }} ${{ matrix.asset }}
+
       - name: Upload Native Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: compiler/target/${{ matrix.target }}/release/${{ matrix.binary }}
-          token: ${{ secrets.RELEASE_TOKEN }}
+          files: ${{ matrix.asset }}
+          fail_on_unmatched_files: true

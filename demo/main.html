@@ -23,10 +23,12 @@
         <div class="bg-[#1c1c1c] border-t border-[#2d2d2d] px-3 py-2 flex justify-between items-center">
             <div class="text-[12px] tracking-tighter font-semibold text-zinc-500 flex items-center gap-1 w-full">
                 <p>editor</p>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="ml-auto w-3 h-3">
-                    <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/>
-                    <path d="M14 2v5a1 1 0 0 0 1 1h5"/>
-                </svg>
+                <button id="run" disabled class="ml-auto flex items-center gap-1 px-2 py-0.5 bg-[#d97757] text-white rounded hover:bg-[#c16644] disabled:opacity-40 disabled:cursor-not-allowed transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-3 h-3">
+                        <polygon points="6 4 20 12 6 20"/>
+                    </svg>
+                    <span>run</span>
+                </button>
             </div>
         </div>
 
@@ -37,7 +39,7 @@
                 class="no-scrollbar w-full bg-transparent p-2 outline-none resize-none text-[#c2c2c2] placeholder-[#404040] overflow-y-auto"
                 spellcheck="false"
                 placeholder="Type your Python code here..."
-            ></textarea>
+            >print("Hello, world!")</textarea>
         </div>
     </div>
 
@@ -46,46 +48,78 @@
         <div class="bg-[#1c1c1c] border-b border-[#2d2d2d] px-3 py-2 flex justify-between items-center">
             <div class="text-[12px] tracking-tighter font-semibold text-zinc-500 flex items-center gap-1 w-full">
                 <p>terminal</p>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="ml-auto w-3 h-3">
-                    <path d="M12 19h8"/>
-                    <path d="m4 17 6-6-6-6"/>
-                </svg>
+                <span id="status" class="ml-auto text-[#525252]">loading wasm…</span>
             </div>
         </div>
 
-        <div class="code-font text-sm p-3 text-[#c2c2c2] flex-1 overflow-y-auto no-scrollbar">
-            <p>[2026-04-18T04:45:39Z INFO  edge] emit: snapshot created [ops=3 consts=1]</p>
-            <p>Hello, world!</p>
-        </div>
+        <div id="term" class="code-font text-sm p-3 text-[#c2c2c2] flex-1 overflow-y-auto no-scrollbar whitespace-pre-wrap"></div>
     </div>
-    
+
     <script>
+        const WASM_URL = 'https://github.com/dylan-sutton-chavez/edge-python/releases/latest/download/compiler_lib.wasm';
+        const SZ = 1 << 20;
+
         const ed = document.getElementById('ed');
         const ln = document.getElementById('ln');
+        const btn = document.getElementById('run');
+        const term = document.getElementById('term');
+        const status = document.getElementById('status');
+
+        let wasm = null;
+
+        async function loadWasm() {
+            try {
+                status.textContent = 'fetching latest wasm…';
+                const res = await fetch(WASM_URL, { cache: 'no-cache' });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const bytes = await res.arrayBuffer();
+                const { instance } = await WebAssembly.instantiate(bytes, {});
+                wasm = instance.exports;
+                btn.disabled = false;
+                status.textContent = 'ready';
+                status.className = 'ml-auto text-emerald-500';
+            } catch (e) {
+                status.textContent = `load failed: ${e.message}`;
+                status.className = 'ml-auto text-red-500';
+            }
+        }
+
+        function runCode() {
+            if (!wasm) return;
+            const srcBytes = new TextEncoder().encode(ed.value);
+            if (srcBytes.length > SZ) {
+                term.textContent = `error: source exceeds ${SZ} bytes`;
+                return;
+            }
+            const mem = new Uint8Array(wasm.memory.buffer);
+            mem.set(srcBytes, wasm.src_ptr());
+            const outLen = wasm.run(srcBytes.length);
+            const outView = new Uint8Array(wasm.memory.buffer, wasm.out_ptr(), outLen);
+            term.textContent = new TextDecoder().decode(outView);
+        }
+
+        btn.addEventListener('click', runCode);
 
         ed.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                const currentLines = ed.value.split('\n').length;
-                if (currentLines >= 99) {
-                    e.preventDefault();
-                }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                runCode();
+                return;
+            }
+            if (e.key === 'Enter' && ed.value.split('\n').length >= 99) {
+                e.preventDefault();
             }
         });
 
         const sync = () => {
             let lines = ed.value.split('\n');
-
             if (lines.length > 99) {
                 ed.value = lines.slice(0, 99).join('\n');
                 lines = ed.value.split('\n');
             }
-
-            const count = lines.length;
-
-            ln.textContent = Array.from({length: count}, (_, i) => 
+            ln.textContent = Array.from({length: lines.length}, (_, i) =>
                 String(i + 1).padStart(2, '0')
             ).join('\n');
-
             ln.scrollTop = ed.scrollTop;
         };
 
@@ -93,6 +127,7 @@
         ed.onscroll = sync;
 
         sync();
+        loadWasm();
     </script>
 
 </body>
