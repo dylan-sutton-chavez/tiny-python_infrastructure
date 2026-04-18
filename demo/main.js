@@ -5,6 +5,8 @@ const WASM_SOURCES = DEV
     : ['./compiler_lib.wasm'];
 const FETCH_OPTS = DEV ? { cache: 'no-store' } : undefined;
 
+const DEFAULT_CODE = `def add(a: int, b: int) -> int:\n    return a + b\nresult: int = add(13, 20)\nprint(result)`;
+
 const CLS = { ok: 'ml-auto text-[#7daf7a]', err: 'ml-auto text-[#d67f6d]' };
 const MAX_LINES = 99;
 const $ = (id) => document.getElementById(id);
@@ -66,6 +68,8 @@ ed.addEventListener('keydown', (e) => {
     else if (e.key === 'Enter' && ed.value.split('\n').length >= MAX_LINES) e.preventDefault();
 });
 ed.oninput = ed.onscroll = sync;
+
+ed.value = DEFAULT_CODE;
 
 sync();
 loadWasm();
