@@ -35,34 +35,41 @@ const BI = new Set([
 ]);
 const LIT = new Set(['True','False','None']);
 
+const WORD_CLS = [
+    [KW, 'tk-kw'],
+    [LIT, 'tk-lit'],
+    [BI, 'tk-bi'],
+];
+
 const TOKEN_RE = /(#[^\n]*)|((?:\b[fFrRbBuU]{1,2})?(?:"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'))|(0[xX][\da-fA-F_]+|0[oO][0-7_]+|0[bB][01_]+|\d[\d_]*(?:\.[\d_]*)?(?:[eE][+-]?\d+)?[jJ]?|\.\d[\d_]*(?:[eE][+-]?\d+)?[jJ]?)|([A-Za-z_]\w*)/g;
 
 const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const span = (cls, s) => `<span class="${cls}">${s}</span>`;
 
-const highlight = (src) => {
-    const escaped = esc(src);
-    return escaped.replace(TOKEN_RE, (m, com, str, num, word, offset, fullStr) => {
-        if (com)  return `<span class="tk-com">${com}</span>`;
-        if (str)  return `<span class="tk-str">${str}</span>`;
-        if (num)  return `<span class="tk-num">${num}</span>`;
-        if (word) {        
-            const isEntity = fullStr[offset - 1] === '&' && fullStr[offset + word.length] === ';';
-            if (isEntity) return word;
-
-            if (KW.has(word))  return `<span class="tk-kw">${word}</span>`;
-            if (LIT.has(word)) return `<span class="tk-lit">${word}</span>`;
-            if (BI.has(word))  return `<span class="tk-bi">${word}</span>`;
-
-            const isFunction = /^\s*\(/.test(fullStr.slice(offset + word.length));
-            if (isFunction) {
-                return `<span class="tk-func">${word}</span>`;
-            } else {
-                return `<span class="tk-var">${word}</span>`;
-            }
+const tokenize = (m, com, str, num, word, offset, fullStr) => {
+    if (com) return span('tk-com', com);
+    if (str) {
+        if (/^[fFrRbBuU]*[fF]/i.test(str)) {
+            const body = str.replace(/\{\{|\}\}|\{([^{}]*)\}/g, (m, expr) =>
+                expr != null
+                    ? `{${expr.replace(new RegExp(TOKEN_RE.source, TOKEN_RE.flags), tokenize)}}`
+                    : m
+            );
+            return span('tk-str', body);
         }
-        return m;
-    });
+        return span('tk-str', str);
+    }
+    if (num) return span('tk-num', num);
+    if (word) {
+        if (fullStr[offset - 1] === '&' && fullStr[offset + word.length] === ';') return word;
+        for (const [set, cls] of WORD_CLS) if (set.has(word)) return span(cls, word);
+        return span(/^\s*\(/.test(fullStr.slice(offset + word.length)) ? 'tk-func' : 'tk-var', word);
+    }
+    return m;
 };
+
+const highlight = (src) => esc(src).replace(TOKEN_RE, tokenize);
+
 const jar = CodeJar(ed, (editor) => {
     editor.innerHTML = highlight(editor.textContent);
 }, {
@@ -125,7 +132,7 @@ const runCode = async () => {
 const sync = () => {
     const text = jar.toString().replace(/\n$/, '');
     const n = Math.max(1, Math.min(text.split('\n').length, MAX_LINES));
-    ln.textContent = Array.from({ length: n }, (_, i) => String(i + 1).padStart(2, '0')).join('\n');
+    ln.textContent = Array.from({ length: n }, (_, i) => String(i + 1).padStart(2, '00')).join('\n');
     ln.scrollTop = ed.scrollTop;
 };
 

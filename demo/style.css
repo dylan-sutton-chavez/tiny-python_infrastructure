@@ -8,9 +8,10 @@
 
 #ed {
     tab-size: 4;
-    white-space: pre;
+    white-space: pre !important;
     outline: none;
     font-variant-ligatures: none;
+    overflow-x: auto;
 }
 
 .tk-kw { color: #c586c0; }
@@ -21,3 +22,4 @@
 .tk-com { color: #6a9955; font-style: italic; }
 .tk-var { color: #9cdcfe; } 
 .tk-func { color: #dcdcaa; }
+.tk-fexpr { color: #9cdcfe; }
