@@ -80,7 +80,7 @@ const jar = CodeJar(ed, (editor) => {
     editor.innerHTML = highlight(editor.textContent);
 }, {
     tab: '    ',
-    indentOn: /:\s*$/,
+    indentOn: /:[ \t]*$/,
     spellcheck: false,
     addClosing: false,
 });
