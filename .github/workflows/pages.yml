@@ -35,20 +35,46 @@ jobs:
         working-directory: compiler
 
       - name: Install wasm-opt
-        run: sudo apt-get update && sudo apt-get install -y binaryen
+        run: |
+          curl -sSL https://github.com/WebAssembly/binaryen/releases/download/version_121/binaryen-version_121-x86_64-linux.tar.gz \
+            | tar -xz --strip-components=2 -C /usr/local/bin binaryen-version_121/bin/wasm-opt
+          wasm-opt --version
 
       - name: Build wasm
         run: cargo build --target wasm32-unknown-unknown --features wasm --lib --release
         working-directory: compiler
 
+      - name: Size (unoptimized)
+        run: ls -lh target/wasm32-unknown-unknown/release/compiler_lib.wasm
+        working-directory: compiler
+
       - name: Optimize wasm
         run: |
-          wasm-opt -Oz --converge --strip-debug --strip-producers \
+          INPUT=compiler/target/wasm32-unknown-unknown/release/compiler_lib.wasm
+
+          wasm-opt -Oz --converge \
+            --generate-global-effects \
+            --strip-debug --strip-producers \
             --enable-bulk-memory \
             --enable-nontrapping-float-to-int \
             --enable-sign-ext \
-            -o compiler/target/wasm32-unknown-unknown/release/compiler_lib.wasm \
-            compiler/target/wasm32-unknown-unknown/release/compiler_lib.wasm
+            -tnh \
+            -o /tmp/wasm_stage1.wasm "$INPUT"
+
+          wasm-opt --flatten --rereloop -Oz -Oz \
+            -o "$INPUT" /tmp/wasm_stage1.wasm
+
+          rm /tmp/wasm_stage1.wasm
+
+      - name: Write version manifest
+        run: |
+          HASH=$(sha256sum compiler/target/wasm32-unknown-unknown/release/compiler_lib.wasm \
+                | cut -c1-12)
+          printf '{"v":"%s"}\n' "$HASH" > demo/version.json
+
+      - name: Size (optimized)
+        run: ls -lh target/wasm32-unknown-unknown/release/compiler_lib.wasm
+        working-directory: compiler
 
       - name: Stage demo
         run: cp compiler/target/wasm32-unknown-unknown/release/compiler_lib.wasm demo/

@@ -27,8 +27,9 @@ jobs:
       - name: Install CLI Tools
         run: |
           cargo install cargo-shear
-          sudo apt update
-          sudo apt-get install -y binaryen
+          curl -sSL https://github.com/WebAssembly/binaryen/releases/download/version_121/binaryen-version_121-x86_64-linux.tar.gz \
+            | tar -xz --strip-components=2 -C /usr/local/bin binaryen-version_121/bin/wasm-opt
+          wasm-opt --version
         working-directory: compiler
 
       - name: Build
@@ -39,18 +40,27 @@ jobs:
         run: cargo shear && cargo clippy --lib --target wasm32-unknown-unknown --features wasm
         working-directory: compiler
 
-      - name: Size
+      - name: Size (unoptimized)
         run: ls -lh target/wasm32-unknown-unknown/release/compiler_lib.wasm
         working-directory: compiler
 
       - name: Optimize
         run: |
-          wasm-opt -Oz --converge --strip-debug --strip-producers \
+          INPUT=target/wasm32-unknown-unknown/release/compiler_lib.wasm
+
+          wasm-opt -Oz --converge \
+            --generate-global-effects \
+            --strip-debug --strip-producers \
             --enable-bulk-memory \
             --enable-nontrapping-float-to-int \
             --enable-sign-ext \
-            -o target/wasm32-unknown-unknown/release/compiler_lib.wasm \
-            target/wasm32-unknown-unknown/release/compiler_lib.wasm
+            -tnh \
+            -o /tmp/wasm_stage1.wasm "$INPUT"
+
+          wasm-opt --flatten --rereloop -Oz -Oz \
+            -o "$INPUT" /tmp/wasm_stage1.wasm
+
+          rm /tmp/wasm_stage1.wasm
         working-directory: compiler
 
       - name: Size (optimized)

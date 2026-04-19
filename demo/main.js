@@ -2,10 +2,16 @@ import { CodeJar } from 'https://esm.sh/codejar@4';
 
 const SZ = 1 << 20;
 const DEV = !['demo.edgepython.com'].includes(location.hostname);
-const WASM_SOURCES = DEV
-    ? ['https://demo.edgepython.com/compiler_lib.wasm']
-    : ['./compiler_lib.wasm'];
 const FETCH_OPTS = DEV ? { cache: 'no-store' } : undefined;
+
+const _ver = await fetch('./version.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.json() : {})
+    .catch(() => ({}));
+const _bust = _ver.v ? `?v=${_ver.v}` : '';
+
+const WASM_SOURCES = DEV
+    ? [`https://demo.edgepython.com/compiler_lib.wasm${_bust}`]
+    : [`./compiler_lib.wasm${_bust}`];
 
 const DEFAULT_CODE = `"""\nImplements a pure functional pipeline using head-tail recursion to avoid state mutation.\n\nReferences:\n* Backus, J. (1978). Algebra of Programs (Function composition).\n"""\n\ndef double(n: int) -> int:\n    return n * 2\n\ndef square(n: int) -> int:\n    return n * n\n\ndef apply_pipeline(value: int, steps: list[int]) -> int:\n    # Stop recursion when no steps remain\n    if not steps:\n        return value\n\n    first_fn = steps[0]\n    remaining_steps = steps[1:]\n\n    return apply_pipeline(first_fn(value), remaining_steps)\n\ndef transform_list(elements: list[int], steps: list[int]) -> list[int]:\n    # Stop recursion when list is empty\n    if not elements:\n        return []\n\n    head = elements[0]\n    tail = elements[1:]\n\n    transformed = apply_pipeline(head, steps)\n\n    return [transformed] + transform_list(tail, steps)\n\ndata: list[int] = [1, 2, 3]\npipeline: list[int] = [double, square]\n\nresult = transform_list(data, pipeline)\n\nprint(f"Input: {data}")\nprint(f"Output: {result}")`;
 
