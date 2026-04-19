@@ -47,7 +47,6 @@ jobs:
             --enable-bulk-memory \
             --enable-nontrapping-float-to-int \
             --enable-sign-ext \
-            --low-memory-unused \
             -o compiler/target/wasm32-unknown-unknown/release/compiler_lib.wasm \
             compiler/target/wasm32-unknown-unknown/release/compiler_lib.wasm
 
