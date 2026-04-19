@@ -213,5 +213,8 @@
   {"src": "x = 99999999999999999999\nprint(x)", "output": ["99999999999999999999"], "result": "None"},
   {"src": "scale = 1\nfor _ in range(110):\n    scale = scale * 10\nterm_a = scale // 5\nprint(term_a)", "output": ["20000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"], "result": "None"},
   {"src": "x = 42\ndef f():\n    return x\nprint(f())", "output": ["42"], "result": "None"},
-  {"src": "def pi(n):\n    S_num = 0\n    for k in range(n):\n        if k % 2 == 0:\n            S_num = S_num + 1/(2*k + 1)\n        else:\n            S_num = S_num - 1/(2*k + 1)\n    return 4 * S_num\nprint(pi(10))", "output": ["3.0418396189294032"], "result": "None"}
+  {"src": "def pi(n):\n    S_num = 0\n    for k in range(n):\n        if k % 2 == 0:\n            S_num = S_num + 1/(2*k + 1)\n        else:\n            S_num = S_num - 1/(2*k + 1)\n    return 4 * S_num\nprint(pi(10))", "output": ["3.0418396189294032"], "result": "None"},
+  {"src": "a: list[int] = [1, 2, 3]\nprint(a[0])", "output": ["1"], "result": "None"},
+  {"src": "def add(x: int, y: int) -> int:\n    return x + y\nprint(add(3, 4))", "output": ["7"], "result": "None"},
+  {"src": "def greet(name: str) -> str:\n    return 'Hello ' + name\nprint(greet('world'))", "output": ["Hello world"], "result": "None"}
 ]

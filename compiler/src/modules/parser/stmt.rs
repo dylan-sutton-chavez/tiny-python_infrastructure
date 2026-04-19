@@ -281,18 +281,24 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     pub(super) fn name_stmt(&mut self, t: Token) -> bool {
         let name = self.lexeme(&t).to_string();
 
-        if self.eat_if(TokenType::Colon) {
-            if matches!(self.peek(), Some(TokenType::Name)) {
-                let ann = {
-                    let t = self.advance();
-                    self.lexeme(&t).to_string()
-                };
-                self.chunk.annotations.insert(name.clone(), ann);
-            }
-            if !matches!(self.peek(), Some(TokenType::Equal)) {
-                return false;
-            }
+    if self.eat_if(TokenType::Colon) {
+        if matches!(self.peek(), Some(TokenType::Name)) {
+            let ann = {
+                let t = self.advance();
+                self.lexeme(&t).to_string()
+            };
+            self.chunk.annotations.insert(name.clone(), ann);
         }
+        while !matches!(
+            self.peek(),
+            Some(TokenType::Equal | TokenType::Dedent | TokenType::Endmarker) | None
+        ) {
+            self.advance();
+        }
+        if !matches!(self.peek(), Some(TokenType::Equal)) {
+            return false;
+        }
+    }
 
         match self.peek() {
             Some(TokenType::Equal) => {

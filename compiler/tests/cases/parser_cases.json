@@ -1625,5 +1625,26 @@
     "names": ["a_0"],
     "instructions": [["LoadName",0], ["LoadConst",0], ["Dup2",0], ["GetItem",0], ["LoadConst",1], ["Add",0], ["StoreItem",0], ["ReturnValue",0]],
     "annotations": {}
+  },
+  {
+    "src": "x: list[int] = [1, 2]",
+    "constants": ["1", "2"],
+    "names": ["x_1"],
+    "instructions": [["LoadConst", 0], ["LoadConst", 1], ["BuildList", 2], ["StoreName", 0], ["ReturnValue", 0]],
+    "annotations": {"x": "list"}
+  },
+  {
+    "src": "x: dict[str, int] = {}",
+    "constants": [],
+    "names": ["x_1"],
+    "instructions": [["BuildDict", 0], ["StoreName", 0], ["ReturnValue", 0]],
+    "annotations": {"x": "dict"}
+  },
+  {
+    "src": "x: tuple[int, str, float] = [1]",
+    "constants": ["1"],
+    "names": ["x_1"],
+    "instructions": [["LoadConst", 0], ["BuildList", 1], ["StoreName", 0], ["ReturnValue", 0]],
+    "annotations": {"x": "tuple"}
   }
 ]
