@@ -1,0 +1,26 @@
+[
+    {
+        "name": "Math",
+        "icon": "./static/sigma.svg",
+        "aria-label": "The Math package in Edge Python, providing basic mathematical functions and constants.",
+        "source": "./packages/math.wasm"
+    },
+    {
+        "name": "Regex",
+        "icon": "./static/a-letter.svg",
+        "aria-label": "Regex package in Edge Python, offering regular expression matching operations similar to Python's re module.",
+        "source": "./packages/re.wasm"
+    },
+    {
+        "name": "Operating System",
+        "icon": "./static/binary.svg",
+        "aria-label": "Operating System package in Edge Python, providing a way of using operating system dependent functionality like file and directory operations.",
+        "source": "./packages/os.wasm"
+    },
+    {
+        "name": "Random",
+        "icon": "./static/dices.svg",
+        "aria-label": "Random package in Edge Python, offering functions for generating random numbers and performing random operations.",
+        "source": "./packages/random.wasm"
+    }
+]

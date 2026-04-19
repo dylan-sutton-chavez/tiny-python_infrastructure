@@ -7,11 +7,19 @@
 }
 
 #ed {
+    min-width: 0;
     tab-size: 4;
     white-space: pre !important;
     outline: none;
     font-variant-ligatures: none;
     overflow-x: auto;
+    overflow-y: auto;
+}
+
+@media (max-width: 1050px) {
+    aside[data-hide-sm] {
+        display: none;
+    }
 }
 
 .tk-kw { color: #c586c0; }

@@ -33,11 +33,11 @@
 
 </head>
 
-<body class="bg-[#161616] text-[#ffffff] h-screen flex flex-col p-4 gap-4 overflow-hidden">
+<body class="bg-[#161616] text-[#ffffff] h-screen flex p-4 gap-4 overflow-hidden">
 
     <h1 class="sr-only">Edge Python — Online Python 3.13 Playground</h1>
 
-    <main class="contents">
+    <main class="flex-1 flex flex-col gap-4 min-h-0">
         <nav class="bg-[#222222] border border-[#2d2d2d] rounded-md text-[#c2c2c2] text-[12px] px-3 py-2 flex items-center justify-between">
             <a href="/" class="flex items-center gap-2">
                 <h1 class="font-semibold">Edge Python Playground</h1>
@@ -52,7 +52,7 @@
             </a>
         </nav>
 
-        <section aria-label="Code editor" class="w-full bg-[#222222] border border-[#2d2d2d] rounded-md flex flex-col flex-[70] basis-0 overflow-hidden">
+        <section aria-label="Code editor" class="w-full bg-[#222222] border border-[#2d2d2d] rounded-md flex flex-col flex-[70] basis-0 overflow-hidden min-h-0">
             <header class="bg-[#1c1c1c] border-[#2d2d2d] flex justify-between items-center">
                 <div class="text-[12px] tracking-tighter font-semibold text-zinc-500 flex items-center gap-1 w-full border-b border-[#2d2d2d]">
                     <span class="px-3 py-2">
@@ -67,19 +67,20 @@
                             <span>Run</span>
                         </button>
                     </span>
+                </div>
             </header>
 
-            <div class="flex flex-1 code-font text-sm overflow-hidden">
+            <div class="flex flex-1 code-font text-sm overflow-hidden min-w-0 min-h-0">
                 <pre id="ln" aria-hidden="true" class="no-scrollbar pt-2 pb-2 text-[#525252] text-center bg-[#2d2d2d] select-none border-r border-[#2d2d2d] overflow-y-hidden flex-none w-[35px]"></pre>
 
                 <div id="ed"
-                    class="no-scrollbar flex-1 p-2 text-[#c2c2c2] overflow-y-auto"
+                    class="no-scrollbar flex-1 p-2 text-[#c2c2c2] min-w-0"
                     aria-label="Python source code editor">
                 </div>
             </div>
         </section>
 
-        <section aria-label="Output terminal" aria-live="polite" class="w-full bg-[#222222] border border-[#2d2d2d] rounded-md flex flex-col flex-[30] basis-0 overflow-hidden">
+        <section aria-label="Output terminal" aria-live="polite" class="w-full bg-[#222222] border border-[#2d2d2d] rounded-md flex flex-col flex-[30] basis-0 overflow-hidden min-h-0">
             <header class="bg-[#1c1c1c] border-b border-[#2d2d2d] px-3 py-2 flex justify-between items-center">
                 <div class="text-[12px] tracking-tighter font-semibold text-zinc-500 flex items-center gap-1 w-full">
                     <h2 class="sr-only">Terminal</h2>
@@ -91,6 +92,29 @@
             <output id="term" class="code-font text-sm p-3 text-[#c2c2c2] flex-1 overflow-y-auto no-scrollbar whitespace-pre-wrap block"></output>
         </section>
     </main>
+
+    <aside data-hide-sm class="bg-[#222222] border border-[#2d2d2d] min-w-[270px] max-w-[370px] w-full rounded-md text-[#c2c2c2] text-[12px] px-3 py-2 flex flex-col h-full">
+
+        <div class="flex items-center gap-2 mb-4">
+            <span>Standard Packages</span>
+
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 ml-auto" aria-hidden="true" focusable="false">
+                <path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/>
+                <path d="M12 22V12"/>
+                <polyline points="3.29 7 12 12 20.71 7"/>
+                <path d="m7.5 4.27 9 5.15"/>
+            </svg>
+        </div>
+
+        <ul id="pkg-list" class="flex flex-col grow gap-3"></ul>
+
+        <footer class="text-center w-full text-xs py-2 mt-4">
+            <a href="/" target="_blank" class="text-zinc-500 underline">
+                <span>Documentation</span>
+            </a>
+        </footer>
+
+    </aside>
 
 </body>
 

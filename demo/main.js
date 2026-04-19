@@ -175,9 +175,48 @@ ed.addEventListener('keydown', (e) => {
     }
 }, true);
 
+const RELOAD_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#1c1c1c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-3.5" aria-hidden="true" focusable="false"><path d="M12 13v8l-4-4"/><path d="m12 21 4-4"/><path d="M4.393 15.269A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.436 8.284"/></svg>`;
+
+const fetchSvg = async (src) => {
+    const text = await fetch(src).then(r => r.text()).catch(() => '');
+    const svg = new DOMParser().parseFromString(text, 'image/svg+xml').querySelector('svg');
+    if (!svg) return '';
+    svg.setAttribute('class', 'size-3.5');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    return svg.outerHTML;
+};
+
+const loadPackages = async () => {
+    const list = $('pkg-list');
+    if (!list) return;
+
+    const packages = await fetch('./packages.json').then(r => r.json()).catch(() => []);
+
+    for (const pkg of packages) {
+        const iconSvg = await fetchSvg(pkg.icon);
+        const li = document.createElement('li');
+        li.className = 'bg-[#1c1c1c] border border-[#2d2d2d] rounded-md w-full';
+        li.innerHTML = `
+            <div class="flex items-center">
+                <div class="px-2 py-2.5">
+                    <h3 class="text-[11.8px]">${pkg.name}</h3>
+                </div>
+                <div class="flex items-center gap-2 ml-auto px-1.5">
+                    ${iconSvg}
+                    <button disabled aria-label="Reload ${pkg['aria-label']}" class="bg-[#ffffff] p-[3.7px] rounded-full opacity-40 cursor-not-allowed">
+                        ${RELOAD_SVG}
+                    </button>
+                </div>
+            </div>`;
+        list.appendChild(li);
+    }
+};
+
 ed.addEventListener('scroll', () => { ln.scrollTop = ed.scrollTop; });
 
 jar.onUpdate(sync);
 jar.updateCode(DEFAULT_CODE);
 
 loadWasm();
+loadPackages();
