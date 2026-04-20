@@ -85,55 +85,40 @@ const jar = CodeJar(ed, (editor) => {
     addClosing: false,
 });
 
-let wasm;
-
 const fmt = (ms) => ms < 1000 ? `${ms.toFixed(0)}ms` : `${(ms / 1000).toFixed(2)}s`;
 const setStatus = (text, cls = CLS.ok) => (statusEl.textContent = text, statusEl.className = cls);
-const time = async (fn) => { const t0 = performance.now(); const r = await fn(); return [r, fmt(performance.now() - t0)]; };
 
-const instantiate = async (url) => {
-    const res = await fetch(url, FETCH_OPTS);
-    if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
-    try {
-        return await WebAssembly.instantiateStreaming(res, {});
-    } catch {
-        return WebAssembly.instantiate(await (await fetch(url, FETCH_OPTS)).arrayBuffer(), {});
-    }
-};
+const worker = new Worker('./worker.js');
 
-const loadWasm = async () => {
+const loadWasm = () => {
     setStatus('Loading WASM...', CLS.ok);
-    try {
-        const [{ instance }, t] = await time(() => Promise.any(WASM_SOURCES.map(instantiate)));
-        wasm = instance.exports;
-        btn.disabled = false;
-        setStatus(`Ready (${t}${DEV ? ' · Dev' : ''})`);
-    } catch (err) {
-        setStatus('Load failed', CLS.err);
-        term.textContent = `Could not load WASM.\n\n${err.errors.map(e => e.message).join(' | ')}`;
-    }
+    worker.postMessage({
+        type: 'load',
+        url: WASM_SOURCES[0],
+        opts: FETCH_OPTS ?? {},
+    });
 };
 
-const runCode = async () => {
-    if (!wasm) return;
-    const srcBytes = new TextEncoder().encode(jar.toString());
-    if (srcBytes.length > SZ) return void (term.textContent = `Error: Source exceeds ${SZ} bytes`);
-
+const runCode = () => {
     setStatus('Running...', CLS.ok);
     btn.disabled = true;
-
-    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-
-    const [out, t] = await time(() => {
-        new Uint8Array(wasm.memory.buffer).set(srcBytes, wasm.src_ptr());
-        const len = wasm.run(srcBytes.length);
-        return new TextDecoder().decode(new Uint8Array(wasm.memory.buffer, wasm.out_ptr(), len));
-    });
-
-    term.textContent = out;
-    setStatus(`Ready (${t})`);
-    btn.disabled = false;
+    worker.postMessage({ type: 'run', src: jar.toString() });
 };
+
+worker.onmessage = ({ data }) => {
+    if (data.type === 'ready') {
+        btn.disabled = false;
+        setStatus(`Ready (${fmt(data.ms)}${DEV ? ' · Dev' : ''})`);
+    } else if (data.type === 'result') {
+        term.textContent = data.out;
+        setStatus(`Ready (${fmt(data.ms)})`);
+        btn.disabled = false;
+    } else if (data.type === 'error') {
+        setStatus('Load failed', CLS.err);
+        term.textContent = `Could not load WASM.\n\n${data.message}`;
+    }
+};
+
 
 const sync = () => {
     const text = jar.toString().replace(/\n$/, '');
