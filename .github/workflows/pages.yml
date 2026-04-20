@@ -79,6 +79,9 @@ jobs:
         run: ls -lh target/wasm32-unknown-unknown/release/compiler_lib.wasm
         working-directory: compiler
 
+      - name: Build Tailwind CSS
+        run: npx tailwindcss@3 --input /dev/null --content "demo/index.html,demo/main.js" --output demo/tailwind.css --minify
+
       - name: Stage demo
         run: cp compiler/target/wasm32-unknown-unknown/release/compiler_lib.wasm demo/
 

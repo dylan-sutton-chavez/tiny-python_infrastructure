@@ -108,17 +108,16 @@ const runCode = () => {
 worker.onmessage = ({ data }) => {
     if (data.type === 'ready') {
         btn.disabled = false;
-        setStatus(`Ready (${fmt(data.ms)}${DEV ? ' · Dev' : ''})`);
+        setStatus(`Ready${DEV ? ' - Dev' : ''} (Loaded in ${fmt(data.ms)})`);
     } else if (data.type === 'result') {
         term.textContent = data.out;
-        setStatus(`Ready (${fmt(data.ms)})`);
+        setStatus(`Ran in ${fmt(data.ms)}`);
         btn.disabled = false;
     } else if (data.type === 'error') {
         setStatus('Load failed', CLS.err);
         term.textContent = `Could not load WASM.\n\n${data.message}`;
     }
 };
-
 
 const sync = () => {
     const text = jar.toString().replace(/\n$/, '');

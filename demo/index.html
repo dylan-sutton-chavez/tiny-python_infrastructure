@@ -21,14 +21,20 @@
     <meta name="description" content="Run Python 3.13 in your browser. Edge Python is a single-pass SSA compiler with adaptive inline caching and template memoization, compiled to WebAssembly. Free, open source, no signup.">
     <link rel="canonical" href="https://demo.edgepython.com/">
 
-    <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
-    <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
     <link rel="modulepreload" href="./main.js">
 
-    <link rel="icon" type="image/svg+xml" href="./icon.svg">
+    <link rel="icon" type="image/svg+xml" href="./static/favicon.svg">
 
     <link rel="stylesheet" href="./style.css">
-    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script>
+        if (['demo.edgepython.com'].includes(location.hostname)) {
+            document.write('<link rel="stylesheet" href="./tailwind.css">');
+        } else {
+            document.write('<script src="https:\/\/cdn.tailwindcss.com"><\/script>');
+        }
+    </script>
+
     <script type="module" src="./main.js" defer></script>
 
 </head>
