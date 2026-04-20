@@ -80,13 +80,7 @@ jobs:
         working-directory: compiler
 
       - name: Build Tailwind CSS
-        run: |
-          echo "@tailwind base; @tailwind components; @tailwind utilities;" > /tmp/tw-input.css
-          npx tailwindcss@3 \
-            --input /tmp/tw-input.css \
-            --content "demo/index.html,demo/main.js" \
-            --output demo/tailwind.css \
-            --minify
+        run: echo "@tailwind base;@tailwind components;@tailwind utilities;" | npx tailwindcss@3 --input - --output demo/tailwind.css --minify
             
       - name: Setup Pages
         uses: actions/configure-pages@v5
