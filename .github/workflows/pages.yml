@@ -82,9 +82,15 @@ jobs:
       - name: Build Tailwind CSS
         run: npx tailwindcss@3 --input /dev/null --content "demo/index.html,demo/main.js" --output demo/tailwind.css --minify
 
-      - name: Stage demo
-        run: cp compiler/target/wasm32-unknown-unknown/release/compiler_lib.wasm demo/
-
+      - name: Build Tailwind CSS
+        run: |
+          echo "@tailwind base; @tailwind components; @tailwind utilities;" > /tmp/tw-input.css
+          npx tailwindcss@3 \
+            --input /tmp/tw-input.css \
+            --content "demo/index.html,demo/main.js" \
+            --output demo/tailwind.css \
+            --minify
+            
       - name: Setup Pages
         uses: actions/configure-pages@v5
         with:
