@@ -184,7 +184,7 @@ const loadPackages = async () => {
         li.innerHTML = `
             <div class="flex items-center">
                 <div class="px-2 py-2.5">
-                    <h3 class="text-[11.8px]">${pkg.name}</h3>
+                    <h3 class="text-[12px]">${pkg.name}</h3>
                 </div>
                 <div class="flex items-center gap-2 ml-auto px-1.5">
                     ${iconSvg}
