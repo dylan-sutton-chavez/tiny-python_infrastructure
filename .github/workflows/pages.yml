@@ -80,9 +80,6 @@ jobs:
         working-directory: compiler
 
       - name: Build Tailwind CSS
-        run: npx tailwindcss@3 --input /dev/null --content "demo/index.html,demo/main.js" --output demo/tailwind.css --minify
-
-      - name: Build Tailwind CSS
         run: |
           echo "@tailwind base; @tailwind components; @tailwind utilities;" > /tmp/tw-input.css
           npx tailwindcss@3 \
