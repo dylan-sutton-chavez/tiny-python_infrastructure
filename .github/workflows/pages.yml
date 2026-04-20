@@ -79,10 +79,13 @@ jobs:
         run: ls -lh target/wasm32-unknown-unknown/release/compiler_lib.wasm
         working-directory: compiler
 
+      - name: Stage wasm
+        run: cp compiler/target/wasm32-unknown-unknown/release/compiler_lib.wasm demo/
+
       - name: Build Tailwind CSS
         working-directory: demo
         run: echo "@tailwind base;@tailwind components;@tailwind utilities;" | npx tailwindcss@3 --input - --output tailwind.css --minify
-                    
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
         with:
