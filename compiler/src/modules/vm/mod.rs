@@ -513,6 +513,40 @@ impl<'a> VM<'a> {
                     }
                 }
 
+                // Comprehension append
+
+                OpCode::ListAppend => {
+                    let v = self.pop()?;
+                    let acc = *self.stack.last().ok_or_else(|| VmErr::Runtime("stack underflow"))?;
+                    if !acc.is_heap() { return Err(VmErr::Runtime("list accumulator corrupted")); }
+                    match self.heap.get(acc) {
+                        HeapObj::List(rc) => rc.borrow_mut().push(v),
+                        _ => return Err(VmErr::Runtime("list accumulator corrupted")),
+                    }
+                }
+                OpCode::SetAdd => {
+                    let v = self.pop()?;
+                    let acc = *self.stack.last().ok_or_else(|| VmErr::Runtime("stack underflow"))?;
+                    if !acc.is_heap() { return Err(VmErr::Runtime("set accumulator corrupted")); }
+                    let already = match self.heap.get(acc) {
+                        HeapObj::Set(rc) => rc.borrow().iter().any(|&x| eq_vals_with_heap(x, v, &self.heap)),
+                        _ => return Err(VmErr::Runtime("set accumulator corrupted")),
+                    };
+                    if !already {
+                        if let HeapObj::Set(rc) = self.heap.get(acc) { rc.borrow_mut().push(v); }
+                    }
+                }
+                OpCode::MapAdd => {
+                    let value = self.pop()?;
+                    let key = self.pop()?;
+                    let acc = *self.stack.last().ok_or_else(|| VmErr::Runtime("stack underflow"))?;
+                    if !acc.is_heap() { return Err(VmErr::Runtime("dict accumulator corrupted")); }
+                    match self.heap.get(acc) {
+                        HeapObj::Dict(rc) => { rc.borrow_mut().insert(key, value); }
+                        _ => return Err(VmErr::Runtime("dict accumulator corrupted")),
+                    }
+                }
+
                 // SSA Phi
 
                 OpCode::Phi => { Self::exec_phi(op, rip, &phi_map, slots, prev_slots, &chunk.phi_sources); }
@@ -656,8 +690,6 @@ impl<'a> VM<'a> {
                 OpCode::UnpackArgs => { return Err(VmErr::Runtime("*args/**kwargs not yet supported")); }
                 OpCode::MakeClass => { return Err(VmErr::Runtime("classes not yet supported")); }
                 OpCode::LoadAttr | OpCode::StoreAttr => { return Err(VmErr::Runtime("attribute access not yet supported")); }
-                OpCode::ListComp | OpCode::SetComp | OpCode::DictComp => { return Err(VmErr::Runtime("comprehensions not yet supported")); }
-                OpCode::GenExpr => { return Err(VmErr::Runtime("generator expressions not yet supported")); }
             }
         }
     }

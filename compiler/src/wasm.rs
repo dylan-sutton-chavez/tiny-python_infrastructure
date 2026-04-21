@@ -1,9 +1,7 @@
-use crate::modules::{lexer::lexer, parser::Parser, vm::{VM, Limits}};
-
 #[cfg(target_arch = "wasm32")]
 mod runtime {
     use lol_alloc::LeakingPageAllocator;
-    use super::{lexer, Parser, VM, Limits};
+    use crate::modules::{lexer::lexer, parser::Parser, vm::{VM, Limits}};
 
     #[global_allocator]
     static A: LeakingPageAllocator = LeakingPageAllocator;

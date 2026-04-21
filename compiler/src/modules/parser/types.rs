@@ -21,8 +21,8 @@ pub enum OpCode {
     GetIter, ForIter, GetItem, Mod, Pow, FloorDiv, LoadTrue, LoadFalse, LoadNone, LoadAttr, StoreAttr, 
     BuildSlice, MakeClass, SetupExcept, PopExcept, Raise, Import, ImportFrom, BitAnd, BitOr, BitXor, 
     BitNot, Shl, Shr, In, NotIn, Is, IsNot, UnpackSequence, BuildTuple, SetupWith, ExitWith, Yield, 
-    Del, Assert, Global, Nonlocal, UnpackArgs, ListComp, SetComp, DictComp, BuildSet, RaiseFrom, 
-    UnpackEx, LoadEllipsis, GenExpr, Await, MakeCoroutine, YieldFrom, TypeAlias, StoreItem, Dup2
+    Del, Assert, Global, Nonlocal, UnpackArgs, ListAppend, SetAdd, MapAdd, BuildSet, RaiseFrom, 
+    UnpackEx, LoadEllipsis, Await, MakeCoroutine, YieldFrom, TypeAlias, StoreItem, Dup2
 }
 
 /*

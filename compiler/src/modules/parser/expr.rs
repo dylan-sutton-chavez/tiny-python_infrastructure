@@ -1,7 +1,7 @@
 // parser/expr.rs
 
 use super::Parser;
-use super::types::{OpCode, Value, MAX_EXPR_DEPTH};
+use super::types::{OpCode, Value, MAX_EXPR_DEPTH, Instruction};
 use super::types::parse_string;
 use crate::modules::lexer::{Token, TokenType};
 use alloc::{string::ToString, vec::Vec, vec, format, string::String};
@@ -183,22 +183,31 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             TokenType::Lbrace => self.brace_literal(),
             TokenType::Lsqb => self.list_literal(),
             TokenType::Lpar => {
-                if matches!(self.peek(), Some(TokenType::Rpar)) { self.advance(); self.chunk.emit(OpCode::BuildTuple, 0); } else {
-                self.expr();
-                if matches!(self.peek(), Some(TokenType::For)) {
-                    self.comprehension(OpCode::GenExpr);
-                } else if self.eat_if(TokenType::Comma) {
-                    let mut count = 1u16;
-                    while !matches!(self.peek(), Some(TokenType::Rpar) | None) {
-                        self.expr();
-                        count += 1;
-                        if !self.eat_if(TokenType::Comma) { break; }
-                    }
-                    self.eat(TokenType::Rpar);
-                    self.chunk.emit(OpCode::BuildTuple, count);
+                if matches!(self.peek(), Some(TokenType::Rpar)) {
+                    self.advance();
+                    self.chunk.emit(OpCode::BuildTuple, 0);
                 } else {
-                    self.eat(TokenType::Rpar);
-                }}
+                    let elem_start = self.chunk.instructions.len();
+                    self.expr();
+                    if matches!(self.peek(), Some(TokenType::For)) {
+                        let versions_before = self.ssa_versions.clone();
+                        let elem_ins: Vec<Instruction> = self.chunk.instructions.drain(elem_start..).collect();
+                        self.chunk.emit(OpCode::BuildList, 0);
+                        self.comprehension_loop(&[elem_ins], OpCode::ListAppend, &versions_before);
+                        self.advance(); // Rpar
+                    } else if self.eat_if(TokenType::Comma) {
+                        let mut count = 1u16;
+                        while !matches!(self.peek(), Some(TokenType::Rpar) | None) {
+                            self.expr();
+                            count += 1;
+                            if !self.eat_if(TokenType::Comma) { break; }
+                        }
+                        self.eat(TokenType::Rpar);
+                        self.chunk.emit(OpCode::BuildTuple, count);
+                    } else {
+                        self.eat(TokenType::Rpar);
+                    }
+                }
             }
             TokenType::Lambda => self.parse_lambda(),
             _ => {

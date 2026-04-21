@@ -3,9 +3,10 @@
 use super::Parser;
 use super::types::builtin;
 
-use super::types::{OpCode, Value, SSAChunk};
+use super::types::{OpCode, Value, SSAChunk, Instruction};
 use crate::modules::lexer::{Token, TokenType};
 use alloc::{string::{String, ToString}, vec::Vec, format};
+use hashbrown::HashMap;
 
 impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
@@ -20,19 +21,24 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             self.chunk.emit(OpCode::BuildDict, 0);
             return;
         }
+        let key_start = self.chunk.instructions.len();
         self.expr();
         match self.peek() {
             Some(TokenType::Colon) => {
                 self.advance();
+                let val_start = self.chunk.instructions.len();
                 self.expr();
                 if matches!(self.peek(), Some(TokenType::For)) {
-                    self.comprehension(OpCode::DictComp);
+                    let versions_before = self.ssa_versions.clone();
+                    let val_ins: Vec<Instruction> = self.chunk.instructions.drain(val_start..).collect();
+                    let key_ins: Vec<Instruction> = self.chunk.instructions.drain(key_start..).collect();
+                    self.chunk.emit(OpCode::BuildDict, 0);
+                    self.comprehension_loop(&[key_ins, val_ins], OpCode::MapAdd, &versions_before);
+                    self.advance(); // Rbrace
                 } else {
                     let mut pairs = 1u16;
                     while self.eat_if(TokenType::Comma) {
-                        if matches!(self.peek(), Some(TokenType::Rbrace)) {
-                            break;
-                        }
+                        if matches!(self.peek(), Some(TokenType::Rbrace)) { break; }
                         self.expr();
                         self.eat(TokenType::Colon);
                         self.expr();
@@ -43,14 +49,16 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 }
             }
             Some(TokenType::For) => {
-                self.comprehension(OpCode::SetComp);
+                let versions_before = self.ssa_versions.clone();
+                let elem_ins: Vec<Instruction> = self.chunk.instructions.drain(key_start..).collect();
+                self.chunk.emit(OpCode::BuildSet, 0);
+                self.comprehension_loop(&[elem_ins], OpCode::SetAdd, &versions_before);
+                self.advance(); // Rbrace
             }
             _ => {
                 let mut count = 1u16;
                 while self.eat_if(TokenType::Comma) {
-                    if matches!(self.peek(), Some(TokenType::Rbrace)) {
-                        break;
-                    }
+                    if matches!(self.peek(), Some(TokenType::Rbrace)) { break; }
                     self.expr();
                     count += 1;
                 }
@@ -71,15 +79,18 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             self.chunk.emit(OpCode::BuildList, 0);
             return;
         }
+        let elem_start = self.chunk.instructions.len();
         self.expr();
         if matches!(self.peek(), Some(TokenType::For)) {
-            self.comprehension(OpCode::ListComp);
+            let versions_before = self.ssa_versions.clone();
+            let elem_ins: Vec<Instruction> = self.chunk.instructions.drain(elem_start..).collect();
+            self.chunk.emit(OpCode::BuildList, 0);
+            self.comprehension_loop(&[elem_ins], OpCode::ListAppend, &versions_before);
+            self.advance(); // Rsqb
         } else {
             let mut count = 1u16;
             while self.eat_if(TokenType::Comma) {
-                if matches!(self.peek(), Some(TokenType::Rsqb)) {
-                    break;
-                }
+                if matches!(self.peek(), Some(TokenType::Rsqb)) { break; }
                 self.expr();
                 count += 1;
             }
@@ -89,25 +100,22 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     }
 
     /*
-    Comprehension Handler
-        Generates SSA bytecode for list/set/dict/generator comprehensions.
+    Comprehension Loop
+        Builds for/if scaffolding and reinjects element body with SSA slot rewriting.
     */
 
-    pub(super) fn comprehension(&mut self, op: OpCode) {
-        let mut loop_starts = Vec::new();
-        let mut for_iters = Vec::new();
+    pub(super) fn comprehension_loop(&mut self, elem_bodies: &[Vec<Instruction>], append_op: OpCode, versions_before: &HashMap<String, u32>) {
+        let mut loop_starts: Vec<u16> = Vec::new();
+        let mut for_iters: Vec<usize> = Vec::new();
+        let mut all_vars: Vec<String> = Vec::new();
 
         while self.eat_if(TokenType::For) {
-            let mut vars = Vec::new();
+            let mut vars: Vec<String> = Vec::new();
             loop {
                 let t = self.advance();
                 vars.push(self.lexeme(&t).to_string());
-                if !self.eat_if(TokenType::Comma) {
-                    break;
-                }
-                if matches!(self.peek(), Some(TokenType::In)) {
-                    break;
-                }
+                if !self.eat_if(TokenType::Comma) { break; }
+                if matches!(self.peek(), Some(TokenType::In)) { break; }
             }
 
             self.eat(TokenType::In);
@@ -119,42 +127,54 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             let fi = self.chunk.instructions.len() - 1;
 
             if vars.len() == 1 {
-                let ver = self.increment_version(&vars[0]);
-                let mut buf = [0u8; 128];
-                let idx = self.chunk.push_name(Self::ssa_name(&vars[0], ver, &mut buf));
-                self.chunk.emit(OpCode::StoreName, idx);
+                self.store_name(vars[0].clone());
             } else {
                 self.chunk.emit(OpCode::UnpackSequence, vars.len() as u16);
                 for var in vars.iter().rev() {
                     self.store_name(var.clone());
                 }
             }
+            for v in &vars { all_vars.push(v.clone()); }
 
             while self.eat_if(TokenType::If) {
                 self.expr_bp(1);
-                self.chunk.emit(OpCode::JumpIfFalse, ls);
+                self.chunk.emit(OpCode::JumpIfFalse, ls); // fail -> next iteration
             }
 
             loop_starts.push(ls);
             for_iters.push(fi);
         }
 
-        let n = for_iters.len();
-        let mut jump_positions = Vec::new();
-        for &ls in loop_starts.iter().rev() {
-            self.chunk.emit(OpCode::Jump, ls);
-            jump_positions.push(self.chunk.instructions.len() - 1);
+        // Map pre-loop slots to current versions, skipping non-existent element references.
+        let mut var_map: HashMap<u16, u16> = HashMap::new();
+        for var in &all_vars {
+            let old_ver = versions_before.get(var).copied().unwrap_or(0);
+            let new_ver = self.current_version(var);
+            if old_ver == new_ver { continue; }
+            let old_name = format!("{}_{}", var, old_ver);
+            let Some(&old_slot) = self.chunk.name_index.get(old_name.as_str()) else { continue };
+            let mut nb = [0u8; 128];
+            let new_slot = self.chunk.push_name(Self::ssa_name(var, new_ver, &mut nb));
+            var_map.insert(old_slot, new_slot);
         }
 
-        for i in 1..n {
-            let target = jump_positions[n - i] as u16;
-            self.chunk.instructions[for_iters[i]].operand = target; // back-patch inner ForIter now that all loop headers are known
+        for body in elem_bodies {
+            for ins in body {
+                let operand = if matches!(ins.opcode, OpCode::LoadName | OpCode::StoreName) {
+                    var_map.get(&ins.operand).copied().unwrap_or(ins.operand)
+                } else {
+                    ins.operand
+                };
+                self.chunk.instructions.push(Instruction { opcode: ins.opcode, operand });
+            }
         }
+        self.chunk.emit(append_op, 0);
 
-        self.patch(for_iters[0]);
-
-        self.advance();
-        self.chunk.emit(op, 0);
+        // Close loops innermost-first: Jump back to header, patch matching ForIter to the point past it.
+        for i in (0..for_iters.len()).rev() {
+            self.chunk.emit(OpCode::Jump, loop_starts[i]);
+            self.patch(for_iters[i]);
+        }
     }
 
     /*
