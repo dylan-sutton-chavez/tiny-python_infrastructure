@@ -25,7 +25,7 @@ jobs:
 
       # Download the .wasm already compiled and optimized by _wasm.yml.
       - name: Download wasm artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: compiler_lib_wasm
           path: demo/
