@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Download the .wasm already compiled and optimized by _wasm.yml.
       - name: Download wasm artifact
