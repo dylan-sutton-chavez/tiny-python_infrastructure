@@ -9,9 +9,13 @@ on:
 
 jobs:
   native:
+    permissions:
+      contents: write
     uses: ./.github/workflows/native.yml
     secrets: inherit
 
   wasm:
+    permissions:
+      contents: write
     uses: ./.github/workflows/wasm.yml
     secrets: inherit
