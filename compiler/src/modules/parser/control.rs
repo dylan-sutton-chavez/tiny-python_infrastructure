@@ -188,12 +188,12 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             let before = sp as u16;
             let after  = (vars.len() - sp - 1) as u16;
             self.chunk.emit(OpCode::UnpackEx, (before << 8) | after);
-            for var in vars.iter().rev() {
+            for var in &vars {
                 self.store_name(var.clone());
             }
         } else {
             self.chunk.emit(OpCode::UnpackSequence, vars.len() as u16);
-            for var in vars.iter().rev() {
+            for var in &vars {
                 self.store_name(var.clone());
             }
         }

@@ -14,8 +14,7 @@ impl<'a> VM<'a> {
     */
 
     pub fn call_print(&mut self, op: u16) -> Result<(), VmErr> {
-        let mut args = self.pop_n(op as usize)?;
-        args.reverse();
+        let args = self.pop_n(op as usize)?;
         let s = args.iter().map(|v| self.display(*v)).collect::<Vec<_>>().join(" ");
         self.output.push(s);
         Ok(())

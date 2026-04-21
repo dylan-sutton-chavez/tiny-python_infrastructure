@@ -668,14 +668,14 @@
   {
     "src": "a, b = 1, 2", 
     "constants": ["1", "2"], 
-    "names": ["b_1", "a_1"], 
+    "names": ["a_1", "b_1"], 
     "instructions": [["LoadConst",0], ["LoadConst",1], ["BuildTuple",2], ["UnpackSequence",2], ["StoreName",0], ["StoreName",1], ["ReturnValue",0]], 
     "annotations": {}
   },
   {
     "src": "a, b, c = 1, 2, 3", 
     "constants": ["1", "2", "3"], 
-    "names": ["c_1", "b_1", "a_1"], 
+    "names": ["a_1", "b_1", "c_1"], 
     "instructions": [["LoadConst",0], ["LoadConst",1], ["LoadConst",2], ["BuildTuple",3], ["UnpackSequence",3], ["StoreName",0], ["StoreName",1], ["StoreName",2], ["ReturnValue",0]], 
     "annotations": {}
   },
@@ -988,21 +988,21 @@
   {
     "src": "*a, b = [1, 2, 3]", 
     "constants": ["1", "2", "3"], 
-    "names": ["b_1", "a_1"], 
+    "names": ["a_1", "b_1"], 
     "instructions": [["LoadConst",0], ["LoadConst",1], ["LoadConst",2], ["BuildList",3], ["UnpackEx",1], ["StoreName",0], ["StoreName",1], ["ReturnValue",0]], 
     "annotations": {}
   },
   {
     "src": "a, *b = [1, 2, 3]", 
     "constants": ["1", "2", "3"], 
-    "names": ["b_1", "a_1"], 
+    "names": ["a_1", "b_1"], 
     "instructions": [["LoadConst",0], ["LoadConst",1], ["LoadConst",2], ["BuildList",3], ["UnpackEx",256], ["StoreName",0], ["StoreName",1], ["ReturnValue",0]], 
     "annotations": {}
   },
   {
     "src": "a, *b, c = [1, 2, 3, 4]", 
     "constants": ["1", "2", "3", "4"], 
-    "names": ["c_1", "b_1", "a_1"], 
+    "names": ["a_1", "b_1", "c_1"], 
     "instructions": [["LoadConst",0], ["LoadConst",1], ["LoadConst",2], ["LoadConst",3], ["BuildList",4], ["UnpackEx",257], ["StoreName",0], ["StoreName",1], ["StoreName",2], ["ReturnValue",0]], 
     "annotations": {}
   },
@@ -1095,14 +1095,14 @@
   {
     "src": "for a, b in x:\n    pass", 
     "constants": [], 
-    "names": ["x_0", "b_1", "a_1", "a_0", "a_2", "b_0", "b_2"], 
+    "names": ["x_0", "a_1", "b_1", "a_0", "a_2", "b_0", "b_2"], 
     "instructions": [["LoadName",0], ["GetIter",0], ["ForIter",7], ["UnpackSequence",2], ["StoreName",1], ["StoreName",2], ["Jump",2], ["Phi",4], ["Phi",6], ["ReturnValue",0]], 
     "annotations": {}
   },
   {
     "src": "for a, b, c in x:\n    pass", 
     "constants": [], 
-    "names": ["x_0", "c_1", "b_1", "a_1", "a_0", "a_2", "b_0", "b_2", "c_0", "c_2"], 
+    "names": ["x_0", "a_1", "b_1", "c_1", "a_0", "a_2", "b_0", "b_2", "c_0", "c_2"], 
     "instructions": [["LoadName",0], ["GetIter",0], ["ForIter",8], ["UnpackSequence",3], ["StoreName",1], ["StoreName",2], ["StoreName",3], ["Jump",2], ["Phi",5], ["Phi",7], ["Phi",9], ["ReturnValue",0]], 
     "annotations": {}
   },
@@ -1155,14 +1155,14 @@
   {
     "src": "for (a, b) in x:\n    pass", 
     "constants": [], 
-    "names": ["x_0", "b_1", "a_1", "a_0", "a_2", "b_0", "b_2"], 
+    "names": ["x_0", "a_1", "b_1", "a_0", "a_2", "b_0", "b_2"], 
     "instructions": [["LoadName",0], ["GetIter",0], ["ForIter",7], ["UnpackSequence",2], ["StoreName",1], ["StoreName",2], ["Jump",2], ["Phi",4], ["Phi",6], ["ReturnValue",0]], 
     "annotations": {}
   },
   {
     "src": "for a, *b in x:\n    pass", 
     "constants": [], 
-    "names": ["x_0", "b_1", "a_1", "a_0", "a_2", "b_0", "b_2"], 
+    "names": ["x_0", "a_1", "b_1", "a_0", "a_2", "b_0", "b_2"], 
     "instructions": [["LoadName",0], ["GetIter",0], ["ForIter",7], ["UnpackEx",256], ["StoreName",1], ["StoreName",2], ["Jump",2], ["Phi",4], ["Phi",6], ["ReturnValue",0]], 
     "annotations": {}
   },
@@ -1543,10 +1543,10 @@
   {
     "src": "x = {k: v for k, v in items}",
     "constants": [],
-    "names": ["k_0", "v_0", "items_0", "v_1", "k_1", "x_1"],
-    "instructions": [["BuildDict",0], ["LoadName",2], ["GetIter",0], ["ForIter",11], ["UnpackSequence",2], ["StoreName",3], ["StoreName",4], ["LoadName",4], ["LoadName",3], ["MapAdd",0], ["Jump",3], ["StoreName",5], ["ReturnValue",0]],
+    "names": ["k_0", "v_0", "items_0", "k_1", "v_1", "x_1"],
+    "instructions": [["BuildDict",0], ["LoadName",2], ["GetIter",0], ["ForIter",11], ["UnpackSequence",2], ["StoreName",3], ["StoreName",4], ["LoadName",3], ["LoadName",4], ["MapAdd",0], ["Jump",3], ["StoreName",5], ["ReturnValue",0]],
     "annotations": {}
-  }
+  },
   {
     "src": "a[0] = 1", 
     "constants": ["0","1"], 

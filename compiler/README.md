@@ -142,10 +142,13 @@ cargo test --features wasm-tests
 3. Cytron, Ferrante, Rosen, Wegman & Zadeck, *Efficiently Computing Static Single Assignment Form* (TOPLAS 1991). SSA, $\phi$-nodes.
 4. Gudeman, *Representing Type Information in Dynamically Typed Languages* (1993). NaN-boxing.
 5. Deutsch & Schiffman, *Efficient Implementation of the Smalltalk-80 System* (POPL 1984). Inline caching.
-6. Hölzle & Ungar, *Optimizing Dynamically-Dispatched Calls with Run-Time Type Feedback* (PLDI 1994). Adaptive rewriting.
-7. Michie, *Memo Functions and Machine Learning* (Nature 1968). Memoization.
-8. McCarthy, *Recursive Functions of Symbolic Expressions* (CACM 1960). Mark-sweep garbage collector.
-9. Shannon, PEP 659: *Specializing Adaptive Interpreter* (2021). Tiered specialization.
+6. Ertl & Gregg, *The Structure and Performance of Efficient Interpreters* (JILP 2003). Bytecode dispatch, superinstructions.
+7. Hölzle & Ungar, *Optimizing Dynamically-Dispatched Calls with Run-Time Type Feedback* (PLDI 1994). Adaptive rewriting.
+8. Michie, *Memo Functions and Machine Learning* (Nature 1968). Memoization.
+9. McCarthy, *Recursive Functions of Symbolic Expressions* (CACM 1960). Mark-sweep garbage collector.
+10. Knuth, *The Art of Computer Programming, Vol. 2: Seminumerical Algorithms* (1981). Arbitrary-precision arithmetic, §4.3.
+11. Shannon, PEP 659: *Specializing Adaptive Interpreter* (2021). Tiered specialization.
+12. O'Connor, PEP 709: *Inlined Comprehensions* (2023). Drain-and-reinject compilation.
 
 ### License
 

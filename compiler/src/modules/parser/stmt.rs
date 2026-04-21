@@ -195,7 +195,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 self.expr();
                 let after = (targets.len() - 1) as u16;
                 self.chunk.emit(OpCode::UnpackEx, after);
-                for target in targets.into_iter().rev() {
+                for target in targets {
                     self.store_name(target.trim_start_matches('*').to_string());
                 }
                 false
@@ -408,7 +408,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                     } else {
                         self.chunk.emit(OpCode::UnpackSequence, targets.len() as u16);
                     }
-                    for target in targets.into_iter().rev() {
+                    for target in targets {
                         self.store_name(target.trim_start_matches('*').to_string());
                     }
                     false

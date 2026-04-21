@@ -130,7 +130,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 self.store_name(vars[0].clone());
             } else {
                 self.chunk.emit(OpCode::UnpackSequence, vars.len() as u16);
-                for var in vars.iter().rev() {
+                for var in &vars {
                     self.store_name(var.clone());
                 }
             }
