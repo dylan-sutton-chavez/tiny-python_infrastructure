@@ -58,7 +58,7 @@ impl Val {
         Self(TAG_INT | (i as u64 & 0x0000_FFFF_FFFF_FFFF))
     }
     #[inline(always)] pub fn int_checked(i: i64) -> Option<Self> {
-        if i > Self::INT_MAX || i < Self::INT_MIN { None } else { Some(Self::int(i)) }
+        if !(Self::INT_MIN..=Self::INT_MAX).contains(&i) { None } else { Some(Self::int(i)) }
     }
     #[inline(always)] pub fn none() -> Self { Self(TAG_NONE) }
     #[inline(always)] pub fn bool(b: bool) -> Self { Self(if b { TAG_TRUE } else { TAG_FALSE }) }
@@ -88,7 +88,7 @@ BigInt Arbitrary Precision Integer
     Implements signed arbitrary precision integers using base-2^32 little-endian limb storage.
 */
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BigInt {
     pub neg: bool,
     pub limbs: Vec<u32>,
@@ -110,14 +110,14 @@ impl BigInt {
     pub fn from_i128(v: i128) -> Self {
         if v == 0 { return Self::zero(); }
         let neg = v < 0;
-        let mut abs = v.unsigned_abs() as u128;
+        let mut abs = v.unsigned_abs();
         let mut limbs = Vec::new();
         while abs != 0 { limbs.push((abs & 0xFFFF_FFFF) as u32); abs >>= 32; }
         Self { neg, limbs }
     }
 
     pub fn from_decimal(s: &str) -> Self {
-        let (neg, digits) = if s.starts_with('-') { (true, &s[1..]) } else { (false, s) };
+        let (neg, digits) = if let Some(stripped) = s.strip_prefix('-') { (true, stripped) } else { (false, s) };
         let mut r = Self::zero();
         for c in digits.chars() {
             let d = (c as u8).wrapping_sub(b'0') as u32;
@@ -189,7 +189,7 @@ impl BigInt {
     fn sub_mag(a: &[u32], b: &[u32]) -> Vec<u32> {
         let mut out = Vec::with_capacity(a.len());
         let mut borrow = 0i64;
-        for i in 0..a.len() {
+        for (i, _item) in a.iter().enumerate() {
             let d = a[i] as i64 - b.get(i).copied().unwrap_or(0) as i64 - borrow;
             borrow = if d < 0 { 1 } else { 0 };
             out.push((d + if d < 0 { 0x1_0000_0000 } else { 0 }) as u32);
@@ -250,7 +250,7 @@ impl BigInt {
 
             let (mut lo, mut hi) = (0u64, u32::MAX as u64);
             while lo < hi {
-                let mid = (lo + hi + 1) / 2;
+                let mid = (lo + hi).div_ceil(2);
                 let trial = shifted.mul_u32(mid as u32);
                 if Self::cmp_mag(&trial.limbs, &rem_limbs) != core::cmp::Ordering::Greater {
                     lo = mid;
@@ -295,14 +295,6 @@ impl BigInt {
         result
     }
 
-    pub fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        if self.neg != other.neg {
-            return if self.neg { core::cmp::Ordering::Less } else { core::cmp::Ordering::Greater };
-        }
-        let m = Self::cmp_mag(&self.limbs, &other.limbs);
-        if self.neg { m.reverse() } else { m }
-    }
-
     pub fn to_decimal(&self) -> alloc::string::String {
         if self.is_zero() { return alloc::string::String::from("0"); }
         const BASE: u64 = 1_000_000_000;
@@ -325,6 +317,21 @@ impl BigInt {
             else { s.push_str(&alloc::format!("{:09}", g)); }
         }
         s
+    }
+}
+
+impl PartialOrd for BigInt {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(Ord::cmp(self, other))
+    }
+}
+impl Ord for BigInt {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        if self.neg != other.neg {
+            return if self.neg { core::cmp::Ordering::Less } else { core::cmp::Ordering::Greater };
+        }
+        let m = Self::cmp_mag(&self.limbs, &other.limbs);
+        if self.neg { m.reverse() } else { m }
     }
 }
 
@@ -359,8 +366,6 @@ pub struct DictMap {
 }
 
 impl DictMap {
-    pub fn new() -> Self { Self { entries: Vec::new(), index: hashbrown::HashMap::new() } }
-
     pub fn with_capacity(cap: usize) -> Self {
         Self { entries: Vec::with_capacity(cap), index: hashbrown::HashMap::with_capacity(cap) }
     }
@@ -401,6 +406,14 @@ impl DictMap {
     }
 }
 
+impl Default for DictMap {
+    fn default() -> Self { Self::new() }
+}
+
+impl DictMap {
+    pub fn new() -> Self { Self { entries: Vec::new(), index: hashbrown::HashMap::new() } }
+}
+
 /*
 Heap Pool
     Arena allocator with mark-sweep GC, string interning, and per-type tagging for inline cache.
@@ -435,10 +448,10 @@ impl HeapPool {
     }
 
     pub fn alloc(&mut self, obj: HeapObj) -> Result<Val, VmErr> {
-        if let HeapObj::Str(ref s) = obj {
-            if s.len() <= 128 {
-                if let Some(&idx) = self.strings.get(s) { return Ok(Val::heap(idx)); }
-            }
+        if let HeapObj::Str(ref s) = obj
+            && s.len() <= 128
+            && let Some(&idx) = self.strings.get(s) {
+                return Ok(Val::heap(idx));
         }
         if self.live >= self.limit { return Err(cold_heap()); }
         if self.slots.len() >= (1 << 28) { return Err(VmErr::Heap); }
@@ -452,9 +465,8 @@ impl HeapPool {
             i
         };
 
-        if let HeapObj::Str(s) = self.slots[idx as usize].obj.as_ref().unwrap() {
-            if s.len() <= 128 { self.strings.insert(s.clone(), idx); }
-        }
+        if let HeapObj::Str(s) = self.slots[idx as usize].obj.as_ref().unwrap()
+            && s.len() <= 128 { self.strings.insert(s.clone(), idx); }
 
         self.live += 1;
         self.alloc_count += 1;
@@ -558,12 +570,12 @@ pub(super) fn eq_set(a: &[Val], b: &[Val], eq: impl Fn(Val,Val)->bool) -> bool {
     a.len() == b.len() && a.iter().all(|x| b.iter().any(|y| eq(*x,*y)))
 }
 pub(super) fn eq_dict(a: &DictMap, b: &DictMap, eq: impl Fn(Val,Val)->bool) -> bool {
-    a.len() == b.len() && a.iter().all(|(k,v)| b.get(&k).map_or(false, |&v2| eq(v,v2)))
+    a.len() == b.len() && a.iter().all(|(k,v)| b.get(&k).is_some_and(|&v2| eq(v,v2)))
 }
 
 pub fn eq_vals_with_heap(a: Val, b: Val, heap: &HeapPool) -> bool {
     if let (Some(ba), Some(bb)) = (bigint_of(a, heap), bigint_of(b, heap)) {
-        return ba.cmp(&bb) == core::cmp::Ordering::Equal;
+        return ba.cmp(bb) == core::cmp::Ordering::Equal;
     }
 
     if !a.is_heap() || !b.is_heap() {
@@ -586,7 +598,7 @@ pub fn eq_vals_with_heap(a: Val, b: Val, heap: &HeapPool) -> bool {
 }
 
 fn bigint_of(v: Val, heap: &HeapPool) -> Option<&BigInt> {
-    if v.is_heap() { if let HeapObj::BigInt(b) = heap.get(v) { return Some(b); } }
+    if v.is_heap() && let HeapObj::BigInt(b) = heap.get(v) { return Some(b); }
     None
 }
 

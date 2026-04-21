@@ -83,13 +83,12 @@ impl<'a> VM<'a> {
     
     pub fn call_int(&mut self) -> Result<(), VmErr> {
         let o = self.pop()?;
-        if o.is_heap() {
-            if let HeapObj::BigInt(b) = self.heap.get(o) {
+        if o.is_heap()
+            && let HeapObj::BigInt(b) = self.heap.get(o) {
                 let b = b.clone();
                 let v = self.bigint_to_val(b)?;
                 self.push(v);
                 return Ok(());
-            }
         }
         let i = if o.is_int() { o.as_int() }
             else if o.is_float() { o.as_float() as i64 }
@@ -143,13 +142,12 @@ impl<'a> VM<'a> {
 
     pub fn call_ord(&mut self) -> Result<(), VmErr> {
         let o = self.pop()?;
-        if o.is_heap() {
-            if let HeapObj::Str(s) = self.heap.get(o) {
+        if o.is_heap()
+            && let HeapObj::Str(s) = self.heap.get(o) {
                 let mut cs = s.chars();
                 if let (Some(c), None) = (cs.next(), cs.next()) {
                     self.push(Val::int(c as i64)); return Ok(());
                 }
-            }
         }
         Err(VmErr::Type("ord() requires string of length 1"))
     }
@@ -182,7 +180,7 @@ impl<'a> VM<'a> {
     
     pub fn call_round(&mut self, op: u16) -> Result<(), VmErr> {
         let args = self.pop_n(op as usize)?;
-        let v = match (args.get(0), args.get(1)) {
+        let v = match (args.first(), args.get(1)) {
             (Some(o), Some(n)) if o.is_float() && n.is_int() => {
                 let factor = fpowi(10.0, n.as_int() as i32);
                 Val::float(fround(o.as_float() * factor) / factor)
@@ -334,7 +332,7 @@ impl<'a> VM<'a> {
 
         let check = |t: Val, heap: &HeapPool| -> Result<bool, VmErr> {
             match heap.get(t) {
-                HeapObj::Type(name) => Ok(name == &obj_ty),
+                HeapObj::Type(name) => Ok(name == obj_ty),
                 _ => Err(VmErr::Type("isinstance() arg 2 must be a type or tuple of types")),
             }
         };

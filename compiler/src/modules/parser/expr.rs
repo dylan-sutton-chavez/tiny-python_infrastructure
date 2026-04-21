@@ -62,9 +62,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     }
 
     pub(super) fn infix_bp(&mut self, min_bp: u8) {
-        loop {
-            let Some(tok) = self.peek() else { break };
-
+        while let Some(tok) = self.peek() {
             // `is` / `is not`
             if tok == TokenType::Is {
                 if 7 < min_bp { break; }
@@ -169,7 +167,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             }
             TokenType::Complex => {
                 let raw = self.lexeme(&t).replace('_', "");
-                let s = raw.trim_end_matches(|c: char| c == 'j' || c == 'J');
+                let s = raw.trim_end_matches(['j', 'J']);
                 self.emit_const(Value::Float(s.parse().unwrap_or(0.0)));
             }
             TokenType::Int | TokenType::Float => {

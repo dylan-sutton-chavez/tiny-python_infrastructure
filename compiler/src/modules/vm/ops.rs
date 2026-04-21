@@ -74,7 +74,7 @@ impl<'a> VM<'a> {
             if f.is_finite() && f >= (i64::MIN as f64) && f < I64_UPPER && f == (f as i64) as f64 {
                 let i = f as i64;
                 let mut b = itoa::Buffer::new();
-                if i > Val::INT_MAX || i < Val::INT_MIN {
+                if !(Val::INT_MIN..=Val::INT_MAX).contains(&i) {
                     return b.format(i).into();
                 }
                 let mut s = String::new(); s.push_str(b.format(i)); s.push_str(".0"); return s;
@@ -103,7 +103,7 @@ impl<'a> VM<'a> {
     }
 
     pub fn repr(&self, v: Val) -> String {
-        if v.is_heap() { if let HeapObj::Str(s) = self.heap.get(v) { return format!("'{}'", s); } }
+        if v.is_heap() && let HeapObj::Str(s) = self.heap.get(v) { return format!("'{}'", s); }
         self.display(v)
     }
 
@@ -115,11 +115,8 @@ impl<'a> VM<'a> {
         if a.is_float() && b.is_float() { return Ok(a.as_float() < b.as_float()); }
         if a.is_int() && b.is_float() { return Ok((a.as_int() as f64) < b.as_float()); }
         if a.is_float() && b.is_int() { return Ok(a.as_float() < (b.as_int() as f64)); }
-        if a.is_heap() && b.is_heap() {
-            if let (HeapObj::Str(x), HeapObj::Str(y)) = (self.heap.get(a), self.heap.get(b)) {
-                return Ok(x < y);
-            }
-        }
+        if a.is_heap() && b.is_heap()
+            && let (HeapObj::Str(x), HeapObj::Str(y)) = (self.heap.get(a), self.heap.get(b)) { return Ok(x < y); }
         Err(VmErr::Type("'<' not supported between these types"))
     }
 
@@ -132,7 +129,7 @@ impl<'a> VM<'a> {
             HeapObj::Dict(p) => p.borrow().contains_key(&item),
             HeapObj::Set(s) => s.borrow().iter().any(|x| eq_vals_with_heap(*x, item, &self.heap)),
             HeapObj::Str(s) => {
-                if item.is_heap() { if let HeapObj::Str(sub) = self.heap.get(item) { return s.contains(sub.as_str()); } }
+                if item.is_heap() && let HeapObj::Str(sub) = self.heap.get(item) { return s.contains(sub.as_str()); }
                 false
             }
             _ => false
@@ -182,17 +179,15 @@ impl<'a> VM<'a> {
         if a.is_float() && b.is_float() { return Ok(Val::float(a.as_float() * b.as_float())); }
         if a.is_int() && b.is_float() { return Ok(Val::float(a.as_int() as f64 * b.as_float())); }
         if a.is_float() && b.is_int() { return Ok(Val::float(a.as_float() * b.as_int() as f64)); }
-        if a.is_heap() && b.is_int() {
-            if let HeapObj::Str(s) = self.heap.get(a) {
+        if a.is_heap() && b.is_int()
+            && let HeapObj::Str(s) = self.heap.get(a) {
                 let r = s.repeat(b.as_int().max(0) as usize);
                 return self.heap.alloc(HeapObj::Str(r));
-            }
         }
-        if a.is_int() && b.is_heap() {
-            if let HeapObj::Str(s) = self.heap.get(b) {
+        if a.is_int() && b.is_heap()
+            && let HeapObj::Str(s) = self.heap.get(b) {
                 let r = s.repeat(a.as_int().max(0) as usize);
                 return self.heap.alloc(HeapObj::Str(r));
-            }
         }
         Err(VmErr::Type("unsupported operand type(s) for '*'"))
     }
@@ -206,25 +201,22 @@ impl<'a> VM<'a> {
 
     pub(crate) fn to_bigint(&self, v: Val) -> Option<BigInt> {
         if v.is_int() { return Some(BigInt::from_i64(v.as_int())); }
-        if v.is_heap() {
-            if let HeapObj::BigInt(b) = self.heap.get(v) { return Some(b.clone()); }
-        }
+        if v.is_heap()
+            && let HeapObj::BigInt(b) = self.heap.get(v) { return Some(b.clone()); }
         None
     }
 
     pub(crate) fn bigint_to_val(&mut self, b: BigInt) -> Result<Val, VmErr> {
-        if let Some(i) = b.to_i64_checked() {
-            if i >= Val::INT_MIN && i <= Val::INT_MAX { return Ok(Val::int(i)); }
-        }
+        if let Some(i) = b.to_i64_checked()
+            && (Val::INT_MIN..=Val::INT_MAX).contains(&i) { return Ok(Val::int(i)); }
         self.heap.alloc(HeapObj::BigInt(b))
     }
 
     fn to_f64_coerce(&self, v: Val) -> Result<f64, VmErr> {
         if v.is_int() { return Ok(v.as_int() as f64); }
         if v.is_float() { return Ok(v.as_float()); }
-        if v.is_heap() {
-            if let HeapObj::BigInt(b) = self.heap.get(v) { return Ok(b.to_f64()); }
-        }
+        if v.is_heap()
+            && let HeapObj::BigInt(b) = self.heap.get(v) { return Ok(b.to_f64()); }
         Err(VmErr::Type("numeric operand required"))
     }
 

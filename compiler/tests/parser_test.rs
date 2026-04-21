@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod parser_test {
+mod test {
 
     use compiler_lib::modules::lexer::lexer;
     use compiler_lib::modules::parser::{Parser, Value};

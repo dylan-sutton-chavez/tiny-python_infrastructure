@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod lexer_test {
+mod test {
 
     use compiler_lib::modules::lexer::lexer;
 

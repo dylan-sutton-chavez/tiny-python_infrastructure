@@ -203,7 +203,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                         let colon = self.advance();
                         let spec_start = colon.end;
                         loop {
-                            match self.tokens.peek().map(|t| t.kind.clone()) {
+                            match self.tokens.peek().map(|t| t.kind) {
                                 Some(TokenType::Rbrace) | None => break,
                                 _ => { self.tokens.next(); }
                             }
@@ -389,7 +389,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         let fi = self.chunk.functions.len() as u16;
         let cur_ver = self.current_version(&fname);
         let mut buf = [0u8; 128];
-        let name_slot = self.chunk.push_name(Self::ssa_name(&fname, cur_ver + 1, &mut buf)) as u16;
+        let name_slot = self.chunk.push_name(Self::ssa_name(&fname, cur_ver + 1, &mut buf));
         self.chunk.functions.push((params, body, defaults, name_slot));
         self.chunk.emit(if is_async { OpCode::MakeCoroutine } else { OpCode::MakeFunction }, fi);
 

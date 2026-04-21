@@ -125,7 +125,7 @@ impl<'a> VM<'a> {
         Merges two SSA branches into target slot and back-propagates through prev_slots chain.
     */
     
-    fn exec_phi(op: u16, rip: usize, phi_map: &[usize], slots: &mut Vec<Option<Val>>, prev_slots: &[Option<u16>], phi_sources: &[(u16, u16)]) {
+    fn exec_phi(op: u16, rip: usize, phi_map: &[usize], slots: &mut [Option<Val>], prev_slots: &[Option<u16>], phi_sources: &[(u16, u16)]) {
         let target = op as usize;
         let (ia, ib) = phi_sources[phi_map[rip]];
         let val = slots[ia as usize].or(slots[ib as usize]).unwrap_or(Val::none());
@@ -193,14 +193,14 @@ impl<'a> VM<'a> {
     #[inline] pub(crate) fn push(&mut self, v: Val) { self.stack.push(v); }
 
     #[inline] pub(crate) fn pop(&mut self) -> Result<Val, VmErr> {
-        self.stack.pop().ok_or_else(|| VmErr::Runtime("stack underflow"))
+        self.stack.pop().ok_or(VmErr::Runtime("stack underflow"))
     }
     #[inline] pub(crate) fn pop2(&mut self) -> Result<(Val, Val), VmErr> {
         let b = self.pop()?; let a = self.pop()?; Ok((a, b))
     }
     #[inline] pub(crate) fn pop_n(&mut self, n: usize) -> Result<Vec<Val>, VmErr> {
-        let at = self.stack.len().checked_sub(n)
-            .ok_or_else(|| VmErr::Runtime("stack underflow"))?;
+    let at = self.stack.len().checked_sub(n)
+        .ok_or(VmErr::Runtime("stack underflow"))?;
         Ok(self.stack.split_off(at))
     }
 
@@ -209,7 +209,7 @@ impl<'a> VM<'a> {
         Converts a parser-level Value into a runtime Val, allocating heap for strings.
     */
 
-    pub(crate) fn to_val(&mut self, v: &Value) -> Result<Val, VmErr> {
+    pub(crate) fn val_from(&mut self, v: &Value) -> Result<Val, VmErr> {
         Ok(match v {
             Value::Int(i) => {
                 if *i >= Val::INT_MIN && *i <= Val::INT_MAX {
@@ -278,7 +278,7 @@ impl<'a> VM<'a> {
         Fetches instructions by IP, routes each opcode to its handler arm.
     */
 
-    pub(crate) fn exec(&mut self, chunk: &SSAChunk, slots: &mut Vec<Option<Val>>) -> Result<Val, VmErr> {
+    pub(crate) fn exec(&mut self, chunk: &SSAChunk, slots: &mut [Option<Val>]) -> Result<Val, VmErr> {
         let slots_base = self.live_slots.len();
         let n = chunk.instructions.len();
 
@@ -320,7 +320,7 @@ impl<'a> VM<'a> {
             match ins.opcode {
 
                 // Loads
-                OpCode::LoadConst => { let v = self.to_val(&chunk.constants[op as usize])?; self.push(v); }
+                OpCode::LoadConst => { let v = self.val_from(&chunk.constants[op as usize])?; self.push(v); }
                 OpCode::LoadName => { let slot = op as usize; self.push(slots[slot].ok_or_else(|| VmErr::Name(chunk.names[slot].clone()))?); }
                 OpCode::StoreName => {
                     let v = self.pop()?;
@@ -355,8 +355,8 @@ impl<'a> VM<'a> {
                 }
                 OpCode::Pow => {
                     let (a, b) = self.pop2()?;
-                    if let Some(ba) = self.to_bigint(a) {
-                        if b.is_int() {
+                    if let Some(ba) = self.to_bigint(a)
+                        && b.is_int() {
                             let exp = b.as_int();
                             if exp >= 0 {
                                 let result = ba.pow_u32(exp as u32);
@@ -366,7 +366,6 @@ impl<'a> VM<'a> {
                             }
                             self.push(Val::float(fpowi(ba.to_f64(), exp as i32)));
                             continue;
-                        }
                     }
                     let fa = if a.is_int() { a.as_int() as f64 } else if a.is_float() { a.as_float() }
                             else { return Err(VmErr::Type("** requires numeric operands")); };
@@ -517,7 +516,7 @@ impl<'a> VM<'a> {
 
                 OpCode::ListAppend => {
                     let v = self.pop()?;
-                    let acc = *self.stack.last().ok_or_else(|| VmErr::Runtime("stack underflow"))?;
+                    let acc = *self.stack.last().ok_or(VmErr::Runtime("stack underflow"))?;
                     if !acc.is_heap() { return Err(VmErr::Runtime("list accumulator corrupted")); }
                     match self.heap.get(acc) {
                         HeapObj::List(rc) => rc.borrow_mut().push(v),
@@ -526,20 +525,18 @@ impl<'a> VM<'a> {
                 }
                 OpCode::SetAdd => {
                     let v = self.pop()?;
-                    let acc = *self.stack.last().ok_or_else(|| VmErr::Runtime("stack underflow"))?;
+                    let acc = *self.stack.last().ok_or(VmErr::Runtime("stack underflow"))?;
                     if !acc.is_heap() { return Err(VmErr::Runtime("set accumulator corrupted")); }
                     let already = match self.heap.get(acc) {
                         HeapObj::Set(rc) => rc.borrow().iter().any(|&x| eq_vals_with_heap(x, v, &self.heap)),
                         _ => return Err(VmErr::Runtime("set accumulator corrupted")),
                     };
-                    if !already {
-                        if let HeapObj::Set(rc) = self.heap.get(acc) { rc.borrow_mut().push(v); }
-                    }
+                    if !already && let HeapObj::Set(rc) = self.heap.get(acc) { rc.borrow_mut().push(v); }
                 }
                 OpCode::MapAdd => {
                     let value = self.pop()?;
                     let key = self.pop()?;
-                    let acc = *self.stack.last().ok_or_else(|| VmErr::Runtime("stack underflow"))?;
+                    let acc = *self.stack.last().ok_or(VmErr::Runtime("stack underflow"))?;
                     if !acc.is_heap() { return Err(VmErr::Runtime("dict accumulator corrupted")); }
                     match self.heap.get(acc) {
                         HeapObj::Dict(rc) => { rc.borrow_mut().insert(key, value); }
@@ -580,21 +577,22 @@ impl<'a> VM<'a> {
                     for (i, n) in body.names.iter().enumerate() { body_map.insert(n.as_str(), i); }
                     // Bind args to params: detects keyword args (HeapObj::Str matching a param name) and consumes key+value pairs
                     let mut pi = 0usize;
-                    for (_, p) in params.iter().enumerate() {
-                        if pi >= args.len() { break; }
-                        if args[pi].is_heap() {
-                            if let HeapObj::Str(k) = self.heap.get(args[pi]) {
-                                if params.iter().any(|p| p.trim_start_matches('*') == k.as_str()) && pi + 1 < args.len() {
-                                    let pname = format!("{}_0", k);
-                                    if let Some(&s) = body_map.get(pname.as_str()) { fn_slots[s] = Some(args[pi + 1]); }
-                                    pi += 2;
-                                    continue;
-                                }
-                            }
+                    for p in params.iter() {
+                        if pi < args.len()
+                            && args[pi].is_heap()
+                            && let HeapObj::Str(k) = self.heap.get(args[pi])
+                            && params.iter().any(|p| p.trim_start_matches('*') == k.as_str())
+                            && pi + 1 < args.len() {
+                                let pname = format!("{}_0", k);
+                                if let Some(&s) = body_map.get(pname.as_str()) { fn_slots[s] = Some(args[pi + 1]); }
+                                pi += 2;
+                                continue;
                         }
-                        let pname = format!("{}_0", p.trim_start_matches('*'));
-                        if let Some(&s) = body_map.get(pname.as_str()) { fn_slots[s] = Some(args[pi]); }
-                        pi += 1;
+                        if pi < args.len() {
+                            let pname = format!("{}_0", p.trim_start_matches('*'));
+                            if let Some(&s) = body_map.get(pname.as_str()) { fn_slots[s] = Some(args[pi]); }
+                            pi += 1;
+                        }
                     }
                     if pi < params.len() && !captured_defaults.is_empty() {
                         let d_start = captured_defaults.len().saturating_sub(params.len() - pi);

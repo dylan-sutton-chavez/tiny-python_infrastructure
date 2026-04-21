@@ -115,7 +115,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 false
             }
             Some(TokenType::From) => {
-                self.from_stmt();
+                self.parse_from_stmt();
                 false
             }
             Some(TokenType::Global) => {

@@ -375,14 +375,13 @@ impl<'a> Scanner<'a> {
                 return self.pending.pop();
             }
 
-            if is_string_prefix(slice) {
-                if let Some(&q) = self.src.get(self.pos) {
-                    if q == b'"' || q == b'\'' {
-                        self.pos += 1;
-                        self.scan_string(q);
-                        return Some((TokenType::String, self.line, start, self.pos));
-                    }
-                }
+            if is_string_prefix(slice)
+                && let Some(&q) = self.src.get(self.pos)
+                && (q == b'"' || q == b'\'')
+            {
+                self.pos += 1;
+                self.scan_string(q);
+                return Some((TokenType::String, self.line, start, self.pos));
             }
 
             let kind = keyword(slice).unwrap_or(TokenType::Name);
@@ -403,7 +402,7 @@ impl<'a> Scanner<'a> {
         }
 
         // Dot-number (.123)
-        if b == b'.' && self.at(1).map_or(false, |c| BYTE_CLASS[c as usize] & DIGIT != 0) {
+        if b == b'.' && self.at(1).is_some_and(|c| BYTE_CLASS[c as usize] & DIGIT != 0) {
             self.pos += 1;
             let kind = self.scan_dot_number();
             return Some((kind, self.line, start, self.pos));

@@ -136,15 +136,13 @@ impl SSAChunk {
     pub fn finalize_prev_slots(&mut self) {
         let mut ps: Vec<Option<u16>> = vec![None; self.names.len()];
         for (i, name) in self.names.iter().enumerate() {
-            if let Some(pos) = name.rfind('_') {
-                if let Ok(ver) = name[pos+1..].parse::<u32>() {
-                    if ver > 0 {
-                        let prev = format!("{}_{}", &name[..pos], ver - 1);
-                        if let Some(&j) = self.name_index.get(&prev) {
-                            ps[i] = Some(j);
-                        }
+            if let Some(pos) = name.rfind('_')
+                && let Ok(ver) = name[pos+1..].parse::<u32>()
+                && ver > 0 {
+                    let prev = format!("{}_{}", &name[..pos], ver - 1);
+                    if let Some(&j) = self.name_index.get(&prev) {
+                        ps[i] = Some(j);
                     }
-                }
             }
         }
         self.prev_slots = ps;

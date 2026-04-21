@@ -123,17 +123,16 @@ impl<'a> VM<'a> {
         let obj = self.pop()?;
 
         // Slice dispatch
-        if idx.is_heap() {
-            if let HeapObj::Slice(start, stop, step) = self.heap.get(idx).clone() {
+        if idx.is_heap()
+            && let HeapObj::Slice(start, stop, step) = self.heap.get(idx).clone() {
                 let v = self.slice_val(obj, start, stop, step)?;
                 self.push(v);
                 return Ok(true);
-            }
         }
 
         // Str[int] needs heap alloc
-        if obj.is_heap() && idx.is_int() {
-            if let HeapObj::Str(s) = self.heap.get(obj) {
+        if obj.is_heap() && idx.is_int()
+            && let HeapObj::Str(s) = self.heap.get(obj) {
                 let i = idx.as_int();
                 let len = s.chars().count() as i64;
                 let ui = (if i < 0 { len + i } else { i }) as usize;
@@ -141,7 +140,6 @@ impl<'a> VM<'a> {
                 let val = self.heap.alloc(HeapObj::Str(c.to_string()))?;
                 self.push(val);
                 return Ok(true);
-            }
         }
 
         let v = self.getitem_val(obj, idx)?;

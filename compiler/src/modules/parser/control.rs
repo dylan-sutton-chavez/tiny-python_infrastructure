@@ -204,11 +204,9 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.chunk.emit(OpCode::Jump, loop_start);
         self.patch(fi);
 
-        if !is_async {
-            if self.eat_if(TokenType::Else) {
-                self.eat(TokenType::Colon);
-                self.compile_block();
-            }
+        if !is_async && self.eat_if(TokenType::Else) {
+            self.eat(TokenType::Colon);
+            self.compile_block();
         }
 
         self.loop_starts.pop();
@@ -318,7 +316,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
     }
 
-    pub(super) fn from_stmt(&mut self) {
+    pub(super) fn parse_from_stmt(&mut self) {
         self.advance();
         let module = self.dotted_name();
         let mod_idx = self.chunk.push_name(&module);
