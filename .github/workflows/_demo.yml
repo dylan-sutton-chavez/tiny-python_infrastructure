@@ -3,8 +3,6 @@ name: _Demo Deploy
 on:
   workflow_call:
 
-# Los permisos efectivos los otorga pipeline.yml en el job "demo".
-# Se declaran aquí también para documentar qué necesita este workflow.
 permissions:
   contents: read
   pages: write
