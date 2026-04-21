@@ -13,8 +13,15 @@ mod runtime {
     static mut SRC: [u8; SZ] = [0; SZ];
     static mut OUT: [u8; SZ] = [0; SZ];
 
-    #[unsafe(no_mangle)] pub unsafe extern "C" fn src_ptr() -> *mut u8 { unsafe { core::ptr::addr_of_mut!(SRC) as *mut u8 } }
-    #[unsafe(no_mangle)] pub unsafe extern "C" fn out_ptr() -> *const u8 { unsafe { core::ptr::addr_of!(OUT) as *const u8 } }
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn src_ptr() -> *mut u8 {
+        core::ptr::addr_of_mut!(SRC) as *mut u8
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn out_ptr() -> *const u8 {
+        core::ptr::addr_of!(OUT) as *const u8
+    }
 
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn run(len: usize) -> usize {
