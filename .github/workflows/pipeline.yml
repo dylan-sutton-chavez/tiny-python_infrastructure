@@ -9,19 +9,20 @@ on:
 
 jobs:
   native:
+    name: Native Builds
     permissions:
       contents: write
     uses: ./.github/workflows/native.yml
     secrets: inherit
 
   wasm:
+    name: WebAssembly
     permissions:
       contents: write
     uses: ./.github/workflows/wasm.yml
     secrets: inherit
 
   demo:
-    permissions:
-      contents: write
+    name: Deploy Demo (GitHub Pages)
     uses: ./.github/workflows/demo.yml
     secrets: inherit
