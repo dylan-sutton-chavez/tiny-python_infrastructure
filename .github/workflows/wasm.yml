@@ -1,4 +1,4 @@
-name: WebAssembly Build
+name: _WebAssembly Build
 
 on:
   workflow_call:
@@ -11,7 +11,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -19,27 +19,19 @@ jobs:
           workspaces: compiler
 
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
 
-      - name: Install target
+      - name: Install wasm target
         run: rustup target add wasm32-unknown-unknown
         working-directory: compiler
 
-      - name: Install CLI Tools
+      - name: Install wasm-opt
         run: |
-          cargo install cargo-shear
           curl -sSL https://github.com/WebAssembly/binaryen/releases/download/version_121/binaryen-version_121-x86_64-linux.tar.gz \
             | tar -xz --strip-components=2 -C /usr/local/bin binaryen-version_121/bin/wasm-opt
           wasm-opt --version
-        working-directory: compiler
 
       - name: Build
         run: cargo build --target wasm32-unknown-unknown --features wasm --lib --release
-        working-directory: compiler
-
-      - name: Unused Code
-        run: cargo shear && cargo clippy --lib --target wasm32-unknown-unknown --features wasm
         working-directory: compiler
 
       - name: Size (unoptimized)
@@ -47,6 +39,7 @@ jobs:
         working-directory: compiler
 
       - name: Optimize
+        working-directory: compiler
         run: |
           INPUT=target/wasm32-unknown-unknown/release/compiler_lib.wasm
 
@@ -66,7 +59,6 @@ jobs:
             -o "$INPUT" /tmp/wasm_stage1.wasm
 
           rm /tmp/wasm_stage1.wasm
-        working-directory: compiler
 
       - name: Size (optimized)
         run: ls -lh target/wasm32-unknown-unknown/release/compiler_lib.wasm
@@ -75,6 +67,13 @@ jobs:
       - name: Test
         run: cargo test --features wasm-tests
         working-directory: compiler
+
+      - name: Upload wasm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiler_lib_wasm
+          path: compiler/target/wasm32-unknown-unknown/release/compiler_lib.wasm
+          retention-days: 1
 
       - name: Upload WASM Release
         uses: softprops/action-gh-release@v2

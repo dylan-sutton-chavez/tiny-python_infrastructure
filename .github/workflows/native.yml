@@ -1,4 +1,4 @@
-name: Native Builds
+name: _Native Builds
 
 on:
   workflow_call:
@@ -33,7 +33,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -41,8 +41,6 @@ jobs:
           workspaces: compiler
 
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rust-src, clippy
 
       - name: Install target
         run: rustup target add ${{ matrix.target }}
@@ -53,23 +51,19 @@ jobs:
         working-directory: compiler
 
       - name: Size
-        run: ls -lh target/${{ matrix.target }}/release/${{ matrix.binary }}
         shell: bash
+        run: ls -lh target/${{ matrix.target }}/release/${{ matrix.binary }}
         working-directory: compiler
 
       - name: Test
         run: cargo test
         working-directory: compiler
 
-      - name: Install CLI Tools
-        run: cargo install cargo-shear cargo-bloat
+      - name: Install cargo-bloat
+        run: cargo install cargo-bloat
         working-directory: compiler
 
-      - name: Unused Code
-        run: cargo shear && cargo clippy --target ${{ matrix.target }}
-        working-directory: compiler
-
-      - name: Bloat
+      - name: Bloat report
         run: cargo bloat --release --target ${{ matrix.target }} --crates -n 7
         working-directory: compiler
 

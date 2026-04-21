@@ -1,8 +1,10 @@
-name: Demo Sandbox
+name: _Demo Deploy
 
 on:
   workflow_call:
 
+# Los permisos efectivos los otorga pipeline.yml en el job "demo".
+# Se declaran aquí también para documentar qué necesita este workflow.
 permissions:
   contents: read
   pages: write
@@ -14,82 +16,39 @@ concurrency:
 
 jobs:
   deploy:
+    name: GitHub Pages
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
+      # Download the .wasm already compiled and optimized by _wasm.yml.
+      - name: Download wasm artifact
+        uses: actions/download-artifact@v4
         with:
-          workspaces: compiler
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Install wasm target
-        run: rustup target add wasm32-unknown-unknown
-        working-directory: compiler
-
-      - name: Install wasm-opt
-        run: |
-          curl -sSL https://github.com/WebAssembly/binaryen/releases/download/version_121/binaryen-version_121-x86_64-linux.tar.gz \
-            | tar -xz --strip-components=2 -C /usr/local/bin binaryen-version_121/bin/wasm-opt
-          wasm-opt --version
-
-      - name: Build wasm
-        run: cargo build --target wasm32-unknown-unknown --features wasm --lib --release
-        working-directory: compiler
-
-      - name: Size (unoptimized)
-        run: ls -lh target/wasm32-unknown-unknown/release/compiler_lib.wasm
-        working-directory: compiler
-
-      - name: Optimize wasm
-        run: |
-          INPUT=compiler/target/wasm32-unknown-unknown/release/compiler_lib.wasm
-
-          wasm-opt -Oz --converge \
-            --generate-global-effects \
-            --strip-debug --strip-producers \
-            --enable-bulk-memory-opt \
-            --enable-nontrapping-float-to-int \
-            --enable-sign-ext \
-            -tnh \
-            -o /tmp/wasm_stage1.wasm "$INPUT"
-
-          wasm-opt --flatten --rereloop -Oz -Oz \
-            --enable-bulk-memory-opt \
-            --enable-nontrapping-float-to-int \
-            --enable-sign-ext \
-            -o "$INPUT" /tmp/wasm_stage1.wasm
-
-          rm /tmp/wasm_stage1.wasm
+          name: compiler_lib_wasm
+          path: demo/
 
       - name: Write version manifest
         run: |
-          HASH=$(sha256sum compiler/target/wasm32-unknown-unknown/release/compiler_lib.wasm \
-                | cut -c1-12)
+          HASH=$(sha256sum demo/compiler_lib.wasm | cut -c1-12)
           printf '{"v":"%s"}\n' "$HASH" > demo/version.json
-
-      - name: Size (optimized)
-        run: ls -lh target/wasm32-unknown-unknown/release/compiler_lib.wasm
-        working-directory: compiler
-
-      - name: Stage wasm
-        run: cp compiler/target/wasm32-unknown-unknown/release/compiler_lib.wasm demo/
 
       - name: Build Tailwind CSS
         working-directory: demo
-        run: echo "@tailwind base;@tailwind components;@tailwind utilities;" | npx tailwindcss@3 --input - --output tailwind.css --minify
+        run: |
+          echo "@tailwind base;@tailwind components;@tailwind utilities;" \
+            | npx tailwindcss@3 --input - --output tailwind.css --minify
 
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v4
         with:
           enablement: true
 
-      - name: Upload artifact
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: demo

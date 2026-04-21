@@ -1,28 +1,43 @@
-name: Deployment Pipeline
+name: CI / CD
 
 on:
   push:
-    branches: [ main ]
-    tags: [ "v*" ]
+    branches: [main]
+    tags: ["v*"]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
+  # Lint and check the codebase, including running clippy and checking for unused code.
+  check:
+    name: Lint & Check
+    uses: ./.github/workflows/_check.yml
+    secrets: inherit
+
+  # Build releases for native architectures (windows, linux, macos) and webassembly.
   native:
     name: Native Builds
+    needs: check
     permissions:
       contents: write
-    uses: ./.github/workflows/native.yml
+    uses: ./.github/workflows/_native.yml
     secrets: inherit
 
   wasm:
     name: WebAssembly
+    needs: check
     permissions:
       contents: write
-    uses: ./.github/workflows/wasm.yml
+    uses: ./.github/workflows/_wasm.yml
     secrets: inherit
 
+  # Build the demo after the wasm build, since it depends on the wasm artifacts.
   demo:
-    name: Deploy Demo (GitHub Pages)
-    uses: ./.github/workflows/demo.yml
+    name: Build Demo
+    needs: wasm
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/_demo.yml
     secrets: inherit
