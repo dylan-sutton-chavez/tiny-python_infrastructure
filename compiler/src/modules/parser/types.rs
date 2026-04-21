@@ -159,7 +159,7 @@ JoinNode
     Tracks SSA versions before/after branches to insert correct PHI nodes later.
 */
 
-pub(super) struct JoinNode {
+pub(crate) struct JoinNode {
     pub(super) backup: HashMap<String, u32>,
     pub(super) then: Option<HashMap<String, u32>>,
 }

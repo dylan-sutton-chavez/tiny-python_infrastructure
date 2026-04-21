@@ -601,17 +601,18 @@ impl<'a> VM<'a> {
                         for (i, param) in params[pi..].iter().enumerate() {
                             if let Some(&dv) = captured_defaults.get(d_start + i) {
                                 let pname = format!("{}_0", param.trim_start_matches('*'));
-                                if let Some(&s) = body_map.get(pname.as_str()) {
-                                    if fn_slots[s].is_none() { fn_slots[s] = Some(dv); }
+                                if let Some(&s) = body_map.get(pname.as_str()) && fn_slots[s].is_none() {
+                                    fn_slots[s] = Some(dv);
                                 }
                             }
                         }
                     }
                     for (si, sv) in slots.iter().enumerate() {
-                        if let Some(v) = sv {
-                            if let Some(&bs) = body_map.get(chunk.names[si].as_str()) {
-                                if fn_slots[bs].is_none() { fn_slots[bs] = Some(*v); }
-                            }
+                        if let Some(v) = sv
+                            && let Some(&bs) = body_map.get(chunk.names[si].as_str())
+                            && fn_slots[bs].is_none()
+                        {
+                            fn_slots[bs] = Some(*v);
                         }
                     }
                     // Inject callee into body slots so the function can call itself by name
@@ -620,8 +621,8 @@ impl<'a> VM<'a> {
                         let raw = &self.chunk.names[name_idx as usize];
                         let base = raw.rfind('_').filter(|&p| raw[p+1..].parse::<u32>().is_ok()).map(|p| &raw[..p]).unwrap_or(raw.as_str());
                         let versioned = format!("{}_0", base);
-                        if let Some(&slot) = body_map.get(versioned.as_str()) {
-                            if fn_slots[slot].is_none() { fn_slots[slot] = Some(callee); }
+                        if let Some(&slot) = body_map.get(versioned.as_str()) && fn_slots[slot].is_none() {
+                            fn_slots[slot] = Some(callee);
                         }
                     }
 
