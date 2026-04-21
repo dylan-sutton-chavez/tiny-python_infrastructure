@@ -1,4 +1,4 @@
-name: pages
+name: Demo Sandbox
 
 on:
   push:

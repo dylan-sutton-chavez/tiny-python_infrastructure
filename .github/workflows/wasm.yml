@@ -1,3 +1,5 @@
+name: WebAssembly Build
+
 on:
   workflow_call:
 

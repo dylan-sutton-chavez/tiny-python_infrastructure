@@ -1,3 +1,5 @@
+name: Native Builds
+
 on:
   workflow_call:
 
