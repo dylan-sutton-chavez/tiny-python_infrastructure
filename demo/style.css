@@ -17,8 +17,14 @@
 }
 
 @media (max-width: 1050px) {
-    aside[data-hide-sm] {
-        display: none;
+    [data-hide-sm] {
+        display: none !important;
+    }
+}
+
+@media (min-width: 1050px) {
+    [button-show-sm] {
+        display: none !important;
     }
 }
 
