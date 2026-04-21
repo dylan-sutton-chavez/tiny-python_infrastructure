@@ -2,18 +2,18 @@
 
 Single-pass SSA compiler for Python 3.13: hand-written lexer, token-to-bytecode parser, adaptive virtual machine with NaN-boxed values, inline caching, template memoization, mark-sweep garbage collector, and configurable sandbox limits. Native and WASM targets.
 
-**Demo:** *[demo.edgepython.com](https://demo.edgepython.com/)*
-**Docs:** *[edgepython.com](https://demo.edgepython.com/)*
+* **Demo:** *[demo.edgepython.com](https://demo.edgepython.com/)*
+* **Docs:** *[edgepython.com](https://demo.edgepython.com/)*
 
 ---
 
 ### Architecture
 
-- **Lexer**: Hand-written scanner, LUT-based, Python 3.13 tokens
-- **Parser**: Single-pass SSA (static single assignment with $\phi$-nodes), Pratt precedence climbing, direct bytecode emission
-- **VM**: Adaptive stack machine, NaN-boxed values, inline caching, template memoization
-- **Sandbox**: Configurable recursion, operation, and heap limits
-- **Garbage Collector**: Mark-and-sweep with string interning ($\leq 64$ bytes), free-list reuse, threshold-based triggering
+* **Lexer**: Hand-written scanner, LUT-based, Python 3.13 tokens
+* **Parser**: Single-pass SSA (static single assignment with $\phi$-nodes), Pratt precedence climbing, direct bytecode emission
+* **VM**: Adaptive stack machine, NaN-boxed values, inline caching, template memoization
+* **Sandbox**: Configurable recursion, operation, and heap limits
+* **Garbage Collector**: Mark-and-sweep with string interning ($\leq 64$ bytes), free-list reuse, threshold-based triggering
 
 ### Quick Start
 
