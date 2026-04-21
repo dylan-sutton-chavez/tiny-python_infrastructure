@@ -366,14 +366,13 @@ impl<'a> Scanner<'a> {
             self.scan_id_rest();
             let slice = &self.src[start..self.pos];
 
-            if is_fstring_prefix(slice) {
-                if let Some(&q) = self.src.get(self.pos) {
-                    if q == b'"' || q == b'\'' {
-                        let pe = self.pos;
-                        self.start_fstring(start, pe);
-                        return self.pending.pop();
-                    }
-                }
+            if is_string_prefix(slice)
+                && let Some(&q) = self.src.get(self.pos)
+                && (q == b'"' || q == b'\'')
+            {
+                self.pos += 1;
+                self.scan_string(q);
+                return Some((TokenType::String, self.line, start, self.pos));
             }
 
             if is_string_prefix(slice) {
