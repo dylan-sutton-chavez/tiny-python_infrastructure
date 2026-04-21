@@ -297,13 +297,29 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                     let i = self.chunk.push_const(Value::Str(self.lexeme(&t).to_string()));
                     self.chunk.emit(OpCode::LoadConst, i);
                     self.expr();
-                    kwargs += 1; // +1 in argc below -> 2 slots per kwarg matches key+value on stack
+                    kwargs += 1;
                 } else {
+                    // Support genexpr after name arg (expr for ...)
+                    let elem_start = self.chunk.instructions.len();
                     self.name(t);
                     self.infix_bp(0);
+                    if matches!(self.peek(), Some(TokenType::For)) {
+                        let versions_before = self.ssa_versions.clone();
+                        let elem_ins: Vec<Instruction> = self.chunk.instructions.drain(elem_start..).collect();
+                        self.chunk.emit(OpCode::BuildList, 0);
+                        self.comprehension_loop(&[elem_ins], OpCode::ListAppend, &versions_before);
+                    }
                 }
             } else {
+                // Support genexpr in arg position (expr for ...)
+                let elem_start = self.chunk.instructions.len();
                 self.expr();
+                if matches!(self.peek(), Some(TokenType::For)) {
+                    let versions_before = self.ssa_versions.clone();
+                    let elem_ins: Vec<Instruction> = self.chunk.instructions.drain(elem_start..).collect();
+                    self.chunk.emit(OpCode::BuildList, 0);
+                    self.comprehension_loop(&[elem_ins], OpCode::ListAppend, &versions_before);
+                }
             }
             argc += 1;
             if matches!(self.peek(), Some(TokenType::Comma)) {

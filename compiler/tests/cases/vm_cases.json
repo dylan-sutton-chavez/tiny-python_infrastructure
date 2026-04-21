@@ -232,5 +232,14 @@
   {"src": "pairs = [(1, 'a'), (2, 'b'), (3, 'c')]\nprint({k: v for k, v in pairs})", "output": ["{1: 'a', 2: 'b', 3: 'c'}"], "result": "None"},
   {"src": "print(sum((x for x in range(5))))", "output": ["10"], "result": "None"},
   {"src": "print([x for x in [1, 2, 3, 4, 5] if x > 2])", "output": ["[3, 4, 5]"], "result": "None"},
-  {"src": "matrix = [[1, 2], [3, 4], [5, 6]]\nprint([row[0] for row in matrix])", "output": ["[1, 3, 5]"], "result": "None"}
+  {"src": "matrix = [[1, 2], [3, 4], [5, 6]]\nprint([row[0] for row in matrix])", "output": ["[1, 3, 5]"], "result": "None"},
+  {"src": "x = [1,2,3]\ny = [4,5,6]\nprint(sum(xi*yi for xi,yi in zip(x,y)))", "output": ["32"], "result": "None"},
+  {"src": "print(sum(i for i in range(5)))", "output": ["10"], "result": "None"},
+  {"src": "print(sum(i*i for i in range(4)))", "output": ["14"], "result": "None"},
+  {"src": "print(list(x*2 for x in range(3)))", "output": ["[0, 2, 4]"], "result": "None"},
+  {"src": "print(max(i for i in [3,1,4,1,5]))", "output": ["5"], "result": "None"},
+  {"src": "print(min(i for i in [3,1,4,1,5]))", "output": ["1"], "result": "None"},
+  {"src": "print(sum(x for x in range(10) if x % 2 == 0))", "output": ["20"], "result": "None"},
+  {"src": "print(sum(i*j for i in range(3) for j in range(3)))", "output": ["9"], "result": "None"},
+  {"src": "print(sum(x+y for x,y in zip([1,2],[3,4])))", "output": ["10"], "result": "None"}
 ]
