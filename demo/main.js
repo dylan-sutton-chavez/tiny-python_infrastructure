@@ -13,7 +13,7 @@ const WASM_SOURCES = DEV
     ? [`https://demo.edgepython.com/compiler_lib.wasm${_bust}`]
     : [`./compiler_lib.wasm${_bust}`];
 
-const DEFAULT_CODE = `"""\nImplements a functional pipeline using function composition and list comprehensions.\nReferences: Backus, J. (1978).\n"""\n\ndef double(n: int) -> int:\n    return n * 2\n\ndef square(n: int) -> int:\n    return n * n\n\ndef apply_pipeline(value: int, steps: list) -> int:\n    # Stop recursion when no steps remain\n    if not steps:\n        return value\n\n    first_fn = steps[0]\n    remaining_steps = steps[1:]\n\n    return apply_pipeline(first_fn(value), remaining_steps)\n\ndata: list[int] = [1, 2, 3]\npipeline: list = [double, square]\n\nresult = [apply_pipeline(x, pipeline) for x in data] # Stop recursion when list is empty\n\nprint(f"Input: {data}")\nprint(f"Output: {result}")`;
+const DEFAULT_CODE = `"""\nImplements a functional pipeline using function composition and list comprehensions.\nReferences: Backus, J. (1978).\n"""\n\ndef double(n: int) -> int:\n    return n * 2\n\ndef square(n: int) -> int:\n    return n * n\n\ndef apply_pipeline(value: int, steps: list) -> int:\n    # Stop recursion when no steps remain\n    if not steps:\n        return value\n\n    first_fn = steps[0]\n    remaining_steps = steps[1:]\n\n    return apply_pipeline(first_fn(value), remaining_steps)\n\ndata: list[int] = [1, 2, 3]\npipeline: list = [double, square]\n\nresult = [apply_pipeline(x, pipeline) for x in data] # Use a list comprehension for efficient data transformation\n\nprint(f"Input: {data}")\nprint(f"Output: {result}")`;
 
 const CLS = { ok: 'ml-auto text-[#7daf7a]', err: 'ml-auto text-[#d67f6d]' };
 const MAX_LINES = 99;
