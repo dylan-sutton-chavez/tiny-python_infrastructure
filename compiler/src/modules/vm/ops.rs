@@ -95,7 +95,7 @@ impl<'a> VM<'a> {
                 .collect::<Vec<_>>().join(", ")),
             HeapObj::Set(s) => {
                 let mut items: Vec<Val> = s.borrow().iter().cloned().collect();
-                items.sort_by(|a, b| self.repr(*a).cmp(&self.repr(*b)));
+                items.sort_by_key(|a| self.repr(*a));
                 format!("{{{}}}", items.iter().map(|x| self.repr(*x)).collect::<Vec<_>>().join(", "))
             },
             HeapObj::Slice(s, e, st) => format!("slice({}, {}, {})",
