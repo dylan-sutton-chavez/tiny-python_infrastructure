@@ -101,6 +101,7 @@ pub struct SSAChunk {
     pub is_pure: bool,
     pub overflow: bool,
     pub prev_slots: Vec<Option<u16>>,
+    pub phi_map: Vec<usize>,
     pub(super) name_index: HashMap<String, u16>
 }
 
@@ -146,8 +147,18 @@ impl SSAChunk {
             }
         }
         self.prev_slots = ps;
+
         for (_, body, _, _) in &mut self.functions {
             body.finalize_prev_slots();
+        }
+
+        self.phi_map = vec![0; self.instructions.len()];
+        let mut phi_idx = 0;
+        for (i, ins) in self.instructions.iter().enumerate() {
+            if ins.opcode == OpCode::Phi {
+                self.phi_map[i] = phi_idx;
+                phi_idx += 1;
+            }
         }
     }
 }

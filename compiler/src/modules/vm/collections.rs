@@ -6,6 +6,8 @@ use alloc::{string::ToString, vec::Vec, rc::Rc, string::String};
 use hashbrown::HashSet;
 use core::cell::RefCell;
 
+enum SliceSource { List(Vec<Val>), Tuple(Vec<Val>), Str(Vec<char>) } // Extract type and data once
+
 impl<'a> VM<'a> {
 
     /*
@@ -149,7 +151,7 @@ impl<'a> VM<'a> {
 
     /*
     Slice Value
-        Extracts sub-sequence preserving source type (list -> list, tuple -> tuple, str -> str).
+        Single heap pass via SliceSource, extracts sub-sequence preserving type.
     */
 
     fn slice_val(&mut self, obj: Val, start: Val, stop: Val, step: Val) -> Result<Val, VmErr> {
@@ -158,47 +160,46 @@ impl<'a> VM<'a> {
             return Err(VmErr::Type("slice step must be an integer"));
         };
         if st == 0 { return Err(VmErr::Value("slice step cannot be zero")); }
-        let len = match self.heap.get(obj) {
-            HeapObj::List(v) => v.borrow().len() as i64,
-            HeapObj::Tuple(v) => v.len() as i64,
-            HeapObj::Str(s) => s.chars().count() as i64,
+
+        let source = match self.heap.get(obj) {
+            HeapObj::List(v) => SliceSource::List(v.borrow().clone()),
+            HeapObj::Tuple(v) => SliceSource::Tuple(v.clone()),
+            HeapObj::Str(s) => SliceSource::Str(s.chars().collect()),
             _ => return Err(VmErr::Type("object is not sliceable")),
+        };
+
+        let len = match &source {
+            SliceSource::List(v) => v.len() as i64,
+            SliceSource::Tuple(v) => v.len() as i64,
+            SliceSource::Str(v) => v.len() as i64,
         };
 
         let clamp = |v: Val, def: i64| -> i64 {
             if v.is_none() { def }
-            else if v.is_int() { let i = v.as_int(); if i < 0 { (len + i).max(0) } else { i.min(len) } }
+            else if v.is_int() { let i = v.as_int(); if i < 0 { (len+i).max(0) } else { i.min(len) } }
             else { def }
         };
-        let (s, e) = if st > 0 {
-            (clamp(start, 0), clamp(stop, len))
-        } else {
-            (clamp(start, len - 1), clamp(stop, -1))
-        };
+        let (s, e) = if st > 0 { (clamp(start, 0), clamp(stop, len)) }
+                    else { (clamp(start, len-1), clamp(stop, -1)) };
 
         let mut indices = Vec::new();
         let mut cur = s;
         if st > 0 { while cur < e { indices.push(cur as usize); cur += st; } }
         else { while cur > e { indices.push(cur as usize); cur += st; } }
 
-        let result: Vec<Val> = match self.heap.get(obj) {
-            HeapObj::List(v) => {
-                let b = v.borrow();
-                indices.iter().filter_map(|&i| b.get(i).copied()).collect()
+        match source {
+            SliceSource::List(v) => {
+                let result: Vec<Val> = indices.iter().filter_map(|&i| v.get(i).copied()).collect();
+                self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(result))))
             }
-            HeapObj::Tuple(v) => {
-                indices.iter().filter_map(|&i| v.get(i).copied()).collect()
+            SliceSource::Tuple(v) => {
+                let result: Vec<Val> = indices.iter().filter_map(|&i| v.get(i).copied()).collect();
+                self.heap.alloc(HeapObj::Tuple(result))
             }
-            HeapObj::Str(s) => {
-                let chars: Vec<char> = s.chars().collect();
+            SliceSource::Str(chars) => {
                 let sliced: String = indices.iter().filter_map(|&i| chars.get(i)).collect();
-                return self.heap.alloc(HeapObj::Str(sliced));
+                self.heap.alloc(HeapObj::Str(sliced))
             }
-            _ => return Err(VmErr::Type("object is not sliceable")),
-        };
-        match self.heap.get(obj) {
-            HeapObj::Tuple(_) => self.heap.alloc(HeapObj::Tuple(result)),
-            _ => self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(result)))),
         }
     }
 

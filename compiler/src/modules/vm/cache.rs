@@ -84,7 +84,16 @@ Template Memoization
 
 const TPL_THRESH: u32 = 4;
 
-struct TplEntry { args: Vec<Val>, result: Val, hits: u32 }
+struct TplEntry { args: Vec<Val>, result: Val, hits: u32, hash: u64 }
+
+fn hash_args(args: &[Val]) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for v in args {
+        h ^= v.0;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
+}
 
 pub struct Templates { map: HashMap<usize, Vec<TplEntry>> }
 
@@ -92,9 +101,11 @@ impl Templates {
     pub fn new() -> Self { Self { map: HashMap::new() } }
 
     pub fn lookup(&self, fi: usize, args: &[Val], heap: &super::types::HeapPool) -> Option<Val> {
+        let h = hash_args(args);
         self.map.get(&fi)?.iter()
             .find(|e| {
                 e.hits >= TPL_THRESH
+                && e.hash == h
                 && e.args.len() == args.len()
                 && e.args.iter().zip(args).all(|(a, b)| eq_vals_with_heap(*a, *b, heap))
             })
@@ -102,14 +113,16 @@ impl Templates {
     }
 
     pub fn record(&mut self, fi: usize, args: &[Val], result: Val, heap: &super::types::HeapPool) {
+        let h = hash_args(args);
         let v = self.map.entry(fi).or_default();
         if let Some(e) = v.iter_mut().find(|e| {
-            e.args.len() == args.len()
+            e.hash == h
+            && e.args.len() == args.len()
             && e.args.iter().zip(args).all(|(a, b)| eq_vals_with_heap(*a, *b, heap))
         }) {
             e.hits += 1; e.result = result;
         } else if v.len() < 256 {
-            v.push(TplEntry { args: args.to_vec(), result, hits: 1 });
+            v.push(TplEntry { args: args.to_vec(), result, hits: 1, hash: h });
         }
     }
 

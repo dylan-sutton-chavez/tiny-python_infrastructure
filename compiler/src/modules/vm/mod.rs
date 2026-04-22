@@ -286,17 +286,6 @@ impl<'a> VM<'a> {
 
         let mut ip = 0usize;
 
-        let mut phi_map = vec![0usize; n];
-        {
-            let mut pidx = 0usize;
-            for (i, ins) in chunk.instructions.iter().enumerate() {
-                if ins.opcode == OpCode::Phi {
-                    phi_map[i] = pidx;
-                    pidx += 1;
-                }
-            }
-        }
-
         let prev_slots = &chunk.prev_slots;
 
         loop {
@@ -546,7 +535,7 @@ impl<'a> VM<'a> {
 
                 // SSA Phi
 
-                OpCode::Phi => { Self::exec_phi(op, rip, &phi_map, slots, prev_slots, &chunk.phi_sources); }
+                OpCode::Phi => { Self::exec_phi(op, rip, &chunk.phi_map, slots, prev_slots, &chunk.phi_sources); }
 
                 // Functions
 
