@@ -7,7 +7,7 @@ const TAB_SIZE = 4;
 const DEV = !['demo.edgepython.com'].includes(location.hostname);
 const FETCH_OPTS = DEV ? { cache: 'no-store' } : undefined;
 
-const DEFAULT_CODE = `"""\nImplements a functional pipeline using function composition and list comprehensions.\nReferences: Backus, J. (1978).\n"""\n\ndef double(n: int) -> int:\n    return n * 2\n\ndef square(n: int) -> int:\n    return n * n\n\ndef apply_pipeline(value: int, steps: list) -> int:\n    # Stop recursion when no steps remain\n    if not steps:\n        return value\n\n    first_fn = steps[0]\n    remaining_steps = steps[1:]\n\n    return apply_pipeline(first_fn(value), remaining_steps)\n\ndata: list[int] = [1, 2, 3]\npipeline: list = [double, square]\n\nresult = [apply_pipeline(x, pipeline) for x in data] # Use a list comprehension for efficient data transformation\n\nprint(f"Input: {data}")\nprint(f"Output: {result}")`;
+const DEFAULT_CODE = `"""\nImplements a functional pipeline using function composition and list comprehensions.\nReference: Backus, J. (1978).\n"""\n\ndef double(n: int) -> int:\n    return n * 2\n\ndef square(n: int) -> int:\n    return n * n\n\ndef apply_pipeline(value: int, steps: list) -> int:\n    # Stop recursion when no steps remain\n    if not steps:\n        return value\n\n    first_fn = steps[0]\n    remaining_steps = steps[1:]\n\n    return apply_pipeline(first_fn(value), remaining_steps)\n\ndata: list[int] = [1, 2, 3]\npipeline: list = [double, square]\n\nresult = [apply_pipeline(x, pipeline) for x in data] # Use a list comprehension for efficient data transformation\n\nprint(f"Input: {data}")\nprint(f"Output: {result}")`;
 
 // DOM
 
@@ -161,9 +161,9 @@ const Editor = (() => {
         editor.innerHTML = Highlighter.highlight(editor.textContent);
     }, {
         tab: '    ',
-        indentOn: /:[ \t]*$/,
+        indentOn: /[:\[({][ \t]*$/,
         spellcheck: false,
-        addClosing: false,
+        addClosing: true,
     });
 
     const syncLineNumbers = () => {
