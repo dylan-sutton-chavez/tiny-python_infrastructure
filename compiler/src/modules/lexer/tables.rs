@@ -1,17 +1,17 @@
 // lexer/tables.rs
 
+//! Lookup tables for lexer: byte classes, operators, keywords, prefixes.
+
 use super::TokenType;
 
-/*
-Byte Classification Table
-    256-byte LUT replacing all per-byte branch chains with indexed flag loads.
-*/
+/* Byte class flags: ID_START, ID_CONT, DIGIT, SPACE. */
 
 pub const ID_START: u8 = 1;
 pub const ID_CONT: u8 = 2;
 pub const DIGIT: u8 = 4;
 pub const SPACE: u8 = 8;
 
+// 256-byte LUT: replaces per-byte branches with indexed flag loads.
 pub static BYTE_CLASS: [u8; 256] = {
     let mut t = [0u8; 256];
     let mut i = 0usize;
@@ -23,17 +23,13 @@ pub static BYTE_CLASS: [u8; 256] = {
             t[i] = ID_START | ID_CONT;
         }
         if b == b'_' { t[i] = ID_START | ID_CONT; }
-        if b >= 0x80 { t[i] = ID_START | ID_CONT; }
+        if b >= 0x80 { t[i] = ID_START | ID_CONT; } // Non-ASCII always starts/continues an identifier.
         i += 1;
     }
     t
 };
 
-/*
-Single-Char Operator Dispatch
-    Two indexed loads per token replacing the 24-arm operator match.
-*/
-
+// Single-char operator dispatch: byte -> index -> TokenType.
 pub static SINGLE_TOK: [u8; 128] = {
     let mut t = [0u8; 128];
     t[b'(' as usize] = 1; t[b')' as usize] = 2;
@@ -51,6 +47,7 @@ pub static SINGLE_TOK: [u8; 128] = {
     t
 };
 
+// Maps index from SINGLE_TOK to actual TokenType, 0 = not an operator.
 pub const SINGLE_MAP: [TokenType; 24] = [
     TokenType::Endmarker, // 0 = not found
     TokenType::Lpar, TokenType::Rpar, TokenType::Lsqb, // 1-3
@@ -64,11 +61,7 @@ pub const SINGLE_MAP: [TokenType; 24] = [
     TokenType::Semi, // 23
 ];
 
-/*
-Keyword Dispatch
-    Routes by (length, first byte) so most non-keywords skip all memcmps.
-*/
-
+// Keyword lookup: routes by (length, first byte) to skip most memcmps.
 pub fn keyword(s: &[u8]) -> Option<TokenType> {
     match (s.len(), s[0]) {
         (1, b'_') => Some(TokenType::Underscore),
@@ -128,15 +121,12 @@ pub fn keyword(s: &[u8]) -> Option<TokenType> {
         (8, b'c') => if s == b"continue" { Some(TokenType::Continue) } else { None },
         (8, b'n') => if s == b"nonlocal" { Some(TokenType::Nonlocal) } else { None },
 
-        _ => None
+        _ => None,
     }
 }
 
-/*
-Prefix Detection
-    Identifies f-string and regular string prefixes for dispatch before quote scanning.
-*/
 
+// Check if byte slice is an f-string prefix (f, F, fr, Fr, fR, FR, etc.).
 #[inline]
 pub fn is_fstring_prefix(s: &[u8]) -> bool {
     match s.len() {
@@ -145,10 +135,11 @@ pub fn is_fstring_prefix(s: &[u8]) -> bool {
             (s[0], s[1]),
             (b'f' | b'F', b'r' | b'R') | (b'r' | b'R', b'f' | b'F')
         ),
-        _ => false
+        _ => false,
     }
 }
 
+// Check if byte slice is a regular string prefix (b, r, u, br, rb, etc.).
 #[inline]
 pub fn is_string_prefix(s: &[u8]) -> bool {
     match s.len() {
@@ -157,21 +148,17 @@ pub fn is_string_prefix(s: &[u8]) -> bool {
             (s[0], s[1]),
             (b'b' | b'B', b'r' | b'R') | (b'r' | b'R', b'b' | b'B')
         ),
-        _ => false
+        _ => false,
     }
 }
 
-/*
-UTF-8 Helpers
-    Lead byte to char length for multi-byte identifier support.
-*/
-
+// UTF-8 character length from lead byte (supports non-ASCII identifiers).
 #[inline]
 pub fn utf8_char_len(first: u8) -> usize {
     match first {
         0x00..=0x7F => 1,
         0xC0..=0xDF => 2,
         0xE0..=0xEF => 3,
-        _ => 4
+        _ => 4,
     }
 }

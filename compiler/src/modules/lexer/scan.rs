@@ -1,29 +1,28 @@
 // lexer/scan.rs
 
+//! Lexical scanner of source code.
+
 use super::TokenType;
+use super::tables::*;
+
 use alloc::vec::Vec;
 use core::cmp::Ordering;
-
-use super::tables::*;
 
 const MAX_INDENT_DEPTH: usize = 100;
 const MAX_FSTRING_DEPTH: usize = 200;
 
-/*
-Scanner State
-    Source bytes, position, pending queue, indent stack and f-string context.
-*/
-
+// Scanner state: source bytes, position, pending queue, indent stack, f-string context.
 pub(super) struct Scanner<'a> {
     pub src: &'a [u8],
     pub pos: usize,
-    pub pending: Vec<(TokenType,usize,usize,usize)>,
+    pub pending: Vec<(TokenType,usize,usize,usize)>, // Pending stack: Tokens to emit in LIFO order.
     pub indent_stack: Vec<usize>,
     pub nesting: u32,
     pub line: usize,
-    pub fstring_stack: Vec<(u8, bool, usize, u32)>
+    pub fstring_stack: Vec<(u8, bool, usize, u32)>,
 }
 
+// Scanner implementation.
 impl<'a> Scanner<'a> {
     pub fn new(src: &'a [u8]) -> Self {
         Self {
@@ -35,55 +34,32 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    /*
-    Hot-Path Helpers
-        All inner loops use BYTE_CLASS indexed loads, zero branches per byte.
-    */
+    /* All inner loops use BYTE_CLASS indexed loads, zero branches per byte. */
 
     #[inline]
+    fn scan_while(&mut self, pred: impl Fn(u8) -> bool) {
+        while self.pos < self.src.len() && pred(self.src[self.pos]) {
+            self.pos += 1;
+        }
+    }
+
     pub fn skip_whitespace(&mut self) {
-        while self.pos < self.src.len()
-            && BYTE_CLASS[self.src[self.pos] as usize] & SPACE != 0
-        { self.pos += 1; }
+        self.scan_while(|b| BYTE_CLASS[b as usize] & SPACE != 0);
     }
-
-    fn scan_id_rest(&mut self) {
-        while self.pos < self.src.len()
-            && BYTE_CLASS[self.src[self.pos] as usize] & ID_CONT != 0
-        { self.pos += 1; }
+    fn scan_id_rest(&mut self)  {
+        self.scan_while(|b| BYTE_CLASS[b as usize] & ID_CONT != 0);
     }
-
-    fn scan_digits(&mut self) {
-        while self.pos < self.src.len() {
-            let b = self.src[self.pos];
-            if BYTE_CLASS[b as usize] & DIGIT != 0 || b == b'_' { self.pos += 1; }
-            else { break; }
-        }
+    fn scan_digits(&mut self)   {
+        self.scan_while(|b| BYTE_CLASS[b as usize] & DIGIT != 0 || b == b'_');
     }
-
     fn scan_hex_digits(&mut self) {
-        while self.pos < self.src.len() {
-            let b = self.src[self.pos];
-            if b.is_ascii_hexdigit() || b == b'_' { self.pos += 1; } else { break; }
-        }
+        self.scan_while(|b| b.is_ascii_hexdigit() || b == b'_');
     }
-
     fn scan_oct_digits(&mut self) {
-        while self.pos < self.src.len() {
-            match self.src[self.pos] {
-                b'0'..=b'7' | b'_' => self.pos += 1,
-                _ => break,
-            }
-        }
+        self.scan_while(|b| matches!(b, b'0'..=b'7' | b'_'));
     }
-
     fn scan_bin_digits(&mut self) {
-        while self.pos < self.src.len() {
-            match self.src[self.pos] {
-                b'0' | b'1' | b'_' => self.pos += 1,
-                _ => break,
-            }
-        }
+        self.scan_while(|b| matches!(b, b'0' | b'1' | b'_'));
     }
 
     #[inline(always)]
@@ -91,10 +67,21 @@ impl<'a> Scanner<'a> {
         self.src.get(self.pos + offset).copied()
     }
 
-    /*
-    Number Scanning
-        Handles decimal, hex, octal, binary, float and complex number literals.
-    */
+    /* Handles decimal, hex, octal, binary, float and complex number literals. */
+
+    #[inline]
+    fn scan_exponent(&mut self) -> bool {
+        if self.pos < self.src.len() && matches!(self.src[self.pos], b'e' | b'E') {
+            self.pos += 1;
+            if self.pos < self.src.len() && matches!(self.src[self.pos], b'+' | b'-') {
+                self.pos += 1;
+            }
+            self.scan_digits();
+            true
+        } else {
+            false
+        }
+    }
 
     fn scan_number(&mut self, start: usize) -> TokenType {
         if self.src[start] == b'0' && self.pos < self.src.len() {
@@ -107,33 +94,18 @@ impl<'a> Scanner<'a> {
         }
         self.scan_digits();
         let mut is_float = false;
-        if self.pos < self.src.len() && self.src[self.pos] == b'.'
-            && self.at(1) != Some(b'.')
-        {
+        if self.pos < self.src.len() && self.src[self.pos] == b'.' && self.at(1) != Some(b'.') {
             is_float = true;
             self.pos += 1;
             self.scan_digits();
         }
-        if self.pos < self.src.len() && matches!(self.src[self.pos], b'e' | b'E') {
-            is_float = true;
-            self.pos += 1;
-            if self.pos < self.src.len() && matches!(self.src[self.pos], b'+' | b'-') {
-                self.pos += 1;
-            }
-            self.scan_digits();
-        }
+        is_float |= self.scan_exponent();
         self.maybe_complex(if is_float { TokenType::Float } else { TokenType::Int })
     }
 
     fn scan_dot_number(&mut self) -> TokenType {
         self.scan_digits();
-        if self.pos < self.src.len() && matches!(self.src[self.pos], b'e' | b'E') {
-            self.pos += 1;
-            if self.pos < self.src.len() && matches!(self.src[self.pos], b'+' | b'-') {
-                self.pos += 1;
-            }
-            self.scan_digits();
-        }
+        self.scan_exponent();
         self.maybe_complex(TokenType::Float)
     }
 
@@ -144,10 +116,7 @@ impl<'a> Scanner<'a> {
         } else { base }
     }
 
-    /*
-    String Scanning
-        Handles single-quote, double-quote and triple-quoted strings with escape awareness.
-    */
+    /* Handles single-quote, double-quote and triple-quoted strings with escape awareness. */
 
     fn scan_string(&mut self, quote: u8) {
         if self.at(0) == Some(quote) && self.at(1) == Some(quote) {
@@ -180,10 +149,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    /*
-    F-String Scanning
-        Emits FstringStart/Middle/End tokens and suspends at `{` for expression lexing.
-    */
+    /* Emits FstringStart/Middle/End tokens and suspends at `{` for expression lexing. */
 
     fn start_fstring(&mut self, start: usize, prefix_end: usize) {
         let quote = self.src[prefix_end];
@@ -196,6 +162,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn scan_fstring_body(&mut self, quote: u8, triple: bool, body_start: usize) {
+        let ql: usize = if triple { 3 } else { 1 };  // <- hoisted
         let mut pos = self.pos;
         while pos < self.src.len() {
             let closes = if triple {
@@ -207,10 +174,9 @@ impl<'a> Scanner<'a> {
                 self.src[pos] == quote
             };
             if closes {
-                let ql = if triple { 3 } else { 1 };
                 self.pending.push((TokenType::FstringEnd, self.line, pos, pos + ql));
                 if pos > self.pos {
-                    self.pending.push((TokenType::FstringMiddle, self.line, body_start, pos));
+                    self.pending.push((TokenType::FstringMiddle, self.line, body_start, pos)); // Pushed after End; Popped first (LIFO).
                 }
                 self.pos = pos + ql;
                 return;
@@ -241,10 +207,7 @@ impl<'a> Scanner<'a> {
         self.pos = pos;
     }
 
-    /*
-    Indentation Handling
-        Emits Newline/Indent/Dedent or suppresses them inside bracketed expressions.
-    */
+    /* Emits Newline/Indent/Dedent or suppresses them inside bracketed expressions. */
 
     fn handle_newline(&mut self, start: usize) {
         let current_line = self.line;
@@ -261,13 +224,13 @@ impl<'a> Scanner<'a> {
         let mut p = self.pos;
         while p < self.src.len() && (self.src[p] == b' ' || self.src[p] == b'\t') {
             has_space |= self.src[p] == b' ';
-            has_tab   |= self.src[p] == b'\t';
+            has_tab |= self.src[p] == b'\t';
             level += 1; p += 1;
         }
 
         if has_space && has_tab {
-            self.pending.push((TokenType::Endmarker, current_line, start, self.pos)); // sale 2.º
-            self.pending.push((TokenType::Newline,   current_line, start, self.pos)); // sale 1.º
+            self.pending.push((TokenType::Endmarker, current_line, start, self.pos));
+            self.pending.push((TokenType::Newline, current_line, start, self.pos));
             return;
         }
 
@@ -282,20 +245,20 @@ impl<'a> Scanner<'a> {
         match level.cmp(&current) {
             Ordering::Greater => {
                 if self.indent_stack.len() >= MAX_INDENT_DEPTH {
-                    self.pending.push((TokenType::Endmarker, current_line, start, self.pos)); // sale 2.º
-                    self.pending.push((TokenType::Newline,   current_line, start, self.pos)); // sale 1.º
+                    self.pending.push((TokenType::Endmarker, current_line, start, self.pos));
+                    self.pending.push((TokenType::Newline, current_line, start, self.pos));
                     return;
                 }
                 self.indent_stack.push(level);
-                self.pending.push((TokenType::Indent,  self.line,    line_pos, line_pos)); // sale 2.º
-                self.pending.push((TokenType::Newline,  current_line, start,    self.pos)); // sale 1.º
+                self.pending.push((TokenType::Indent, self.line, line_pos, line_pos));
+                self.pending.push((TokenType::Newline,current_line, start, self.pos));
             }
             Ordering::Less => {
                 while self.indent_stack.last().is_some_and(|&t| t > level) {
                     self.indent_stack.pop();
-                    self.pending.push((TokenType::Dedent, self.line, line_pos, line_pos)); // salen últimos
+                    self.pending.push((TokenType::Dedent, self.line, line_pos, line_pos));
                 }
-                self.pending.push((TokenType::Newline, current_line, start, self.pos)); // sale 1.º
+                self.pending.push((TokenType::Newline, current_line, start, self.pos));
             }
             Ordering::Equal => {
                 self.pending.push((TokenType::Newline, current_line, start, self.pos));
@@ -303,35 +266,28 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    /*
-    Close Brace
-        Routes `}` to f-string body resume or plain Rbrace based on nesting depth.
-    */
+    /* Routes `}` to f-string body resume or plain Rbrace based on nesting depth. */
 
     fn close_brace(&mut self, start: usize) {
         let end = start + 1;
         if let Some(&(_, _, _, saved_nesting)) = self.fstring_stack.last() {
             if self.nesting > saved_nesting {
                 self.nesting -= 1;
-                self.pending.push((TokenType::Rbrace, self.line, start, end));
             } else {
                 let (quote, triple, _, _) = self.fstring_stack.pop().unwrap();
                 self.pos = end;
                 self.scan_fstring_body(quote, triple, end);
                 self.pending.push((TokenType::Rbrace, self.line, start, end));
-                return;
+                return; // Pos already advanced by scan_fstring_body.
             }
         } else {
             self.nesting = self.nesting.saturating_sub(1);
-            self.pending.push((TokenType::Rbrace, self.line, start, end));
         }
+        self.pending.push((TokenType::Rbrace, self.line, start, end));
         self.pos = end;
     }
 
-    /*
-    Main Dispatch
-        Routes each byte via BYTE_CLASS and SINGLE_TOK, drains pending queue first.
-    */
+    /* Routes each byte via BYTE_CLASS and SINGLE_TOK, drains pending queue first. */
 
     pub fn next_token(&mut self) -> Option<(TokenType, usize, usize, usize)> {
         if let Some(tok) = self.pending.pop() {
@@ -339,7 +295,7 @@ impl<'a> Scanner<'a> {
         }
 
         self.skip_whitespace();
-        if self.pos >= self.src.len() { return Option::None; }
+        if self.pos >= self.src.len() { return None; }
 
         let start = self.pos;
         let b = self.src[self.pos];
@@ -428,7 +384,7 @@ impl<'a> Scanner<'a> {
                 b"//=" => Some(TokenType::DoubleSlashEqual),
                 b"<<=" => Some(TokenType::LeftShiftEqual),
                 b">>=" => Some(TokenType::RightShiftEqual),
-                _ => Option::None,
+                _ => None,
             };
             if let Some(k) = kind {
                 self.pos += 3;
@@ -449,7 +405,7 @@ impl<'a> Scanner<'a> {
                 b">=" => Some(TokenType::GreaterEqual),b">>" => Some(TokenType::RightShift),
                 b"@=" => Some(TokenType::AtEqual), b"^=" => Some(TokenType::CircumflexEqual),
                 b"|=" => Some(TokenType::VbarEqual),
-                _ => Option::None,
+                _ => None,
             };
             if let Some(k) = kind {
                 self.pos += 2;
@@ -463,9 +419,12 @@ impl<'a> Scanner<'a> {
         let kind = SINGLE_MAP[idx as usize];
 
         match kind {
-            TokenType::Lpar | TokenType::Lsqb | TokenType::Lbrace => self.nesting += 1,
-            TokenType::Rpar | TokenType::Rsqb => self.nesting = self.nesting.saturating_sub(1),
-            _ => {}
+            | TokenType::Lpar 
+            | TokenType::Lsqb 
+            | TokenType::Lbrace => self.nesting += 1,
+            | TokenType::Rpar 
+            | TokenType::Rsqb => self.nesting = self.nesting.saturating_sub(1),
+            _ => {},
         }
 
         Some((kind, self.line, start, self.pos))

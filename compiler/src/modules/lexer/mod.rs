@@ -1,30 +1,25 @@
 // lexer/mod.rs
 
+//! Lexical analysis module for source code.
+
 pub mod tables;
+
 mod scan;
+use scan::Scanner;
 
-use scan::{Scanner};
-
+// Source size limit of 10 MiB.
 const MAX_SOURCE_SIZE: usize = 10 * 1024 * 1024;
 
-/*
-Token
-    Token kind with line number and byte-offset span into source.
-*/
-
+// Token kind with line number and byte-offset span into source.
 #[derive(Debug)]
 pub struct Token {
     pub kind: TokenType,
     pub line: usize,
     pub start: usize,
-    pub end: usize
+    pub end: usize,
 }
 
-/*
-Token Types
-    Enumeration of all lexical tokens produced by the scanner.
-*/
-
+// Enumeration of all lexical tokens produced by the scanner.
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum TokenType {
     // Keywords
@@ -48,15 +43,11 @@ pub enum TokenType {
     Name, Complex, Float, Int, String,
     // F-string
     FstringStart, FstringMiddle, FstringEnd,
-    // Whitespace / structure
-    Comment, Newline, Indent, Dedent, Nl, Endmarker
+    // Whitespace and structure
+    Comment, Newline, Indent, Dedent, Nl, Endmarker,
 }
 
-/*
-Token Stream
-    Produces a parser-ready iterator with indentation and soft keywords resolved.
-*/
-
+// Produces a parser-ready iterator with indentation and soft keywords resolved.
 pub fn lexer(source: &str) -> impl Iterator<Item = Token> + '_ {
     let bytes = source.as_bytes();
     let len = source.len();
@@ -68,33 +59,37 @@ pub fn lexer(source: &str) -> impl Iterator<Item = Token> + '_ {
     }
 
     let mut stream = core::iter::from_fn(move || {
-        if done { return Option::None; }
+        if done { return None; }
         match scanner.next_token() {
             Some(tok) => Some(tok),
-            Option::None if !done => {
+            _ => {
                 done = true;
                 Some((TokenType::Endmarker, scanner.line, len, len))
             }
-            _ => Option::None
         }
-    })
-    .peekable();
+    }).peekable();
 
     let mut ended = false;
 
     core::iter::from_fn(move || {
         let (tok, line, start, end) = stream.next()?;
 
-        if ended { return Option::None; }
+        if ended { return None; }
         if tok == TokenType::Endmarker { ended = true; }
 
         let is_soft = matches!(tok, TokenType::Match | TokenType::Case | TokenType::Type);
         let next_demotes = matches!(
             stream.peek(),
-            Some((
-                TokenType::Lpar | TokenType::Colon | TokenType::Equal | TokenType::Comma | TokenType::Rpar | TokenType::Rsqb | TokenType::Newline,
-                _, _, _
-            )) | Option::None
+            Some(( // Following token makes keyword a plain name.
+                | TokenType::Lpar 
+                | TokenType::Colon 
+                | TokenType::Equal 
+                | TokenType::Comma 
+                | TokenType::Rpar 
+                | TokenType::Rsqb 
+                | TokenType::Newline,
+                _, _, _,
+            )) | None
         );
 
         let kind = if is_soft && next_demotes { TokenType::Name } else { tok };
