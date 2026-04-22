@@ -80,7 +80,17 @@ impl<'a> VM<'a> {
             HeapObj::List(v) => IterFrame::Seq { items: v.borrow().clone(), idx: 0 },
             HeapObj::Tuple(v) => IterFrame::Seq { items: v.clone(), idx: 0 },
             HeapObj::Dict(p) => IterFrame::Seq { items: p.borrow().keys().collect(), idx: 0 },
-            HeapObj::Set(s) => IterFrame::Seq { items: s.borrow().clone(), idx: 0 },
+            HeapObj::Set(s) => {
+                let mut items: Vec<Val> = s.borrow().iter().cloned().collect();
+                items.sort_by(|a, b| {
+                    if a.is_int() && b.is_int() {
+                        a.as_int().cmp(&b.as_int())
+                    } else {
+                        self.repr(*a).cmp(&self.repr(*b))
+                    }
+                });
+                IterFrame::Seq { items, idx: 0 }
+            },
             HeapObj::Str(s) => {
                 let chars: Vec<char> = s.chars().collect();
                 let mut items = Vec::with_capacity(chars.len());
@@ -520,7 +530,7 @@ impl<'a> VM<'a> {
                         HeapObj::Set(rc) => rc.borrow().iter().any(|&x| eq_vals_with_heap(x, v, &self.heap)),
                         _ => return Err(VmErr::Runtime("set accumulator corrupted")),
                     };
-                    if !already && let HeapObj::Set(rc) = self.heap.get(acc) { rc.borrow_mut().push(v); }
+                    if !already && let HeapObj::Set(rc) = self.heap.get(acc) { rc.borrow_mut().insert(v); }
                 }
                 OpCode::MapAdd => {
                     let value = self.pop()?;

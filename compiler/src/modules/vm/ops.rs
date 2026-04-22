@@ -93,8 +93,11 @@ impl<'a> VM<'a> {
             HeapObj::Dict(d) => format!("{{{}}}", d.borrow().iter()
                 .map(|(k,v)| format!("{}: {}", self.repr(k), self.repr(v)))
                 .collect::<Vec<_>>().join(", ")),
-            HeapObj::Set(s) => format!("{{{}}}", s.borrow().iter()
-                .map(|x| self.repr(*x)).collect::<Vec<_>>().join(", ")),
+            HeapObj::Set(s) => {
+                let mut items: Vec<Val> = s.borrow().iter().cloned().collect();
+                items.sort_by(|a, b| self.repr(*a).cmp(&self.repr(*b)));
+                format!("{{{}}}", items.iter().map(|x| self.repr(*x)).collect::<Vec<_>>().join(", "))
+            },
             HeapObj::Slice(s, e, st) => format!("slice({}, {}, {})",
                 self.display(*s), self.display(*e), self.display(*st)),
             HeapObj::BigInt(b) => b.to_decimal(),

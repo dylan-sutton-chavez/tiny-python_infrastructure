@@ -17,12 +17,11 @@ impl<'a> VM<'a> {
     
     pub fn build_set(&mut self, op: u16) -> Result<(), VmErr> {
         let items = self.pop_n(op as usize)?;
-        let mut seen: HashSet<u64> = HashSet::with_capacity(items.len());
-        let mut deduped = Vec::with_capacity(items.len());
+        let mut set = HashSet::with_capacity(items.len());
         for v in items {
-            if seen.insert(v.0) { deduped.push(v); }
+            set.insert(v);
         }
-        let val = self.heap.alloc(HeapObj::Set(Rc::new(RefCell::new(deduped))))?;
+        let val = self.heap.alloc(HeapObj::Set(Rc::new(RefCell::new(set))))?;
         self.push(val); Ok(())
     }
 
@@ -94,21 +93,18 @@ impl<'a> VM<'a> {
 
     pub fn call_set(&mut self, op: u16) -> Result<(), VmErr> {
         if op == 0 {
-            let val = self.heap.alloc(HeapObj::Set(Rc::new(RefCell::new(Vec::new()))))?;
+            let val = self.heap.alloc(HeapObj::Set(Rc::new(RefCell::new(HashSet::new()))))?;
             self.push(val);
         } else {
             let o = self.pop()?;
             let src: Vec<Val> = if o.is_heap() { match self.heap.get(o) {
                 HeapObj::List(v) => v.borrow().clone(),
                 HeapObj::Tuple(v) => v.clone(),
-                HeapObj::Set(v) => v.borrow().clone(),
+                HeapObj::Set(v) => v.borrow().iter().cloned().collect::<Vec<Val>>(),
                 _ => return Err(VmErr::Type("set() argument must be iterable")),
             }} else { return Err(VmErr::Type("set() argument must be iterable")); };
-            let mut seen_set: hashbrown::HashSet<u64> = hashbrown::HashSet::with_capacity(src.len());
-            let mut seen: Vec<Val> = Vec::with_capacity(src.len());
-            for v in src {
-                if seen_set.insert(v.0) { seen.push(v); }
-            }
+            let mut seen = HashSet::with_capacity(src.len());
+            for v in src { seen.insert(v); }
             let val = self.heap.alloc(HeapObj::Set(Rc::new(RefCell::new(seen))))?;
             self.push(val);
         }

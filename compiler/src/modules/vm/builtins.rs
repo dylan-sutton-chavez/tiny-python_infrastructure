@@ -369,7 +369,7 @@ impl<'a> VM<'a> {
             match self.heap.get(args[0]) {
                 HeapObj::List(v) => return Ok(v.borrow().clone()),
                 HeapObj::Tuple(v) => return Ok(v.clone()),
-                HeapObj::Set(v) => return Ok(v.borrow().clone()),
+                HeapObj::Set(v) => return Ok(v.borrow().iter().cloned().collect::<Vec<Val>>()),
                 _ => {}
             }
         }
@@ -386,7 +386,7 @@ impl<'a> VM<'a> {
         Ok(match self.heap.get(o) {
             HeapObj::List(v) => v.borrow().clone(),
             HeapObj::Tuple(v) => v.clone(),
-            HeapObj::Set(v) => v.borrow().clone(),
+            HeapObj::Set(v) => v.borrow().iter().cloned().collect::<Vec<Val>>(),
             _ => return Err(VmErr::Type("object is not iterable")),
         })
     }
@@ -401,7 +401,7 @@ impl<'a> VM<'a> {
         Ok(match self.heap.get(o) {
             HeapObj::List(v) => v.borrow().clone(),
             HeapObj::Tuple(v) => v.clone(),
-            HeapObj::Set(v) => v.borrow().clone(),
+            HeapObj::Set(v) => v.borrow().iter().cloned().collect::<Vec<Val>>(),
             HeapObj::Range(s, e, st) => {
                 let (mut cur, end, step) = (*s, *e, *st);
                 let mut v = Vec::new();

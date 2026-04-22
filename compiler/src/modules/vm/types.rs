@@ -2,6 +2,7 @@
 
 use alloc::{string::{String}, vec::Vec, vec, rc::Rc};
 use core::{fmt, cell::RefCell};
+use hashbrown::HashSet;
 
 /*
 Sandbox Limits
@@ -345,7 +346,7 @@ pub enum HeapObj {
     Str(String),
     List(Rc<RefCell<Vec<Val>>>),
     Dict(Rc<RefCell<DictMap>>),
-    Set(Rc<RefCell<Vec<Val>>>),
+    Set(Rc<RefCell<HashSet<Val>>>),
     Tuple(Vec<Val>),
     Func(usize, Vec<Val>),
     Range(i64, i64, i64),
@@ -487,7 +488,13 @@ impl HeapPool {
                 Some(HeapObj::Slice(a,b,c)) => { for v in [*a,*b,*c] { if v.is_heap() { worklist.push(v.as_heap()); } } }
                 Some(HeapObj::List(rc)) => worklist.extend(rc.borrow().iter().filter(|v| v.is_heap()).map(|v| v.as_heap())),
                 Some(HeapObj::Dict(rc)) => worklist.extend(rc.borrow().entries.iter().flat_map(|(k,v)| [*k,*v]).filter(|v| v.is_heap()).map(|v| v.as_heap())),
-                Some(HeapObj::Set(rc)) => worklist.extend(rc.borrow().iter().filter(|v| v.is_heap()).map(|v| v.as_heap())),
+                Some(HeapObj::Set(rc)) => {
+                    for v in rc.borrow().iter() {
+                        if v.is_heap() {
+                            worklist.push(v.as_heap());
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -566,9 +573,6 @@ Deep Value Equality
 pub(super) fn eq_seq(a: &[Val], b: &[Val], eq: impl Fn(Val,Val)->bool) -> bool {
     a.len() == b.len() && a.iter().zip(b).all(|(x,y)| eq(*x,*y))
 }
-pub(super) fn eq_set(a: &[Val], b: &[Val], eq: impl Fn(Val,Val)->bool) -> bool {
-    a.len() == b.len() && a.iter().all(|x| b.iter().any(|y| eq(*x,*y)))
-}
 pub(super) fn eq_dict(a: &DictMap, b: &DictMap, eq: impl Fn(Val,Val)->bool) -> bool {
     a.len() == b.len() && a.iter().all(|(k,v)| b.get(&k).is_some_and(|&v2| eq(v,v2)))
 }
@@ -591,7 +595,7 @@ pub fn eq_vals_with_heap(a: Val, b: Val, heap: &HeapPool) -> bool {
         (HeapObj::Str(x), HeapObj::Str(y)) => x == y,
         (HeapObj::Tuple(x), HeapObj::Tuple(y)) => eq_seq(x, y, |a,b| eq_vals_with_heap(a, b, heap)),
         (HeapObj::List(x), HeapObj::List(y)) => eq_seq(&x.borrow(), &y.borrow(), |a,b| eq_vals_with_heap(a, b, heap)),
-        (HeapObj::Set(x), HeapObj::Set(y)) => eq_set(&x.borrow(), &y.borrow(), |a,b| eq_vals_with_heap(a, b, heap)),
+        (HeapObj::Set(x), HeapObj::Set(y)) => *x.borrow() == *y.borrow(),
         (HeapObj::Dict(x), HeapObj::Dict(y)) => eq_dict(&x.borrow(), &y.borrow(), |a,b| eq_vals_with_heap(a, b, heap)),
         _ => false,
     }
