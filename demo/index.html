@@ -6,14 +6,11 @@
 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="color-scheme" content="dark">
     <meta name="theme-color" content="#161616">
-    <meta name="format-detection" content="telephone=no">
     <meta name="referrer" content="strict-origin-when-cross-origin">
 
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
-    <meta name="googlebot" content="index, follow">
     <meta name="author" content="Dylan Sutton Chavez">
     <meta name="generator" content="Edge Python">
 
@@ -28,10 +25,12 @@
     <link rel="stylesheet" href="./style.css">
 
     <script>
-        if (['demo.edgepython.com'].includes(location.hostname)) {
-            document.write('<link rel="stylesheet" href="./tailwind.css">');
+        const h = location.hostname;
+        const d = document;
+        if (h === 'demo.edgepython.com') {
+            d.write('<link rel="stylesheet" href="./tailwind.css">');
         } else {
-            document.write('<script src="https:\/\/cdn.tailwindcss.com"><\/script>');
+            d.write('<script src="https://cdn.tailwindcss.com"></'+'script>');
         }
     </script>
 
@@ -101,7 +100,6 @@
     </main>
 
     <aside data-hide-sm class="bg-[#222222] border border-[#2d2d2d] min-w-[270px] max-w-[370px] w-full rounded-md text-[#c2c2c2] text-[12px] px-3 py-2 flex flex-col h-full">
-
         <div class="flex items-center gap-2 mb-4">
             <span>Standard Packages</span>
             <svg data-icon="./static/package.svg" class="size-4 ml-auto" aria-hidden="true" focusable="false"></svg>
@@ -114,7 +112,6 @@
                 <span>Documentation</span>
             </a>
         </footer>
-
     </aside>
 
 </body>

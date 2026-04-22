@@ -81,6 +81,7 @@ const Highlighter = (() => {
     const LIT = new Set(['True', 'False', 'None']);
 
     const WORD_CLS = [[KW, 'tk-kw'], [LIT, 'tk-lit'], [BI, 'tk-bi']];
+    // Regex: [0] Comments, [1] Strings (inc. f-strings/multiline), [2] Numbers, [3] Words/IDs
     const TOKEN_RE = /(#[^\n]*)|((?:\b[fFrRbBuU]{1,2})?(?:"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'))|(0[xX][\da-fA-F_]+|0[oO][0-7_]+|0[bB][01_]+|\d[\d_]*(?:\.[\d_]*)?(?:[eE][+-]?\d+)?[jJ]?|\.\d[\d_]*(?:[eE][+-]?\d+)?[jJ]?)|([A-Za-z_]\w*)/g;
 
     const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
@@ -103,6 +104,7 @@ const Highlighter = (() => {
         if (word) {
             if (fullStr[offset - 1] === '&' && fullStr[offset + word.length] === ';') return word;
             for (const [set, cls] of WORD_CLS) if (set.has(word)) return span(cls, word);
+            // Function call detection
             return span(/^\s*\(/.test(fullStr.slice(offset + word.length)) ? 'tk-func' : 'tk-var', word);
         }
         return m;
@@ -173,6 +175,7 @@ const Editor = (() => {
         el.ln.scrollTop = el.ed.scrollTop;
     };
 
+    // Handle multi-space indentation deletion.
     const handleBackspace = (e) => {
         const pos = jar.save();
         if (pos.start !== pos.end) return;
