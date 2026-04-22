@@ -30,15 +30,7 @@ You can quickly start a local server using Python: `bash python -m http.server 8
 ├── packages.json
 ├── README.md
 ├── static
-│   ├── a-letter.svg
-│   ├── binary.svg
-│   ├── cloud-download.svg
-│   ├── dices.svg
-│   ├── favicon.svg
-│   ├── github.svg
-│   ├── package.svg
-│   ├── play.svg
-│   └── sigma.svg
+│   ├── {resource}.svg
 ├── style.css
 ├── tailwind.config.js
 ├── version.json
