@@ -175,7 +175,6 @@ const Editor = (() => {
         el.ln.scrollTop = el.ed.scrollTop;
     };
 
-    // Handle multi-space indentation deletion.
     const handleBackspace = (e) => {
         const pos = jar.save();
         if (pos.start !== pos.end) return;
