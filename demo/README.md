@@ -22,6 +22,29 @@ You can quickly start a local server using Python: `bash python -m http.server 8
 
 > The latest active WASM release from GitHub will be used to decouple frontend and backend development.
 
+### Project Structure
+
+```bash
+├── index.html
+├── main.js
+├── packages.json
+├── README.md
+├── static
+│   ├── a-letter.svg
+│   ├── binary.svg
+│   ├── cloud-download.svg
+│   ├── dices.svg
+│   ├── favicon.svg
+│   ├── github.svg
+│   ├── package.svg
+│   ├── play.svg
+│   └── sigma.svg
+├── style.css
+├── tailwind.config.js
+├── version.json
+└── worker.js
+```
+
 ### License
 
 MIT OR Apache-2.0
