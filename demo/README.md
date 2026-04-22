@@ -2,6 +2,9 @@
 
 Run Edge Python (based on CPython 3.13) directly in the browser. Edge Python is a single-pass SSA compiler with adaptive inline caching and template memoization, written in Rust and compiled to WebAssembly.
 
+* **Demo:** *[demo.edgepython.com](https://demo.edgepython.com/)*
+* **Docs:** *[edgepython.com](https://demo.edgepython.com/)*
+
 ---
 
 ## Features
