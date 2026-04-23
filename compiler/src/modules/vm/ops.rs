@@ -129,8 +129,8 @@ impl<'a> VM<'a> {
                             let fb = if b.is_int() { b.as_int() as f64 } else { b.as_float() };
                             fa.partial_cmp(&fb).unwrap_or(core::cmp::Ordering::Equal)
                         }
-                        (true, false)  => core::cmp::Ordering::Less,
-                        (false, true)  => core::cmp::Ordering::Greater,
+                        (true, false) => core::cmp::Ordering::Less,
+                        (false, true) => core::cmp::Ordering::Greater,
                         (false, false) => self.repr(*a).cmp(&self.repr(*b)),
                     }
                 });
