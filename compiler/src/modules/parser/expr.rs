@@ -246,36 +246,29 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.postfix_tail();
     }
 
+    fn parse_int_prefix(s: &str) -> (&str, u32) {
+        if let Some(h) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) { (h, 16) }
+        else if let Some(o) = s.strip_prefix("0o").or_else(|| s.strip_prefix("0O")) { (o, 8) }
+        else if let Some(b) = s.strip_prefix("0b").or_else(|| s.strip_prefix("0B")) { (b, 2) }
+        else { (s, 10) }
+    }
+
     pub(super) fn parse_number(&mut self, raw: &str, kind: TokenType) {
         let s = raw.replace('_', "");
         if kind == TokenType::Float {
             self.emit_const(Value::Float(s.parse().unwrap_or(0.0)));
             return;
         }
-        let maybe: Option<i64> =
-            if let Some(h) = s.strip_prefix("0x").or(s.strip_prefix("0X")) {
-                i64::from_str_radix(h, 16).ok()
-            } else if let Some(o) = s.strip_prefix("0o").or(s.strip_prefix("0O")) {
-                i64::from_str_radix(o, 8).ok()
-            } else if let Some(b) = s.strip_prefix("0b").or(s.strip_prefix("0B")) {
-                i64::from_str_radix(b, 2).ok()
-            } else {
-                s.parse().ok()
-            };
-
+        let (digits, base) = Self::parse_int_prefix(&s);
+        let maybe = if base == 10 {
+            digits.parse().ok()
+        } else {
+            i64::from_str_radix(digits, base).ok()
+        };
         match maybe {
             Some(v) => self.emit_const(Value::Int(v)),
             None => {
-                let dec =
-                    if let Some(h) = s.strip_prefix("0x").or(s.strip_prefix("0X")) {
-                        Self::big_base_to_dec(h, 16)
-                    } else if let Some(o) = s.strip_prefix("0o").or(s.strip_prefix("0O")) {
-                        Self::big_base_to_dec(o, 8)
-                    } else if let Some(b) = s.strip_prefix("0b").or(s.strip_prefix("0B")) {
-                        Self::big_base_to_dec(b, 2)
-                    } else {
-                        s
-                    };
+                let dec = if base == 10 { digits.to_string() } else { Self::big_base_to_dec(digits, base) };
                 self.emit_const(Value::BigInt(dec));
             }
         }
@@ -376,20 +369,11 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
         self.eat(TokenType::Colon);
 
-        let saved_chunk = core::mem::take(&mut self.chunk);
-        let saved_ver = core::mem::take(&mut self.ssa_versions);
-        self.ssa_versions = saved_ver.clone();
-        for p in &params {
-            self.ssa_versions.insert(p.clone(), 0);
-        }
-
-        self.expr();
-        self.chunk.emit(OpCode::ReturnValue, 0);
-
-        let body = core::mem::take(&mut self.chunk);
-        self.chunk = saved_chunk;
-        self.ssa_versions = saved_ver;
-
+        let body = self.with_fresh_chunk(|s| {
+            for p in &params { s.ssa_versions.insert(p.clone(), 0); }
+            s.expr();
+            s.chunk.emit(OpCode::ReturnValue, 0);
+        });
         let fi = self.chunk.functions.len() as u16;
         self.chunk.functions.push((params, body, 0, u16::MAX));
         self.chunk.emit(OpCode::MakeFunction, fi);

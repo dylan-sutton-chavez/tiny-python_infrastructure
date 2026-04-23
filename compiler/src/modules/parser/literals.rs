@@ -336,40 +336,27 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     */
 
     pub(super) fn class_def(&mut self) {
-        let cname = {
-            let n = self.advance();
-            self.lexeme(&n).to_string()
-        };
+        let n = self.advance();
+        let cname = self.lexeme(&n).to_string();
 
         if self.eat_if(TokenType::Lpar) {
             while !matches!(self.peek(), Some(TokenType::Rpar) | None) {
                 self.expr();
-                if !self.eat_if(TokenType::Comma) {
-                    break;
-                }
+                if !self.eat_if(TokenType::Comma) { break; }
             }
             self.eat(TokenType::Rpar);
         }
 
         self.eat(TokenType::Colon);
 
-        let saved_chunk = core::mem::take(&mut self.chunk);
-        let saved_ver = core::mem::take(&mut self.ssa_versions);
-        self.ssa_versions = saved_ver.clone();
-
-        self.compile_block();
-
-        let body = core::mem::take(&mut self.chunk);
-        self.chunk = saved_chunk;
-        self.ssa_versions = saved_ver;
+        let body = self.with_fresh_chunk(|s| s.compile_block());
 
         let ci = self.chunk.classes.len() as u16;
         self.chunk.classes.push(body);
         self.chunk.emit(OpCode::MakeClass, ci);
 
         let ver = self.increment_version(&cname);
-        let mut buf = [0u8; 128];
-        let i = self.chunk.push_name(Self::ssa_name(&cname, ver, &mut buf));
+        let i = self.push_ssa_name(&cname, ver);
         self.chunk.emit(OpCode::StoreName, i);
     }
 

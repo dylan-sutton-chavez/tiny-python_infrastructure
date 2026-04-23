@@ -69,6 +69,11 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         new
     }
 
+    pub(super) fn push_ssa_name(&mut self, name: &str, ver: u32) -> u16 {
+        let mut buf = [0u8; 128];
+        self.chunk.push_name(Self::ssa_name(name, ver, &mut buf))
+    }
+
     pub(super) fn emit_load_ssa(&mut self, name: String) {
         let v = self.current_version(&name);
         let mut buf = [0u8; 128];
@@ -86,6 +91,16 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         let mut buf = [0u8; 128];
         let i = self.chunk.push_name(Self::ssa_name(&name, ver, &mut buf));
         self.chunk.emit(OpCode::StoreName, i);
+    }
+
+    pub(super) fn with_fresh_chunk(&mut self, f: impl FnOnce(&mut Self)) -> SSAChunk {
+        let saved_chunk = core::mem::take(&mut self.chunk);
+        let saved_ver = self.ssa_versions.clone();
+        f(self);
+        let body = core::mem::take(&mut self.chunk);
+        self.chunk = saved_chunk;
+        self.ssa_versions = saved_ver;
+        body
     }
 }
 

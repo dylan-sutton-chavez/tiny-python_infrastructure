@@ -6,9 +6,31 @@ use alloc::{string::ToString, vec::Vec, rc::Rc, string::String};
 use hashbrown::HashSet;
 use core::cell::RefCell;
 
+// Resolves negative index relative to sequence length.
+#[inline]
+fn normalize_index(i: i64, len: usize) -> usize {
+    (if i < 0 { len as i64 + i } else { i }) as usize
+}
+
 enum SliceSource { List(Vec<Val>), Tuple(Vec<Val>), Str(Vec<char>) } // Extract type and data once
 
+impl SliceSource {
+    fn len(&self) -> i64 {
+        match self {
+            Self::List(v)  => v.len() as i64,
+            Self::Tuple(v) => v.len() as i64,
+            Self::Str(v)   => v.len() as i64,
+        }
+    }
+}
+
 impl<'a> VM<'a> {
+    
+    fn alloc_set(&mut self, items: Vec<Val>) -> Result<Val, VmErr> {
+        let mut set = HashSet::with_capacity(items.len());
+        for v in items { set.insert(v); }
+        self.heap.alloc(HeapObj::Set(Rc::new(RefCell::new(set))))
+    }
 
     /*
     BuildSet
@@ -17,11 +39,7 @@ impl<'a> VM<'a> {
     
     pub fn build_set(&mut self, op: u16) -> Result<(), VmErr> {
         let items = self.pop_n(op as usize)?;
-        let mut set = HashSet::with_capacity(items.len());
-        for v in items {
-            set.insert(v);
-        }
-        let val = self.heap.alloc(HeapObj::Set(Rc::new(RefCell::new(set))))?;
+        let val = self.alloc_set(items)?;
         self.push(val); Ok(())
     }
 
@@ -93,19 +111,21 @@ impl<'a> VM<'a> {
 
     pub fn call_set(&mut self, op: u16) -> Result<(), VmErr> {
         if op == 0 {
-            let val = self.heap.alloc(HeapObj::Set(Rc::new(RefCell::new(HashSet::new()))))?;
+            let val = self.alloc_set(Vec::new())?;
             self.push(val);
         } else {
             let o = self.pop()?;
-            let src: Vec<Val> = if o.is_heap() { match self.heap.get(o) {
-                HeapObj::List(v) => v.borrow().clone(),
-                HeapObj::Tuple(v) => v.clone(),
-                HeapObj::Set(v) => v.borrow().iter().cloned().collect::<Vec<Val>>(),
-                _ => return Err(VmErr::Type("set() argument must be iterable")),
-            }} else { return Err(VmErr::Type("set() argument must be iterable")); };
-            let mut seen = HashSet::with_capacity(src.len());
-            for v in src { seen.insert(v); }
-            let val = self.heap.alloc(HeapObj::Set(Rc::new(RefCell::new(seen))))?;
+            let src: Vec<Val> = if o.is_heap() {
+                match self.heap.get(o) {
+                    HeapObj::List(v) => v.borrow().clone(),
+                    HeapObj::Tuple(v) => v.clone(),
+                    HeapObj::Set(v) => v.borrow().iter().cloned().collect(),
+                    _ => return Err(VmErr::Type("set() argument must be iterable")),
+                }
+            } else {
+                return Err(VmErr::Type("set() argument must be iterable"));
+            };
+            let val = self.alloc_set(src)?;
             self.push(val);
         }
         Ok(())
@@ -132,8 +152,7 @@ impl<'a> VM<'a> {
         if obj.is_heap() && idx.is_int()
             && let HeapObj::Str(s) = self.heap.get(obj) {
                 let i = idx.as_int();
-                let len = s.chars().count() as i64;
-                let ui = (if i < 0 { len + i } else { i }) as usize;
+                let ui = normalize_index(i, s.chars().count());
                 let c = s.chars().nth(ui).ok_or(VmErr::Value("string index out of range"))?;
                 let val = self.heap.alloc(HeapObj::Str(c.to_string()))?;
                 self.push(val);
@@ -164,11 +183,7 @@ impl<'a> VM<'a> {
             _ => return Err(VmErr::Type("object is not sliceable")),
         };
 
-        let len = match &source {
-            SliceSource::List(v) => v.len() as i64,
-            SliceSource::Tuple(v) => v.len() as i64,
-            SliceSource::Str(v) => v.len() as i64,
-        };
+        let len = source.len();
 
         let clamp = |v: Val, def: i64| -> i64 {
             if v.is_none() { def }
@@ -183,15 +198,13 @@ impl<'a> VM<'a> {
         if st > 0 { while cur < e { indices.push(cur as usize); cur += st; } }
         else { while cur > e { indices.push(cur as usize); cur += st; } }
 
+        let pick = |v: &[Val]| -> Vec<Val> {
+            indices.iter().filter_map(|&i| v.get(i).copied()).collect()
+        };
+
         match source {
-            SliceSource::List(v) => {
-                let result: Vec<Val> = indices.iter().filter_map(|&i| v.get(i).copied()).collect();
-                self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(result))))
-            }
-            SliceSource::Tuple(v) => {
-                let result: Vec<Val> = indices.iter().filter_map(|&i| v.get(i).copied()).collect();
-                self.heap.alloc(HeapObj::Tuple(result))
-            }
+            SliceSource::List(v)  => self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(pick(&v))))),
+            SliceSource::Tuple(v) => self.heap.alloc(HeapObj::Tuple(pick(&v))),
             SliceSource::Str(chars) => {
                 let sliced: String = indices.iter().filter_map(|&i| chars.get(i)).collect();
                 self.heap.alloc(HeapObj::Str(sliced))
@@ -210,13 +223,13 @@ impl<'a> VM<'a> {
             HeapObj::List(v) => {
                 if !idx.is_int() { return Err(VmErr::Type("list indices must be integers")); }
                 let b = v.borrow(); let i = idx.as_int();
-                let ui = if i < 0 { b.len() as i64 + i } else { i } as usize;
+                let ui = normalize_index(i, b.len());
                 b.get(ui).copied().ok_or(VmErr::Value("list index out of range"))
             }
             HeapObj::Tuple(v) => {
                 if !idx.is_int() { return Err(VmErr::Type("tuple indices must be integers")); }
                 let i = idx.as_int();
-                let ui = if i < 0 { v.len() as i64 + i } else { i } as usize;
+                let ui = normalize_index(i, v.len());
                 v.get(ui).copied().ok_or(VmErr::Value("tuple index out of range"))
             }
             HeapObj::Dict(p) => {
@@ -242,7 +255,7 @@ impl<'a> VM<'a> {
                 if !idx_val.is_int() { return Err(VmErr::Type("list indices must be integers")); }
                 let mut b = v.borrow_mut();
                 let i = idx_val.as_int();
-                let ui = if i < 0 { b.len() as i64 + i } else { i } as usize;
+                let ui = normalize_index(i, b.len());
                 if ui >= b.len() { return Err(VmErr::Value("list assignment index out of range")); }
                 b[ui] = value;
             }

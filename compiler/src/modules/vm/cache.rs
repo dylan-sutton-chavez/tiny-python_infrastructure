@@ -27,19 +27,18 @@ Opcode Cache
 const CACHE_THRESH: u8 = 8;
 const HOT_THRESH: u32 = 517;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 struct CacheSlot {
     ic_hits: u8, ta: u8, tb: u8,
     ic_fast: Option<FastOp>,
     hot_count: u32,
     hot_fast: Option<FastOp>,
 }
-impl CacheSlot { fn empty() -> Self { Self { ic_hits: 0, ta: 0, tb: 0, ic_fast: None, hot_count: 0, hot_fast: None } } }
 
 pub struct OpcodeCache { slots: Vec<CacheSlot> }
 
 impl OpcodeCache {
-    pub fn new(n: usize) -> Self { Self { slots: vec![CacheSlot::empty(); n] } }
+    pub fn new(n: usize) -> Self { Self { slots: vec![CacheSlot::default(); n] } }
 
     pub fn record(&mut self, ip: usize, opcode: &OpCode, ta: u8, tb: u8) {
         let Some(s) = self.slots.get_mut(ip) else { return };
@@ -53,7 +52,7 @@ impl OpcodeCache {
                 if s.hot_count == HOT_THRESH { s.hot_fast = s.ic_fast; }
             }
         } else {
-            *s = CacheSlot { ta, tb, ic_hits: 1, ..CacheSlot::empty() };
+            *s = CacheSlot { ta, tb, ic_hits: 1, ..CacheSlot::default() };
         }
     }
 
@@ -62,7 +61,7 @@ impl OpcodeCache {
     }
 
     pub fn invalidate(&mut self, ip: usize) {
-        if let Some(s) = self.slots.get_mut(ip) { *s = CacheSlot::empty(); }
+        if let Some(s) = self.slots.get_mut(ip) { *s = CacheSlot::default(); }
     }
 
     fn specialize(opcode: &OpCode, ta: u8, tb: u8) -> Option<FastOp> {
@@ -81,6 +80,12 @@ impl OpcodeCache {
 Template Memoization
     Caches pure function results by deep-equal argument matching after four repeated calls.
 */
+
+fn args_match(e: &TplEntry, args: &[Val], h: u64, heap: &super::types::HeapPool) -> bool {
+    e.hash == h
+    && e.args.len() == args.len()
+    && e.args.iter().zip(args).all(|(a, b)| eq_vals_with_heap(*a, *b, heap))
+}
 
 const TPL_THRESH: u32 = 4;
 
@@ -103,23 +108,14 @@ impl Templates {
     pub fn lookup(&self, fi: usize, args: &[Val], heap: &super::types::HeapPool) -> Option<Val> {
         let h = hash_args(args);
         self.map.get(&fi)?.iter()
-            .find(|e| {
-                e.hits >= TPL_THRESH
-                && e.hash == h
-                && e.args.len() == args.len()
-                && e.args.iter().zip(args).all(|(a, b)| eq_vals_with_heap(*a, *b, heap))
-            })
+            .find(|e| e.hits >= TPL_THRESH && args_match(e, args, h, heap))
             .map(|e| e.result)
     }
 
     pub fn record(&mut self, fi: usize, args: &[Val], result: Val, heap: &super::types::HeapPool) {
         let h = hash_args(args);
         let v = self.map.entry(fi).or_default();
-        if let Some(e) = v.iter_mut().find(|e| {
-            e.hash == h
-            && e.args.len() == args.len()
-            && e.args.iter().zip(args).all(|(a, b)| eq_vals_with_heap(*a, *b, heap))
-        }) {
+        if let Some(e) = v.iter_mut().find(|e| args_match(e, args, h, heap)) {
             e.hits += 1; e.result = result;
         } else if v.len() < 256 {
             v.push(TplEntry { args: args.to_vec(), result, hits: 1, hash: h });
