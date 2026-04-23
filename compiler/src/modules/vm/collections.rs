@@ -117,9 +117,13 @@ impl<'a> VM<'a> {
             let o = self.pop()?;
             let src: Vec<Val> = if o.is_heap() {
                 match self.heap.get(o) {
-                    HeapObj::List(v) => v.borrow().clone(),
+                    HeapObj::List(v)  => v.borrow().clone(),
                     HeapObj::Tuple(v) => v.clone(),
-                    HeapObj::Set(v) => v.borrow().iter().cloned().collect(),
+                    HeapObj::Set(v)   => v.borrow().iter().cloned().collect(),
+                    HeapObj::Str(s) => {
+                        let s = s.clone();
+                        self.str_to_char_vals(&s)?
+                    },
                     _ => return Err(VmErr::Type("set() argument must be iterable")),
                 }
             } else {

@@ -68,6 +68,11 @@ impl<'a> VM<'a> {
         Ok(target)
     }
 
+    // Splits a heap string into individual character Val items.
+    pub(crate) fn str_to_char_vals(&mut self, s: &str) -> Result<Vec<Val>, VmErr> {
+        s.chars().map(|c| self.heap.alloc(HeapObj::Str(c.to_string()))).collect()
+    }
+
     /*
     Iterator Frame Construction
         Converts a heap object to the appropriate IterFrame for ForIter dispatch.
@@ -92,11 +97,10 @@ impl<'a> VM<'a> {
                 IterFrame::Seq { items, idx: 0 }
             },
             HeapObj::Str(s) => {
-                let chars: Vec<char> = s.chars().collect();
-                let mut items = Vec::with_capacity(chars.len());
-                for c in chars { items.push(self.heap.alloc(HeapObj::Str(c.to_string()))?); }
+                let s = s.clone();
+                let items = self.str_to_char_vals(&s)?;
                 IterFrame::Seq { items, idx: 0 }
-            }
+            },
             _ => return Err(VmErr::Type("object is not iterable")),
         })
     }
@@ -113,14 +117,13 @@ impl<'a> VM<'a> {
             HeapObj::List(v)  => v.borrow().clone(),
             HeapObj::Tuple(v) => v.clone(),
             HeapObj::Str(s) => {
-                let chars: Vec<char> = s.chars().collect();
-                if chars.len() != expected {
+                let s = s.clone();
+                let out = self.str_to_char_vals(&s)?;
+                if out.len() != expected {
                     return Err(VmErr::Value("not enough values to unpack"));
                 }
-                let mut out = Vec::with_capacity(expected);
-                for c in chars { out.push(self.heap.alloc(HeapObj::Str(c.to_string()))?); }
                 out
-            }
+            },
             _ => return Err(VmErr::Type("cannot unpack non-sequence")),
         };
         if items.len() != expected {

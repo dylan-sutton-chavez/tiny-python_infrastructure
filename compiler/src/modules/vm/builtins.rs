@@ -332,7 +332,10 @@ impl<'a> VM<'a> {
 
         let check = |t: Val, heap: &HeapPool| -> Result<bool, VmErr> {
             match heap.get(t) {
-                HeapObj::Type(name) => Ok(name == obj_ty),
+                HeapObj::Type(name) => Ok(
+                    name == obj_ty
+                    || (obj_ty == "bool" && name == "int")
+                ),
                 _ => Err(VmErr::Type("isinstance() arg 2 must be a type or tuple of types")),
             }
         };
