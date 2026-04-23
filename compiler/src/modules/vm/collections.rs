@@ -97,7 +97,7 @@ impl<'a> VM<'a> {
         } else {
             let args = self.pop_n((op as usize) * 2)?;
             let mut dm = DictMap::with_capacity(op as usize);
-            for chunk in args.chunks(2) { dm.insert(chunk[0], chunk[1]); }
+            for pair in args.chunks(2) { dm.insert(pair[0], pair[1]); }
             let val = self.heap.alloc(HeapObj::Dict(Rc::new(RefCell::new(dm))))?;
             self.push(val);
         }
@@ -155,9 +155,10 @@ impl<'a> VM<'a> {
         // Str[int] needs heap alloc
         if obj.is_heap() && idx.is_int()
             && let HeapObj::Str(s) = self.heap.get(obj) {
-                let i = idx.as_int();
-                let ui = normalize_index(i, s.chars().count());
-                let c = s.chars().nth(ui).ok_or(VmErr::Value("string index out of range"))?;
+                let chars: Vec<char> = s.chars().collect();
+                let i  = idx.as_int();
+                let ui = normalize_index(i, chars.len());
+                let c  = chars.get(ui).copied().ok_or(VmErr::Value("string index out of range"))?;
                 let val = self.heap.alloc(HeapObj::Str(c.to_string()))?;
                 self.push(val);
                 return Ok(true);

@@ -164,13 +164,7 @@ impl<'a> VM<'a> {
             HeapObj::List(v) => v.borrow().iter().any(|x| eq_vals_with_heap(*x, item, &self.heap)),
             HeapObj::Tuple(v) => v.iter().any(|x| eq_vals_with_heap(*x, item, &self.heap)),
             HeapObj::Dict(p) => p.borrow().contains_key(&item),
-            HeapObj::Set(s) => {
-                if !item.is_heap() {
-                    s.borrow().iter().any(|x| x.0 == item.0)
-                } else {
-                    s.borrow().iter().any(|x| eq_vals_with_heap(*x, item, &self.heap))
-                }
-            }
+            HeapObj::Set(s) => s.borrow().iter().any(|x| eq_vals_with_heap(*x, item, &self.heap)),
             HeapObj::Str(s) => {
                 if item.is_heap() && let HeapObj::Str(sub) = self.heap.get(item) { return s.contains(sub.as_str()); }
                 false
