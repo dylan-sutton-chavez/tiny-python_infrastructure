@@ -2,6 +2,7 @@
 mod runtime {
     use lol_alloc::LeakingPageAllocator;
     use crate::modules::{lexer::lexer, parser::Parser, vm::{VM, Limits}};
+    use alloc::string::ToString;
 
     #[global_allocator]
     static A: LeakingPageAllocator = LeakingPageAllocator;
