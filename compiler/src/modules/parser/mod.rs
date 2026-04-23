@@ -12,7 +12,7 @@ pub use types::*;
 use crate::modules::lexer::{Token, TokenType};
 use alloc::{string::{String, ToString}, vec::Vec, format};
 
-use hashbrown::HashMap;
+use crate::modules::fx::FxHashMap as HashMap;
 use core::iter::Peekable;
 
 /*
@@ -251,7 +251,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             source,
             tokens: iter.peekable(),
             chunk: SSAChunk::default(),
-            ssa_versions: HashMap::new(),
+            ssa_versions: HashMap::default(),
             join_stack: Vec::new(),
             loop_starts: Vec::new(),
             loop_breaks: Vec::new(),

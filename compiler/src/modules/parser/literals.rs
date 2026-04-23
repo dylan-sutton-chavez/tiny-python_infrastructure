@@ -6,7 +6,7 @@ use super::types::builtin;
 use super::types::{OpCode, Value, SSAChunk, Instruction};
 use crate::modules::lexer::{Token, TokenType};
 use alloc::{string::{String, ToString}, vec::Vec, format};
-use hashbrown::HashMap;
+use crate::modules::fx::FxHashMap as HashMap;
 
 impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
@@ -146,7 +146,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
 
         // Map pre-loop slots to current versions, skipping non-existent element references.
-        let mut var_map: HashMap<u16, u16> = HashMap::new();
+        let mut var_map: HashMap<u16, u16> = HashMap::default();
         for var in &all_vars {
             let old_ver = versions_before.get(var).copied().unwrap_or(0);
             let new_ver = self.current_version(var);

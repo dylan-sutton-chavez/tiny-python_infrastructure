@@ -3,7 +3,7 @@
 use super::VM;
 use super::types::*;
 use alloc::{string::ToString, vec::Vec, rc::Rc, string::String};
-use hashbrown::HashSet;
+use crate::modules::fx::FxHashSet as HashSet;
 use core::cell::RefCell;
 
 // Resolves negative index relative to sequence length.
@@ -27,7 +27,7 @@ impl SliceSource {
 impl<'a> VM<'a> {
     
     fn alloc_set(&mut self, items: Vec<Val>) -> Result<Val, VmErr> {
-        let mut set = HashSet::with_capacity(items.len());
+        let mut set = HashSet::with_capacity_and_hasher(items.len(), Default::default());
         for v in items { set.insert(v); }
         self.heap.alloc(HeapObj::Set(Rc::new(RefCell::new(set))))
     }

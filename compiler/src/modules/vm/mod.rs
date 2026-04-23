@@ -14,7 +14,7 @@ use ops::cached_binop;
 
 use crate::modules::parser::{OpCode, SSAChunk, Value, BUILTIN_TYPES};
 use alloc::{string::{String, ToString}, vec::Vec, vec, rc::Rc, format, boxed::Box};
-use hashbrown::HashMap;
+use crate::modules::fx::FxHashMap as HashMap;
 use core::cell::RefCell;
 
 /*
@@ -162,7 +162,7 @@ impl<'a> VM<'a> {
             yields: Vec::new(),
             chunk,
             heap: HeapPool::new(limits.heap),
-            globals: HashMap::new(),
+            globals: HashMap::default(),
             live_slots: Vec::new(),
             templates: Templates::new(),
             budget: limits.ops,
@@ -580,7 +580,7 @@ impl<'a> VM<'a> {
                     self.depth += 1;
                     let (params, body, _defaults, name_idx) = &self.chunk.functions[fi];
                     let mut fn_slots = self.fill_builtins(&body.names);
-                    let mut body_map: HashMap<&str, usize> = HashMap::with_capacity(body.names.len());
+                    let mut body_map: HashMap<&str, usize> = HashMap::with_capacity_and_hasher(body.names.len(), Default::default());
                     for (i, n) in body.names.iter().enumerate() { body_map.insert(n.as_str(), i); }
                     // Bind args to params: detects keyword args (HeapObj::Str matching a param name) and consumes key+value pairs
                     let mut pi = 0usize;

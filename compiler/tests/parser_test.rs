@@ -3,7 +3,7 @@ mod test {
 
     use compiler_lib::modules::lexer::lexer;
     use compiler_lib::modules::parser::{Parser, Value};
-    use hashbrown::HashMap;
+    use compiler_lib::modules::fx::FxHashMap as HashMap;
 
     #[derive(serde::Deserialize)]
     struct Case {

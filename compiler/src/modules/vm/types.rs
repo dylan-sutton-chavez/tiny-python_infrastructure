@@ -2,7 +2,7 @@
 
 use alloc::{string::{String}, vec::Vec, vec, rc::Rc};
 use core::{fmt, cell::RefCell};
-use hashbrown::HashSet;
+use crate::modules::fx::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 /*
 Sandbox Limits
@@ -363,12 +363,12 @@ DictMap
 #[derive(Clone, Debug)]
 pub struct DictMap {
     pub entries: Vec<(Val, Val)>,
-    index: hashbrown::HashMap<Val, usize>,
+    index: HashMap<Val, usize>,
 }
 
 impl DictMap {
     pub fn with_capacity(cap: usize) -> Self {
-        Self { entries: Vec::with_capacity(cap), index: hashbrown::HashMap::with_capacity(cap) }
+        Self { entries: Vec::with_capacity(cap), index: HashMap::with_capacity_and_hasher(cap, Default::default()) }
     }
 
     pub fn get(&self, key: &Val) -> Option<&Val> {
@@ -412,7 +412,7 @@ impl Default for DictMap {
 }
 
 impl DictMap {
-    pub fn new() -> Self { Self { entries: Vec::new(), index: hashbrown::HashMap::new() } }
+    pub fn new() -> Self { Self { entries: Vec::new(), index: HashMap::default() } }
 }
 
 /*
@@ -432,7 +432,7 @@ pub struct HeapPool {
     pub gc_threshold: usize,
     alloc_count: usize,
     limit: usize,
-    strings: hashbrown::HashMap<String, u32>,
+    strings: HashMap<String, u32>,
 }
 
 impl HeapPool {
@@ -444,7 +444,7 @@ impl HeapPool {
             gc_threshold: 512,
             alloc_count: 0,
             limit,
-            strings: hashbrown::HashMap::new(),
+            strings: HashMap::default(),
         }
     }
 

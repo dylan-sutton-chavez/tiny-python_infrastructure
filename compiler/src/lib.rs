@@ -14,6 +14,7 @@ Internal modules accessed through all the package.
 */
  
 pub mod modules {
+    pub mod fx;
     pub mod lexer;
     pub mod parser;
     pub mod vm;

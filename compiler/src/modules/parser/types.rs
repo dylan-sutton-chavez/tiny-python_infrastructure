@@ -1,7 +1,7 @@
 // parser/types.rs
 
 use alloc::{string::{String, ToString}, vec, vec::Vec, format};
-use hashbrown::HashMap;
+use crate::modules::fx::FxHashMap as HashMap;
 
 pub(crate) const MAX_EXPR_DEPTH: usize = 200;
 pub(crate) const MAX_INSTRUCTIONS: usize = 65_535;

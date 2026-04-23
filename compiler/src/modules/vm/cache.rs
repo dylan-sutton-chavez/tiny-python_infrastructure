@@ -3,7 +3,7 @@
 use super::types::{Val, eq_vals_with_heap};
 use crate::modules::parser::OpCode;
 use alloc::{vec, vec::Vec};
-use hashbrown::HashMap;
+use crate::modules::fx::FxHashMap as HashMap;
 
 /*
 FastOp Variants
@@ -103,7 +103,7 @@ fn hash_args(args: &[Val]) -> u64 {
 pub struct Templates { map: HashMap<usize, Vec<TplEntry>> }
 
 impl Templates {
-    pub fn new() -> Self { Self { map: HashMap::new() } }
+    pub fn new() -> Self { Self { map: HashMap::default() } }
 
     pub fn lookup(&self, fi: usize, args: &[Val], heap: &super::types::HeapPool) -> Option<Val> {
         let h = hash_args(args);
