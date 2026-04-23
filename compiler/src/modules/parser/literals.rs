@@ -446,25 +446,14 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     }
 
     pub(super) fn compile_body(&mut self, params: &[String]) -> SSAChunk {
-        let saved_chunk = core::mem::take(&mut self.chunk);
-        let saved_ver = core::mem::take(&mut self.ssa_versions);
-
-        self.ssa_versions = saved_ver.clone();
-        for p in params {
-            self.ssa_versions.insert(p.clone(), 0);
-        }
-
-        self.compile_block();
-
-        let mut body = core::mem::take(&mut self.chunk);
-        self.chunk = saved_chunk;
-        self.ssa_versions = saved_ver;
-
+        let mut body = self.with_fresh_chunk(|s| {
+            for p in params { s.ssa_versions.insert(p.clone(), 0); }
+            s.compile_block();
+        });
         body.is_pure = !body.instructions.iter().any(|i| matches!(
             i.opcode,
             OpCode::CallPrint | OpCode::StoreItem | OpCode::StoreAttr | OpCode::CallInput
         ));
-
         body
     }
 }
