@@ -3,8 +3,11 @@
 //! Multiply-rotate hasher for small integer/string keys.
 
 use core::hash::{BuildHasher, Hasher};
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 const K: u64 = 0x517cc1b727220a95;
+
+static SEED_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
 #[derive(Clone, Default)]
 pub struct FxHasher(u64);
@@ -26,13 +29,29 @@ impl Hasher for FxHasher {
     #[inline(always)] fn finish(&self) -> u64 { self.0 }
 }
 
-#[derive(Clone, Default)]
-pub struct FxBuildHasher;
+#[derive(Clone)]
+pub struct FxBuildHasher(u64);
+
+impl FxBuildHasher {
+    /// Atomic accumulator XORed with stack ptr, mixed with K. Racy store avoids contention. Seed is per-map.
+    #[inline]
+    pub fn new() -> Self {
+        let prev = SEED_COUNTER.load(Ordering::Relaxed) as u64;
+        let stack_ptr = &prev as *const u64 as u64;
+        let seed = (prev ^ stack_ptr).wrapping_mul(K);
+        SEED_COUNTER.store(seed as usize, Ordering::Relaxed);
+        Self(seed)
+    }
+}
+
+impl Default for FxBuildHasher {
+    fn default() -> Self { Self::new() }
+}
 
 impl BuildHasher for FxBuildHasher {
     type Hasher = FxHasher;
     #[inline(always)]
-    fn build_hasher(&self) -> FxHasher { FxHasher(0) }
+    fn build_hasher(&self) -> FxHasher { FxHasher(self.0) }
 }
 
 pub type FxHashMap<K, V> = hashbrown::HashMap<K, V, FxBuildHasher>;
