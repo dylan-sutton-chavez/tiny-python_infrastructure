@@ -37,7 +37,7 @@ source ~/.bashrc
 
 ### Benchmarks
 
-Recursive Fibonacci — $\text{fib}(45)$ (pure-function memoization after 4 calls reduces $O(2^n)$ to $O(n)$ complexity):
+Recursive Fibonacci — $\text{fib}(45)$ (template memoization caches pure-function results after 4 identical calls, collapsing repeated sub-tree evaluation; the speedup reflects memoization, not raw interpreter throughput):
 
 ```python
 def fib(n):

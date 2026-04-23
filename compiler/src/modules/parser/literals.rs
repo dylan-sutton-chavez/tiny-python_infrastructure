@@ -452,7 +452,14 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         });
         body.is_pure = !body.instructions.iter().any(|i| matches!(
             i.opcode,
-            OpCode::CallPrint | OpCode::StoreItem | OpCode::StoreAttr | OpCode::CallInput
+            OpCode::CallPrint
+            | OpCode::StoreItem
+            | OpCode::StoreAttr
+            | OpCode::CallInput
+            | OpCode::Global
+            | OpCode::Nonlocal
+            | OpCode::LoadAttr
+            | OpCode::Import
         ));
         body
     }

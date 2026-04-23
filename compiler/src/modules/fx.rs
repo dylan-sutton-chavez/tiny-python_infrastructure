@@ -33,15 +33,23 @@ impl Hasher for FxHasher {
 pub struct FxBuildHasher(u64);
 
 impl FxBuildHasher {
-    /// Atomic accumulator XORed with stack ptr, mixed with K. Racy store avoids contention. Seed is per-map.
+    /// Per-map seed via atomic counter and MurmurHash3 finalizer.
     #[inline]
     pub fn new() -> Self {
-        let prev = SEED_COUNTER.load(Ordering::Relaxed) as u64;
-        let stack_ptr = &prev as *const u64 as u64;
-        let seed = (prev ^ stack_ptr).wrapping_mul(K);
-        SEED_COUNTER.store(seed as usize, Ordering::Relaxed);
-        Self(seed)
+        let raw = SEED_COUNTER.fetch_add(1, Ordering::Relaxed) as u64;
+        Self(murmur3_fmix64(raw))
     }
+}
+
+/// Avalanche mixer: one bit difference spreads across all 64 bits.
+#[inline]
+fn murmur3_fmix64(mut h: u64) -> u64 {
+    h ^= h >> 33;
+    h = h.wrapping_mul(0xff51afd7ed558ccd);
+    h ^= h >> 33;
+    h = h.wrapping_mul(0xc4ceb9fe1a85ec53);
+    h ^= h >> 33;
+    h
 }
 
 impl Default for FxBuildHasher {

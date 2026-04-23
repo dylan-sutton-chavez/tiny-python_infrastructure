@@ -236,37 +236,112 @@ impl BigInt {
         Self { neg: self.neg, limbs }
     }
 
-    fn div_mag(num: &[u32], den: &[u32]) -> (Vec<u32>, Vec<u32>) {
-        if Self::cmp_mag(num, den) == core::cmp::Ordering::Less {
-            return (vec![], num.to_vec());
+    fn div_mag(u: &[u32], v: &[u32]) -> (Vec<u32>, Vec<u32>) {
+        let n = v.len();
+        let m = u.len().saturating_sub(n);
+
+        // Single-limb fast path
+        if n == 1 {
+            let d = v[0] as u64;
+            let mut rem = 0u64;
+            let mut q = vec![0u32; u.len()];
+            for i in (0..u.len()).rev() {
+                let cur = (rem << 32) | u[i] as u64;
+                q[i] = (cur / d) as u32;
+                rem = cur % d;
+            }
+            Self::trim(&mut q);
+            return (q, if rem == 0 { vec![] } else { vec![rem as u32] });
         }
-        let q_len = num.len() - den.len() + 1;
-        let mut rem_limbs = num.to_vec();
-        let mut q_limbs = vec![0u32; q_len];
 
-        for i in (0..q_len).rev() {
-            let mut shifted_limbs = vec![0u32; i];
-            shifted_limbs.extend_from_slice(den);
-            let shifted = Self { neg: false, limbs: shifted_limbs };
+        // Normalize so v[n-1] >= BASE/2, bounding q_hat error to at most 2
+        let shift = v[n - 1].leading_zeros();
+        let vn = Self::shl_limbs(v, shift);
+        let mut un = Self::shl_limbs_ext(u, shift);
 
-            let (mut lo, mut hi) = (0u64, u32::MAX as u64);
-            while lo < hi {
-                let mid = (lo + hi).div_ceil(2);
-                let trial = shifted.mul_u32(mid as u32);
-                if Self::cmp_mag(&trial.limbs, &rem_limbs) != core::cmp::Ordering::Greater {
-                    lo = mid;
-                } else {
-                    hi = mid - 1;
+        let (vn1, vn2) = (vn[n - 1] as u64, vn[n - 2] as u64);
+        let mut q = vec![0u32; m + 1];
+
+        for j in (0..=m).rev() {
+            // Estimate quotient digit, then refine (at most 2 corrections)
+            let u2 = ((un[j + n] as u64) << 32) | un[j + n - 1] as u64;
+            let (mut q_hat, mut r_hat) = (u2 / vn1, u2 % vn1);
+            while q_hat >= (1u64 << 32)
+                || q_hat * vn2 > ((r_hat << 32) | un[j + n - 2] as u64)
+            {
+                q_hat -= 1;
+                r_hat += vn1;
+                if r_hat >= (1u64 << 32) { break; }
+            }
+
+            // Subtract q_hat * vn from un[j..]
+            let mut borrow = 0i64;
+            for i in 0..n {
+                let prod = q_hat * vn[i] as u64;
+                let diff = un[j+i] as i64 - borrow - (prod & 0xFFFF_FFFF) as i64;
+                un[j+i] = diff as u32;
+                borrow = (prod >> 32) as i64 - (diff >> 32);
+            }
+            let top = un[j + n] as i64 - borrow;
+            un[j + n] = top as u32;
+
+            // Add back if q_hat was too large (rare)
+            if top < 0 {
+                q_hat -= 1;
+                let mut carry = 0u64;
+                for i in 0..n {
+                    let s = un[j+i] as u64 + vn[i] as u64 + carry;
+                    un[j+i] = s as u32;
+                    carry = s >> 32;
                 }
+                un[j+n] = un[j+n].wrapping_add(carry as u32);
             }
-            q_limbs[i] = lo as u32;
-            if lo > 0 {
-                let sub = shifted.mul_u32(lo as u32);
-                rem_limbs = Self::sub_mag(&rem_limbs, &sub.limbs);
-            }
+
+            q[j] = q_hat as u32;
         }
-        Self::trim(&mut q_limbs);
-        (q_limbs, rem_limbs)
+
+        // Denormalize remainder
+        let mut rem = Self::shr_limbs(&un[..n], shift);
+        Self::trim(&mut q);
+        Self::trim(&mut rem);
+        (q, rem)
+    }
+
+    /// Shift left, returning n+1 limbs to hold overflow.
+    fn shl_limbs_ext(limbs: &[u32], shift: u32) -> Vec<u32> {
+        let mut out = vec![0u32; limbs.len() + 1];
+        if shift == 0 {
+            out[..limbs.len()].copy_from_slice(limbs);
+            return out;
+        }
+        out[limbs.len()] = limbs[limbs.len() - 1] >> (32 - shift);
+        for i in (1..limbs.len()).rev() {
+            out[i] = (limbs[i] << shift) | (limbs[i-1] >> (32 - shift));
+        }
+        out[0] = limbs[0] << shift;
+        out
+    }
+
+    /// Shift left without overflow limb.
+    fn shl_limbs(limbs: &[u32], shift: u32) -> Vec<u32> {
+        if shift == 0 { return limbs.to_vec(); }
+        let mut out = vec![0u32; limbs.len()];
+        for i in (1..limbs.len()).rev() {
+            out[i] = (limbs[i] << shift) | (limbs[i-1] >> (32 - shift));
+        }
+        out[0] = limbs[0] << shift;
+        out
+    }
+
+    /// Shift right to undo normalization.
+    fn shr_limbs(limbs: &[u32], shift: u32) -> Vec<u32> {
+        if shift == 0 { return limbs.to_vec(); }
+        let mut out = vec![0u32; limbs.len()];
+        for i in 0..limbs.len() - 1 {
+            out[i] = (limbs[i] >> shift) | (limbs[i+1] << (32 - shift));
+        }
+        *out.last_mut().unwrap() = limbs.last().unwrap() >> shift;
+        out
     }
 
     pub fn divmod(&self, other: &Self) -> Option<(Self, Self)> {
