@@ -121,7 +121,18 @@ impl<'a> VM<'a> {
                 .collect::<Vec<_>>().join(", ")),
             HeapObj::Set(s) => {
                 let mut items: Vec<Val> = s.borrow().iter().cloned().collect();
-                items.sort_by_key(|a| self.repr(*a));
+                items.sort_by(|a, b| {
+                    match (a.is_int() || a.is_float(), b.is_int() || b.is_float()) {
+                        (true, true) => {
+                            let fa = if a.is_int() { a.as_int() as f64 } else { a.as_float() };
+                            let fb = if b.is_int() { b.as_int() as f64 } else { b.as_float() };
+                            fa.partial_cmp(&fb).unwrap_or(core::cmp::Ordering::Equal)
+                        }
+                        (true, false) => core::cmp::Ordering::Less,
+                        (false, true) => core::cmp::Ordering::Greater,
+                        (false, false) => self.repr(*a).cmp(&self.repr(*b)),
+                    }
+                });
                 format!("{{{}}}", self.join_reprs(items.iter()))
             }
         }
