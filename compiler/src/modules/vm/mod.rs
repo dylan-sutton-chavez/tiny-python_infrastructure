@@ -148,10 +148,18 @@ impl<'a> VM<'a> {
         let (ia, ib) = phi_sources[phi_map[rip]];
         let val = slots[ia as usize].or(slots[ib as usize]).unwrap_or(Val::none());
         slots[target] = Some(val);
+
         let mut cur = target;
-        while let Some(prev) = prev_slots.get(cur).and_then(|p| *p) {
-            slots[prev as usize] = Some(val);
-            cur = prev as usize;
+        let mut steps = 0usize;
+        while steps < 64 {
+            match prev_slots.get(cur).and_then(|p| *p) {
+                Some(prev) => {
+                    slots[prev as usize] = Some(val);
+                    cur = prev as usize;
+                    steps += 1;
+                }
+                None => break,
+            }
         }
     }
 
@@ -412,12 +420,63 @@ impl<'a> VM<'a> {
 
                 // Bitwise
 
-                OpCode::BitAnd => { let (a,b) = self.pop2()?; self.push(Val::int(a.as_int() & b.as_int())); }
-                OpCode::BitOr => { let (a,b) = self.pop2()?; self.push(Val::int(a.as_int() | b.as_int())); }
-                OpCode::BitXor => { let (a,b) = self.pop2()?; self.push(Val::int(a.as_int() ^ b.as_int())); }
-                OpCode::BitNot => { let v = self.pop()?; self.push(Val::int(!v.as_int())); }
-                OpCode::Shl => { let (a,b) = self.pop2()?; self.push(Val::int(a.as_int() << (b.as_int() & 63))); }
-                OpCode::Shr => { let (a,b) = self.pop2()?; self.push(Val::int(a.as_int() >> (b.as_int() & 63))); }
+                OpCode::BitAnd => {
+                    let (a, b) = self.pop2()?;
+                    let v = self.bitwise_op(a, b, |x, y| x & y)?;
+                    self.push(v);
+                }
+                OpCode::BitOr => {
+                    let (a, b) = self.pop2()?;
+                    let v = self.bitwise_op(a, b, |x, y| x | y)?;
+                    self.push(v);
+                }
+                OpCode::BitXor => {
+                    let (a, b) = self.pop2()?;
+                    let v = self.bitwise_op(a, b, |x, y| x ^ y)?;
+                    self.push(v);
+                }
+                OpCode::BitNot => {
+                    let v = self.pop()?;
+                    if let Some(b) = self.to_bigint(v) {
+                        // ~x == -(x+1) en complemento a dos para BigInt
+                        let one = BigInt::from_i64(1);
+                        let result = b.add(&one).neg();
+                        let out = self.bigint_to_val(result)?;
+                        self.push(out);
+                    } else {
+                        return Err(VmErr::Type("~ requires an integer"));
+                    }
+                }
+                OpCode::Shl => {
+                    let (a, b) = self.pop2()?;
+                    if !b.is_int() { return Err(VmErr::Type("shift count must be an integer")); }
+                    let shift = b.as_int();
+                    if shift < 0 { return Err(VmErr::Value("negative shift count")); }
+                    if let Some(ba) = self.to_bigint(a) {
+                        if shift >= 512 { return Err(VmErr::Value("shift too large")); }
+                        let factor = BigInt::from_i64(1).shl_u32(shift as u32);
+                        let result = ba.mul(&factor);
+                        let out = self.bigint_to_val(result)?;
+                        self.push(out);
+                    } else {
+                        return Err(VmErr::Type("<< requires an integer"));
+                    }
+                }
+                OpCode::Shr => {
+                    let (a, b) = self.pop2()?;
+                    if !b.is_int() { return Err(VmErr::Type("shift count must be an integer")); }
+                    let shift = b.as_int();
+                    if shift < 0 { return Err(VmErr::Value("negative shift count")); }
+                    if a.is_int() {
+                        self.push(Val::int(a.as_int() >> (shift.min(63))));
+                    } else if let Some(ba) = self.to_bigint(a) {
+                        let result = ba.shr_u32(shift.min(1024) as u32);
+                        let out = self.bigint_to_val(result)?;
+                        self.push(out);
+                    } else {
+                        return Err(VmErr::Type(">> requires an integer"));
+                    }
+                }
 
                 // Comparison (cached)
 

@@ -57,6 +57,19 @@ impl<'a> VM<'a> {
         }
     }
 
+    pub fn bitwise_op(&mut self, a: Val, b: Val, op: impl Fn(i64, i64) -> i64) -> Result<Val, VmErr> {
+        if a.is_int() && b.is_int() {
+            return Ok(Val::int(op(a.as_int(), b.as_int())));
+        }
+        let ai = self.to_bigint(a)
+            .and_then(|b| b.to_i64_checked())
+            .ok_or(VmErr::Type("bitwise op requires integer operands"))?;
+        let bi = self.to_bigint(b)
+            .and_then(|b| b.to_i64_checked())
+            .ok_or(VmErr::Type("bitwise op requires integer operands"))?;
+        Ok(Val::int(op(ai, bi)))
+    }
+
     pub fn type_name(&self, v: Val) -> &'static str {
         if v.is_bool() { "bool" }
         else if v.is_int() { "int" }

@@ -99,6 +99,38 @@ impl BigInt {
     pub fn zero() -> Self { Self { neg: false, limbs: Vec::new() } }
     pub fn is_zero(&self) -> bool { self.limbs.is_empty() }
 
+    pub fn shl_u32(&self, shift: u32) -> Self {
+        if self.is_zero() || shift == 0 { return self.clone(); }
+        let limb_shift = (shift / 32) as usize;
+        let bit_shift  = shift % 32;
+        let mut limbs = vec![0u32; limb_shift];
+        let mut carry = 0u64;
+        for &l in &self.limbs {
+            let cur = (l as u64) << bit_shift | carry;
+            limbs.push(cur as u32);
+            carry = cur >> 32;
+        }
+        if carry != 0 { limbs.push(carry as u32); }
+        Self { neg: self.neg, limbs }
+    }
+
+    pub fn shr_u32(&self, shift: u32) -> Self {
+        if self.is_zero() || shift == 0 { return self.clone(); }
+        let limb_shift = (shift / 32) as usize;
+        let bit_shift  = shift % 32;
+        if limb_shift >= self.limbs.len() { return Self::zero(); }
+        let mut limbs: Vec<u32> = Vec::new();
+        for i in limb_shift..self.limbs.len() {
+            let mut word = self.limbs[i] >> bit_shift;
+            if bit_shift > 0 && i + 1 < self.limbs.len() {
+                word |= self.limbs[i + 1] << (32 - bit_shift);
+            }
+            limbs.push(word);
+        }
+        Self::trim(&mut limbs);
+        Self { neg: self.neg, limbs }
+    }
+
     pub fn from_i64(v: i64) -> Self {
         if v == 0 { return Self::zero(); }
         let neg = v < 0;
@@ -595,14 +627,19 @@ impl HeapPool {
             }
         }
 
-        // Garbage collector threshold doubles after each sweep: fewer collections but temporary 2x memory spikes.
         self.gc_threshold = (self.live * 2).max(512);
         self.alloc_count  = 0;
-        if self.free_list.len() > 65_536 { self.free_list.truncate(65_536); }
+
+        // Cap free list at 512K slots; sort to prefer low indices and reduce fragmentation.
+        if self.free_list.len() > 524_288 {
+            self.free_list.sort_unstable();
+            self.free_list.truncate(524_288);
+        }
     }
 
     pub fn needs_gc(&self) -> bool {
-        self.live >= self.gc_threshold || self.alloc_count >= 1024
+        let alloc_limit = (self.live / 4).max(4096);
+        self.live >= self.gc_threshold || self.alloc_count >= alloc_limit
     }
 
     pub fn usage(&self) -> usize { self.live }
@@ -692,6 +729,7 @@ pub enum VmErr {
     Type(&'static str),
     Value(&'static str),
     Runtime(&'static str),
+    Raised(String),
 }
 
 impl fmt::Display for VmErr {
@@ -704,7 +742,8 @@ impl fmt::Display for VmErr {
             Self::Name(s) => write!(f, "NameError: '{}'", s),
             Self::Type(s) => write!(f, "TypeError: {}", s),
             Self::Value(s) => write!(f, "ValueError: {}", s),
-            Self::Runtime(s)=> write!(f, "RuntimeError: {}", s),
+            Self::Runtime(s) => write!(f, "RuntimeError: {}", s),
+            Self::Raised(s) => write!(f, "Exception: {}", s),
         }
     }
 }
