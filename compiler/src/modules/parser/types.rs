@@ -185,6 +185,12 @@ pub struct Diagnostic {
     pub msg: String,
 }
 
+impl core::fmt::Display for Diagnostic {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "line {}:{}: {}", self.line + 1, self.col, self.msg)
+    }
+}
+
 /*
 String Helpers
     Parses and unescapes Python string literals from lexer tokens.

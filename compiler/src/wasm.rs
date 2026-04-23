@@ -26,26 +26,39 @@ mod runtime {
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn run(len: usize) -> usize {
         let len = len.min(SZ);
-        let src = match core::str::from_utf8(unsafe { core::slice::from_raw_parts(core::ptr::addr_of!(SRC) as *const u8, len) }) {
+        let src = match core::str::from_utf8(unsafe {
+            core::slice::from_raw_parts(core::ptr::addr_of!(SRC) as *const u8, len)
+        }) {
             Ok(s) => s,
-            Err(e) => return unsafe { write_out(&alloc::format!("input rejected: not valid utf-8 at byte {}", e.valid_up_to())) },
+            Err(e) => return unsafe {
+                write_out(&alloc::format!("input rejected: invalid utf-8 at byte {}", e.valid_up_to()))
+            },
         };
 
         let (chunk, errs) = Parser::new(src, lexer(src)).parse();
 
         let out: alloc::string::String = if !errs.is_empty() {
-            errs.iter().map(|e| alloc::format!("syntax error at line {}: {}", e.line + 1, e.msg)).collect::<alloc::vec::Vec<_>>().join("\n")
+            errs.iter()
+                .map(|e| alloc::format!("syntax error at line {}:{}: {}", e.line + 1, e.col, e.msg))
+                .collect::<alloc::vec::Vec<_>>()
+                .join("\n")
         } else {
             let mut vm = VM::with_limits(&chunk, Limits::sandbox());
-            vm.run().map(|_| vm.output.join("\n")).unwrap_or_else(|e| alloc::format!("execution failed: {}", e))
+            vm.run()
+                .map(|_| vm.output.join("\n"))
+                .unwrap_or_else(|e| e.to_string())
         };
+
         unsafe { write_out(&out) }
     }
 
     unsafe fn write_out(s: &str) -> usize {
         let b = s.as_bytes();
         let n = b.len().min(SZ);
-        unsafe { core::slice::from_raw_parts_mut(core::ptr::addr_of_mut!(OUT) as *mut u8, n).copy_from_slice(&b[..n]); }
+        unsafe {
+            core::slice::from_raw_parts_mut(core::ptr::addr_of_mut!(OUT) as *mut u8, n)
+                .copy_from_slice(&b[..n]);
+        }
         n
     }
 }
@@ -55,22 +68,24 @@ mod tests {
     use crate::modules::{lexer::lexer, parser::Parser, vm::VM};
 
     #[derive(serde::Deserialize)]
-    struct Case { 
-        src: String, 
-        output: Vec<String>, 
+    struct Case {
+        src: String,
+        output: Vec<String>,
         result: String,
         #[serde(default)]
-        error: Option<String>
+        error: Option<String>,
     }
 
     #[test]
     fn vm_cases() {
-        let cases: Vec<Case> = serde_json::from_str(include_str!("../tests/cases/vm_cases.json")).expect("invalid JSON");
-        
+        let cases: Vec<Case> = serde_json::from_str(
+            include_str!("../tests/cases/vm_cases.json")
+        ).expect("invalid JSON");
+
         for case in cases {
             let (chunk, errs) = Parser::new(&case.src, lexer(&case.src)).parse();
             assert!(errs.is_empty(), "parse error on {:?}: {:?}", case.src, errs.iter().map(|e| &e.msg).collect::<Vec<_>>());
-            
+
             let mut vm = VM::new(&chunk);
             match vm.run() {
                 Ok(obj) => {
@@ -82,7 +97,7 @@ mod tests {
                         e.to_string().contains(expected.as_str()),
                         "wrong error on {:?}: got '{}', expected '{}'", case.src, e, expected
                     ),
-                    None => panic!("VM error on {:?}: {}", case.src, e)
+                    None => panic!("VM error on {:?}: {}", case.src, e),
                 }
             }
         }
