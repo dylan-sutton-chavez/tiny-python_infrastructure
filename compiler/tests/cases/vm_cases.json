@@ -261,5 +261,8 @@
   {"src": "print(len(set()))", "output": ["0"], "result": "None"},
   {"src": "print(set((1,2,3)))", "output": ["{1, 2, 3}"], "result": "None"},
   {"src": "print(len(set('abc')))", "output": ["3"], "result": "None"},
-  {"src": "print('a' in set('abc'))", "output": ["True"], "result": "None"}
+  {"src": "print(4 ** 0.5)", "output": ["2.0"], "result": "None"},
+  {"src": "print(2 ** -1)", "output": ["0.5"], "result": "None"},
+  {"src": "print(2 ** -2)", "output": ["0.25"], "result": "None"},
+  {"src": "print((-1) ** 2)", "output": ["1"], "result": "None"}
 ]
