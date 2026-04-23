@@ -80,7 +80,8 @@ pub fn lexer(source: &str) -> impl Iterator<Item = Token> + '_ {
         let is_soft = matches!(tok, TokenType::Match | TokenType::Case | TokenType::Type);
         let next_demotes = matches!(
             stream.peek(),
-            Some(( // Following token makes keyword a plain name.
+            // Following token makes keyword a plain name.
+            Some((
                 | TokenType::Lpar 
                 | TokenType::Colon 
                 | TokenType::Equal 
