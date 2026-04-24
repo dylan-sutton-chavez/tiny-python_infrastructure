@@ -159,13 +159,17 @@ const PythonWorker = (() => {
 // Editor
 
 const Editor = (() => {
+    const PAIRS = { '(': ')', '[': ']', '{': '}', '"': '"', "'": "'" };
+    const CLOSERS = new Set(Object.values(PAIRS));
+    const STRING_START_RE = /^([fFrRbBuU]{0,2})("""|'''|"|')/;
+
     const jar = CodeJar(el.ed, (editor) => {
         editor.innerHTML = Highlighter.highlight(editor.textContent);
     }, {
         tab: '    ',
         indentOn: /[:\[({][ \t]*$/,
         spellcheck: false,
-        addClosing: true,
+        addClosing: false,
     });
 
     const syncLineNumbers = () => {
@@ -175,12 +179,85 @@ const Editor = (() => {
         el.ln.scrollTop = el.ed.scrollTop;
     };
 
+    const analyzeStringContext = (src, caret) => {
+        let i = 0, inStr = false, quote = '', isF = false;
+        while (i < caret) {
+            if (!inStr) {
+                if (src[i] === '#') {
+                    const nl = src.indexOf('\n', i);
+                    if (nl === -1 || nl >= caret) return { inStr: false, isF: false };
+                    i = nl + 1;
+                    continue;
+                }
+                const m = src.slice(i).match(STRING_START_RE);
+                if (m && i + m[0].length <= caret) {
+                    inStr = true;
+                    quote = m[2];
+                    isF = /[fF]/.test(m[1]);
+                    i += m[0].length;
+                    continue;
+                }
+                i++;
+            } else {
+                if (quote.length === 1 && src[i] === '\\') { i += 2; continue; }
+                if (src.slice(i, i + quote.length) === quote) {
+                    inStr = false; quote = ''; isF = false;
+                    i += quote.length;
+                    continue;
+                }
+                i++;
+            }
+        }
+        return { inStr, isF };
+    };
+
+    // Auto-close outside, {} in f-strings, skip existing closers, nothing in regular strings.
+    const handleAutoClose = (e) => {
+        const key = e.key;
+        const isOpener = Object.prototype.hasOwnProperty.call(PAIRS, key);
+        const isCloser = CLOSERS.has(key);
+        if (!isOpener && !isCloser) return;
+
+        const pos = jar.save();
+        if (pos.start !== pos.end) return;
+
+        const src = jar.toString();
+        const caret = pos.start;
+
+        if (isCloser && src[caret] === key) {
+            e.preventDefault();
+            e.stopPropagation();
+            jar.restore({ start: caret + 1, end: caret + 1 });
+            return;
+        }
+        if (!isOpener) return;
+
+        const { inStr, isF } = analyzeStringContext(src, caret);
+        if (inStr && !(isF && key === '{')) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        document.execCommand('insertText', false, key + PAIRS[key]);
+        jar.restore({ start: caret + 1, end: caret + 1 });
+    };
+
+    // Backspace deletes empty pairs; otherwise, leading whitespace snaps to previous tab stops.
     const handleBackspace = (e) => {
         const pos = jar.save();
         if (pos.start !== pos.end) return;
         const caret = pos.start;
         if (caret === 0) return;
         const text = jar.toString();
+
+        const closerForPrev = PAIRS[text[caret - 1]];
+        if (closerForPrev && closerForPrev === text[caret]) {
+            e.preventDefault();
+            e.stopPropagation();
+            jar.restore({ start: caret - 1, end: caret + 1 });
+            document.execCommand('delete');
+            return;
+        }
+
         const lineStart = text.lastIndexOf('\n', caret - 1) + 1;
         const before = text.slice(lineStart, caret);
         if (!before.length || !/^[ \t]+$/.test(before)) return;
@@ -203,7 +280,8 @@ const Editor = (() => {
             e.stopPropagation();
             return;
         }
-        if (e.key === 'Backspace') handleBackspace(e);
+        if (e.key === 'Backspace') { handleBackspace(e); return; }
+        handleAutoClose(e);
     }, true);
 
     el.ed.addEventListener('scroll', () => { el.ln.scrollTop = el.ed.scrollTop; });
