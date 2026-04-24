@@ -657,11 +657,10 @@ impl<'a> VM<'a> {
                         _ => return Err(VmErr::Type("object is not callable")),
                     };
 
-                    if num_kw == 0 {
-                        if let Some(cached) = self.templates.lookup(fi, &positional, &self.heap) {
+                    if num_kw == 0
+                        && let Some(cached) = self.templates.lookup(fi, &positional, &self.heap) {
                             self.push(cached); continue;
                         }
-                    }
 
                     self.depth += 1;
                     let (params, body, _defaults, name_idx) = &self.chunk.functions[fi];
