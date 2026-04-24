@@ -3,6 +3,7 @@
 //! Lexical analysis module for source code.
 
 pub mod tables;
+pub use tables::utf8_char_len;
 
 mod scan;
 use scan::Scanner;

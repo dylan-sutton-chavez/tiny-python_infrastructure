@@ -183,15 +183,14 @@ impl<'a> Scanner<'a> {
             }
             match self.src[pos] {
                 b'\\' => pos = (pos + 2).min(self.src.len()),
-                b'{' if self.src.get(pos + 1) != Some(&b'{') => {
-                    if self.fstring_stack.len() >= MAX_FSTRING_DEPTH {
-                        self.pending.push((TokenType::Endmarker, self.line, pos, pos));
-                        if pos > self.pos {
-                            self.pending.push((TokenType::FstringMiddle, self.line, body_start, pos));
-                        }
-                        self.pos = pos + 1;
-                        return;
-                    }
+                b'{' if self.src.get(pos + 1) == Some(&b'{') => {
+                    pos += 2;
+                }
+                b'}' if self.src.get(pos + 1) == Some(&b'}') => {
+                    pos += 2;
+                }
+                b'{' => {
+                    if self.fstring_stack.len() >= MAX_FSTRING_DEPTH { /* ... */ }
                     self.pending.push((TokenType::Lbrace, self.line, pos, pos + 1));
                     if pos > self.pos {
                         self.pending.push((TokenType::FstringMiddle, self.line, body_start, pos));

@@ -4,7 +4,7 @@ use super::Parser;
 use super::types::builtin;
 
 use super::types::{OpCode, Value, SSAChunk, Instruction};
-use crate::modules::lexer::{Token, TokenType};
+use crate::modules::lexer::{Token, TokenType, utf8_char_len};
 use alloc::{string::{String, ToString}, vec::Vec, format};
 use crate::modules::fx::FxHashMap as HashMap;
 
@@ -191,11 +191,27 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
         loop {
             match self.peek() {
-                Some(TokenType::FstringMiddle) => {
-                    let t = self.advance();
-                    self.emit_const(Value::Str(self.lexeme(&t).to_string()));
-                    parts += 1;
+            Some(TokenType::FstringMiddle) => {
+                let t = self.advance();
+                let raw = self.lexeme(&t);
+                let mut unescaped = String::with_capacity(raw.len());
+                let bytes = raw.as_bytes();
+                let mut i = 0;
+                while i < bytes.len() {
+                    if (bytes[i] == b'{' && bytes.get(i + 1) == Some(&b'{'))
+                        || (bytes[i] == b'}' && bytes.get(i + 1) == Some(&b'}'))
+                    {
+                        unescaped.push(bytes[i] as char);
+                        i += 2;
+                    } else {
+                        let ch_len = if bytes[i] < 0x80 { 1 } else { utf8_char_len(bytes[i]) };
+                        unescaped.push_str(&raw[i..i + ch_len]);
+                        i += ch_len;
+                    }
                 }
+                self.emit_const(Value::Str(unescaped));
+                parts += 1;
+            }
                 Some(TokenType::Lbrace) => {
                     self.advance();
                     self.expr();

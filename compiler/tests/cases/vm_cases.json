@@ -273,5 +273,6 @@
   {"src": "x = 5\nprint('big' if x > 3 else 'small')", "output": ["big"], "result": "None"},
   {"src": "f = lambda x: x * 2\nprint(f(21))", "output": ["42"], "result": "None"},
   {"src": "print(0 ** 4294967296)", "output": [], "result": "None", "error": "exponent too large"},
-  {"src": "print(-0.0)", "output": ["-0.0"], "result": "None"}
+  {"src": "print(-0.0)", "output": ["-0.0"], "result": "None"},
+  {"src": "print(f'{{x}}')", "output": ["{x}"], "result": "None"}
 ]
