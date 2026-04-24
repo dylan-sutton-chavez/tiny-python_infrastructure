@@ -240,8 +240,8 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
     pub(super) fn call(&mut self, name: String) -> bool {
         if name == "print" {
-            let (argc, _) = self.parse_args();
-            self.chunk.emit(OpCode::CallPrint, argc);
+            let (pos, kw) = self.parse_args();
+            self.chunk.emit(OpCode::CallPrint, pos + kw);
             return false;
         }
 
@@ -251,8 +251,8 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
 
         if let Some((op, leaves_value)) = builtin(name.as_str()) {
-            let (a, _) = self.parse_args();
-            self.chunk.emit(op, a);
+            let (pos, kw) = self.parse_args();
+            self.chunk.emit(op, pos + kw);
             return leaves_value;
         }
 
@@ -260,8 +260,9 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         let mut buf = [0u8; 128];
         let i = self.chunk.push_name(Self::ssa_name(&name, v, &mut buf));
         self.chunk.emit(OpCode::LoadName, i);
-        let (a, kw) = self.parse_args();
-        self.chunk.emit(OpCode::Call, a + kw);
+        let (pos, kw) = self.parse_args();
+        let encoded = ((kw & 0xFF) << 8) | (pos & 0xFF);
+        self.chunk.emit(OpCode::Call, encoded);
         true
     }
 
@@ -281,15 +282,17 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
     pub(super) fn parse_args(&mut self) -> (u16, u16) {
         self.advance();
-        let mut argc = 0;
-        let mut kwargs = 0u16;
+        let mut pos = 0u16;
+        let mut kw = 0u16;
         while !matches!(self.peek(), Some(TokenType::Rpar) | None) {
             if self.eat_if(TokenType::Star) {
                 self.expr();
                 self.chunk.emit(OpCode::UnpackArgs, 1);
+                pos += 1;
             } else if self.eat_if(TokenType::DoubleStar) {
                 self.expr();
                 self.chunk.emit(OpCode::UnpackArgs, 2);
+                pos += 1;
             } else if matches!(self.peek(), Some(TokenType::Name)) {
                 let t = self.advance();
                 if matches!(self.peek(), Some(TokenType::Equal)) {
@@ -297,9 +300,8 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                     let i = self.chunk.push_const(Value::Str(self.lexeme(&t).to_string()));
                     self.chunk.emit(OpCode::LoadConst, i);
                     self.expr();
-                    kwargs += 1;
+                    kw += 1;
                 } else {
-                    // Support genexpr after name arg (expr for ...)
                     let elem_start = self.chunk.instructions.len();
                     self.name(t);
                     self.infix_bp(0);
@@ -309,9 +311,9 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                         self.chunk.emit(OpCode::BuildList, 0);
                         self.comprehension_loop(&[elem_ins], OpCode::ListAppend, &versions_before);
                     }
+                    pos += 1;
                 }
             } else {
-                // Support genexpr in arg position (expr for ...)
                 let elem_start = self.chunk.instructions.len();
                 self.expr();
                 if matches!(self.peek(), Some(TokenType::For)) {
@@ -320,14 +322,14 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                     self.chunk.emit(OpCode::BuildList, 0);
                     self.comprehension_loop(&[elem_ins], OpCode::ListAppend, &versions_before);
                 }
+                pos += 1;
             }
-            argc += 1;
             if matches!(self.peek(), Some(TokenType::Comma)) {
                 self.advance();
             }
         }
         self.eat(TokenType::Rpar);
-        (argc, kwargs)
+        (pos, kw)
     }
 
     /*
@@ -460,6 +462,10 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             | OpCode::Nonlocal
             | OpCode::LoadAttr
             | OpCode::Import
+            | OpCode::Raise
+            | OpCode::RaiseFrom
+            | OpCode::Yield
+            | OpCode::YieldFrom
         ));
         body
     }

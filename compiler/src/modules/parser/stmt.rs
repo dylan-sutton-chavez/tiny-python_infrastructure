@@ -254,20 +254,21 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
     pub(super) fn compile_block(&mut self) {
         let indented = self.eat_if(TokenType::Indent);
-        while !self.at_end() {
+        loop {
+            while self.eat_if(TokenType::Semi) {}
+
+            if self.at_end() { break; }
             if matches!(self.peek(), Some(TokenType::Dedent)) {
                 self.advance();
                 break;
             }
-            if matches!(self.peek(), Some(TokenType::Newline | TokenType::Nl)) {
-                self.advance();
-                continue;
-            }
+
             let produced_value = self.stmt();
             if !self.at_end() && produced_value {
                 self.chunk.emit(OpCode::PopTop, 0);
             }
-            if !indented {
+
+            if !indented && !matches!(self.peek(), Some(TokenType::Semi)) {
                 break;
             }
         }

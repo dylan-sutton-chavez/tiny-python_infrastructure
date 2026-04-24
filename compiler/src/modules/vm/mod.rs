@@ -34,7 +34,8 @@ pub struct VM<'a> {
     templates: Templates,
     budget:usize,
     depth: usize,
-    max_calls: usize
+    max_calls: usize,
+    observed_impure: Vec<bool>,
 }
 
 impl<'a> VM<'a> {
@@ -150,15 +151,15 @@ impl<'a> VM<'a> {
         slots[target] = Some(val);
 
         let mut cur = target;
-        let mut steps = 0usize;
-        while steps < 64 {
+        let mut guard = prev_slots.len();
+        while guard > 0 {
+            guard -= 1;
             match prev_slots.get(cur).and_then(|p| *p) {
-                Some(prev) => {
+                Some(prev) if (prev as usize) != cur => {
                     slots[prev as usize] = Some(val);
                     cur = prev as usize;
-                    steps += 1;
                 }
-                None => break,
+                _ => break,
             }
         }
     }
@@ -176,7 +177,8 @@ impl<'a> VM<'a> {
             budget: limits.ops,
             depth: 0,
             max_calls: limits.calls,
-            output: Vec::new()
+            output: Vec::new(),
+            observed_impure: Vec::new(),
         };
         for &name in BUILTIN_TYPES {
             if let Ok(type_obj) = vm.heap.alloc(HeapObj::Type(name.to_string())) {
@@ -341,7 +343,19 @@ impl<'a> VM<'a> {
                     let v = self.pop()?;
                     let slot = op as usize;
                     slots[slot] = Some(v);
-                    if let Some(prev) = prev_slots[slot] { slots[prev as usize] = Some(v); }
+
+                    let mut cur = slot;
+                    let mut guard = prev_slots.len();
+                    while guard > 0 {
+                        guard -= 1;
+                        match prev_slots.get(cur).and_then(|p| *p) {
+                            Some(prev) if (prev as usize) != cur => {
+                                slots[prev as usize] = Some(v);
+                                cur = prev as usize;
+                            }
+                            _ => break,
+                        }
+                    }
 
                     if self.heap.needs_gc() {
                         self.collect(slots);
@@ -548,7 +562,7 @@ impl<'a> VM<'a> {
                 OpCode::BuildSet => { self.build_set(op)?; }
                 OpCode::BuildSlice => { self.build_slice(op)?; }
                 OpCode::GetItem => { self.get_item()?; }
-                OpCode::StoreItem => { self.store_item()?; }
+                OpCode::StoreItem => { self.mark_impure(); self.store_item()?; }
                 OpCode::UnpackSequence => { self.exec_unpack_seq(op as usize)?; }
                 OpCode::UnpackEx => { self.unpack_ex(op)?; }
                 OpCode::FormatValue => {
@@ -623,54 +637,78 @@ impl<'a> VM<'a> {
                     self.push(val);
                 }
                 OpCode::Call => {
-                    let argc = op as usize;
+                    let raw = op as usize;
+                    let num_kw = (raw >> 8) & 0xFF;
+                    let num_pos = raw & 0xFF;
+                    let total_items = num_pos + 2 * num_kw;
+
                     if self.depth >= self.max_calls { return Err(cold_depth()); }
-                    let mut args: Vec<Val> = (0..argc).map(|_| self.pop()).collect::<Result<_,_>>()?;
-                    args.reverse();
+
+                    let mut stack_items: Vec<Val> = (0..total_items).map(|_| self.pop()).collect::<Result<_,_>>()?;
+                    stack_items.reverse();
+
+                    let kw_flat: Vec<Val> = stack_items.split_off(num_pos);
+                    let positional = stack_items;
+
                     let callee = self.pop()?;
                     if !callee.is_heap() { return Err(VmErr::Type("object is not callable")); }
                     let (fi, captured_defaults) = match self.heap.get(callee) {
                         HeapObj::Func(i, d) => (*i, d.clone()),
                         _ => return Err(VmErr::Type("object is not callable")),
                     };
-                    if let Some(cached) = self.templates.lookup(fi, &args, &self.heap) {
-                        self.push(cached); continue;
+
+                    if num_kw == 0 {
+                        if let Some(cached) = self.templates.lookup(fi, &positional, &self.heap) {
+                            self.push(cached); continue;
+                        }
                     }
+
                     self.depth += 1;
                     let (params, body, _defaults, name_idx) = &self.chunk.functions[fi];
                     let mut fn_slots = self.fill_builtins(&body.names);
-                    let mut body_map: HashMap<&str, usize> = HashMap::with_capacity_and_hasher(body.names.len(), Default::default());
+                    let mut body_map: HashMap<&str, usize> =
+                        HashMap::with_capacity_and_hasher(body.names.len(), Default::default());
                     for (i, n) in body.names.iter().enumerate() { body_map.insert(n.as_str(), i); }
-                    // Bind args to params: detects keyword args (HeapObj::Str matching a param name) and consumes key+value pairs
-                    let mut pi = 0usize;
-                    for p in params.iter() {
-                        if pi < args.len()
-                            && args[pi].is_heap()
-                            && let HeapObj::Str(k) = self.heap.get(args[pi])
-                            && params.iter().any(|p| p.trim_start_matches('*') == k.as_str())
-                            && pi + 1 < args.len() {
-                                let pname = format!("{}_0", k);
-                                if let Some(&s) = body_map.get(pname.as_str()) { fn_slots[s] = Some(args[pi + 1]); }
-                                pi += 2;
-                                continue;
-                        }
-                        if pi < args.len() {
-                            let pname = format!("{}_0", p.trim_start_matches('*'));
-                            if let Some(&s) = body_map.get(pname.as_str()) { fn_slots[s] = Some(args[pi]); }
-                            pi += 1;
+
+                    for (i, param) in params.iter().enumerate() {
+                        if i >= positional.len() { break; }
+                        let pname = format!("{}_0", param.trim_start_matches('*'));
+                        if let Some(&s) = body_map.get(pname.as_str()) {
+                            fn_slots[s] = Some(positional[i]);
                         }
                     }
-                    if pi < params.len() && !captured_defaults.is_empty() {
-                        let d_start = captured_defaults.len().saturating_sub(params.len() - pi);
-                        for (i, param) in params[pi..].iter().enumerate() {
-                            if let Some(&dv) = captured_defaults.get(d_start + i) {
+
+                    for pair in kw_flat.chunks_exact(2) {
+                        let name_val = pair[0];
+                        let value = pair[1];
+                        let key = match self.heap.get(name_val) {
+                            HeapObj::Str(s) => s.clone(),
+                            _ => return Err(VmErr::Runtime("malformed kwarg on stack")),
+                        };
+                        if params.iter().any(|p| p.trim_start_matches('*') == key.as_str()) {
+                            let pname = format!("{}_0", key);
+                            if let Some(&s) = body_map.get(pname.as_str()) {
+                                fn_slots[s] = Some(value);
+                            }
+                        }
+                    }
+
+                    if !captured_defaults.is_empty() {
+                        let n_params = params.len();
+                        let n_defaults = captured_defaults.len();
+                        let offset = n_params.saturating_sub(n_defaults);
+                        for (di, &dv) in captured_defaults.iter().enumerate() {
+                            if let Some(param) = params.get(offset + di) {
                                 let pname = format!("{}_0", param.trim_start_matches('*'));
-                                if let Some(&s) = body_map.get(pname.as_str()) && fn_slots[s].is_none() {
+                                if let Some(&s) = body_map.get(pname.as_str())
+                                    && fn_slots[s].is_none()
+                                {
                                     fn_slots[s] = Some(dv);
                                 }
                             }
                         }
                     }
+
                     for (si, sv) in slots.iter().enumerate() {
                         if let Some(v) = sv
                             && let Some(&bs) = body_map.get(chunk.names[si].as_str())
@@ -679,6 +717,7 @@ impl<'a> VM<'a> {
                             fn_slots[bs] = Some(*v);
                         }
                     }
+                    
                     // Inject callee into body slots so the function can call itself by name
                     let name_idx = *name_idx;
                     if name_idx != u16::MAX {
@@ -693,18 +732,22 @@ impl<'a> VM<'a> {
                     let yields_before = self.yields.len();
                     let snap = self.live_slots.len();
                     self.live_slots.extend(slots.iter().flatten().copied());
+
+                    self.observed_impure.push(false);
                     let result = self.exec(body, &mut fn_slots)?;
+                    let callee_impure = self.observed_impure.pop().unwrap_or(true);
+                    if callee_impure { self.mark_impure(); }
+
                     self.live_slots.truncate(snap);
                     self.depth -= 1;
 
-                    // Collect yielded values into a list; otherwise cache pure results via templates
                     if self.yields.len() > yields_before {
                         let fn_yields = self.yields.split_off(yields_before);
                         let val = self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(fn_yields))))?;
                         self.push(val);
                     } else {
-                        if body.is_pure {
-                            self.templates.record(fi, &args, result, &self.heap);
+                        if num_kw == 0 && body.is_pure && !callee_impure {
+                            self.templates.record(fi, &positional, result, &self.heap);
                         }
                         self.push(result);
                     }
@@ -712,7 +755,7 @@ impl<'a> VM<'a> {
 
                 // Builtins (delegated)
 
-                OpCode::CallPrint => { self.call_print(op)?; }
+                OpCode::CallPrint => { self.mark_impure(); self.call_print(op)?; }
                 OpCode::CallLen => { self.call_len()?; }
                 OpCode::CallAbs => { self.call_abs()?; }
                 OpCode::CallStr => { self.call_str()?; }
@@ -733,7 +776,7 @@ impl<'a> VM<'a> {
                 OpCode::CallEnumerate => { self.call_enumerate()?; }
                 OpCode::CallZip => { self.call_zip(op)?; }
                 OpCode::CallIsInstance => { self.call_isinstance()?; }
-                OpCode::CallInput => { self.call_input()?; }
+                OpCode::CallInput => { self.mark_impure(); self.call_input()?; }
                 OpCode::CallDict => { self.call_dict(op)?; }
                 OpCode::CallSet => { self.call_set(op)?; }
 
@@ -744,12 +787,12 @@ impl<'a> VM<'a> {
 
                 // No-op stubs (safe for sandbox/WASM)
 
-                OpCode::Global | OpCode::Nonlocal => {}
+                OpCode::Global | OpCode::Nonlocal => { self.mark_impure(); }
                 OpCode::TypeAlias => { self.pop()?; }
-                OpCode::Import => { self.push(Val::none()); }
-                OpCode::ImportFrom => { self.pop()?; self.push(Val::none()); }
+                OpCode::Import => { self.mark_impure(); self.push(Val::none()); }
+                OpCode::ImportFrom => { self.mark_impure(); self.pop()?; self.push(Val::none()); }
                 OpCode::SetupExcept | OpCode::PopExcept => {}
-                OpCode::Raise | OpCode::RaiseFrom => { return Err(VmErr::Runtime("exception raised")); }
+                OpCode::Raise | OpCode::RaiseFrom => { self.mark_impure(); return Err(VmErr::Runtime("exception raised")); }
                 OpCode::SetupWith | OpCode::ExitWith => { return Err(VmErr::Runtime("with/as not yet supported")); }
                 OpCode::Await | OpCode::YieldFrom => {}
                 OpCode::UnpackArgs => { return Err(VmErr::Runtime("*args/**kwargs not yet supported")); }

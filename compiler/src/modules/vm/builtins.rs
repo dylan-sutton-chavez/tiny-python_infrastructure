@@ -8,6 +8,13 @@ use alloc::{string::{String, ToString}, vec::Vec, vec, rc::Rc, format};
 
 impl<'a> VM<'a> {
 
+    #[inline]
+    pub(super) fn mark_impure(&mut self) {
+        if let Some(top) = self.observed_impure.last_mut() {
+            *top = true;
+        }
+    }
+
     /*
     Print Builtin
         Pops N args, joins with space, appends to output buffer.

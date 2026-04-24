@@ -264,6 +264,9 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
     pub fn parse(mut self) -> (SSAChunk, Vec<Diagnostic>) {
         while !self.at_end() {
+            while self.eat_if(TokenType::Semi) {}
+            if self.at_end() { break; }
+
             let produced_value = self.stmt();
             if !self.at_end() && produced_value {
                 self.chunk.emit(OpCode::PopTop, 0);
