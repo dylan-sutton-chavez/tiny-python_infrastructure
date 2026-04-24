@@ -12,14 +12,9 @@ const DEFAULT_CODE = `"""\nImplements a functional pipeline using function compo
 // DOM
 
 const $ = (id) => document.getElementById(id);
-
 const el = {
-    ed: $('ed'),
-    ln: $('ln'),
-    btn: $('run'),
-    term: $('term'),
-    status: $('status'),
-    pkgList: $('pkg-list'),
+    ed: $('ed'), ln: $('ln'), btn: $('run'),
+    term: $('term'), status: $('status'), pkgList: $('pkg-list'),
 };
 
 // Utils
@@ -29,90 +24,60 @@ const fmt = (ms) => ms < 1000 ? `${ms.toFixed(0)}ms` : `${(ms / 1000).toFixed(2)
 const fetchSvg = async (src, attrs = {}) => {
     const text = await fetch(src).then(r => r.text()).catch(() => '');
     const svg = new DOMParser().parseFromString(text, 'image/svg+xml').querySelector('svg');
-    if (!svg) return null;
-    for (const [k, v] of Object.entries(attrs)) svg.setAttribute(k, v);
+    if (svg) for (const [k, v] of Object.entries(attrs)) svg.setAttribute(k, v);
     return svg;
 };
-const loadIcons = async (scope = document) => {
-    const nodes = [...scope.querySelectorAll('svg[data-icon]')];
-    await Promise.all(nodes.map(async (node) => {
-        const src = node.getAttribute('data-icon');
+
+const loadIcons = (scope = document) => Promise.all(
+    [...scope.querySelectorAll('svg[data-icon]')].map(async (node) => {
         const attrs = Object.fromEntries(
-            [...node.attributes]
-                .filter(a => a.name !== 'data-icon')
-                .map(a => [a.name, a.value])
+            [...node.attributes].filter(a => a.name !== 'data-icon').map(a => [a.name, a.value])
         );
-        const svg = await fetchSvg(src, attrs);
+        const svg = await fetchSvg(node.getAttribute('data-icon'), attrs);
         if (svg) node.replaceWith(svg);
-    }));
+    })
+);
+
+const setStatus = (text, cls) => {
+    el.status.textContent = text;
+    el.status.className = `ml-auto ${cls}`;
 };
-
-// Status
-
-const Status = (() => {
-    const CLS = { ok: 'ml-auto text-[#7daf7a]', err: 'ml-auto text-[#d67f6d]' };
-    return {
-        ok: (text) => { el.status.textContent = text; el.status.className = CLS.ok;  },
-        err: (text) => { el.status.textContent = text; el.status.className = CLS.err; },
-    };
-})();
+const ok = (t) => setStatus(t, 'text-[#7daf7a]');
+const err = (t) => setStatus(t, 'text-[#d67f6d]');
 
 // Highlighter
 
 const Highlighter = (() => {
-    const KW = new Set([
-        'as','if','in','is','or',
-        'and','def','del','for','not','try',
-        'case','elif','else','from','pass','type','with',
-        'async','await','break','class','match','raise','while','yield',
-        'assert','except','global','import','lambda','return',
-        'finally','continue','nonlocal',
-    ]);
-    const BI = new Set([
-        'print','len','range','int','str','float','list','dict','tuple','set',
-        'bool','isinstance','issubclass','enumerate','zip','map','filter',
-        'abs','min','max','sum','round','pow','divmod','hash','id','repr',
-        'ord','chr','hex','oct','bin','open','input','iter','next','reversed','sorted',
-        'any','all','format','frozenset','bytearray','bytes','complex','memoryview',
-        'object','property','staticmethod','classmethod','super','slice',
-        'callable','getattr','setattr','hasattr','delattr','dir','vars','globals','locals',
-        'NotImplemented','Ellipsis','self','cls',
-    ]);
+    const KW = new Set(['as','if','in','is','or','and','def','del','for','not','try','case','elif','else','from','pass','type','with','async','await','break','class','match','raise','while','yield','assert','except','global','import','lambda','return','finally','continue','nonlocal']);
+    const BI = new Set(['print','len','range','int','str','float','list','dict','tuple','set','bool','isinstance','issubclass','enumerate','zip','map','filter','abs','min','max','sum','round','pow','divmod','hash','id','repr','ord','chr','hex','oct','bin','open','input','iter','next','reversed','sorted','any','all','format','frozenset','bytearray','bytes','complex','memoryview','object','property','staticmethod','classmethod','super','slice','callable','getattr','setattr','hasattr','delattr','dir','vars','globals','locals','NotImplemented','Ellipsis','self','cls']);
     const LIT = new Set(['True', 'False', 'None']);
+    const CLASSES = [[KW, 'tk-kw'], [LIT, 'tk-lit'], [BI, 'tk-bi']];
 
-    const WORD_CLS = [[KW, 'tk-kw'], [LIT, 'tk-lit'], [BI, 'tk-bi']];
-    // Regex: [0] Comments, [1] Strings (inc. f-strings/multiline), [2] Numbers, [3] Words/IDs
     const TOKEN_RE = /(#[^\n]*)|((?:\b[fFrRbBuU]{1,2})?(?:"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'))|(0[xX][\da-fA-F_]+|0[oO][0-7_]+|0[bB][01_]+|\d[\d_]*(?:\.[\d_]*)?(?:[eE][+-]?\d+)?[jJ]?|\.\d[\d_]*(?:[eE][+-]?\d+)?[jJ]?)|([A-Za-z_]\w*)/g;
-
-    const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;' };
+    const esc = (s) => s.replace(/[&<>]/g, (c) => ESC[c]);
     const span = (cls, s) => `<span class="${cls}">${s}</span>`;
 
-    const tokenize = (m, com, str, num, word, offset, fullStr) => {
+    const tokenize = (m, com, str, num, word, offset, full) => {
         if (com) return span('tk-com', com);
         if (str) {
-            if (/^[fFrRbBuU]*[fF]/i.test(str)) {
-                const body = str.replace(/\{\{|\}\}|\{([^{}]*)\}/g, (m, expr) =>
-                    expr != null
-                        ? `{${expr.replace(new RegExp(TOKEN_RE.source, TOKEN_RE.flags), tokenize)}}`
-                        : m
-                );
-                return span('tk-str', body);
+            if (/^[fFrRbBuU]*[fF]/.test(str)) {
+                return span('tk-str', str.replace(/\{\{|\}\}|\{([^{}]*)\}/g, (m2, expr) =>
+                    expr != null ? `{${expr.replace(new RegExp(TOKEN_RE.source, TOKEN_RE.flags), tokenize)}}` : m2
+                ));
             }
             return span('tk-str', str);
         }
         if (num) return span('tk-num', num);
         if (word) {
-            if (fullStr[offset - 1] === '&' && fullStr[offset + word.length] === ';') return word;
-            for (const [set, cls] of WORD_CLS) if (set.has(word)) return span(cls, word);
-            // Function call detection
-            return span(/^\s*\(/.test(fullStr.slice(offset + word.length)) ? 'tk-func' : 'tk-var', word);
+            if (full[offset - 1] === '&' && full[offset + word.length] === ';') return word;
+            for (const [set, cls] of CLASSES) if (set.has(word)) return span(cls, word);
+            return span(/^\s*\(/.test(full.slice(offset + word.length)) ? 'tk-func' : 'tk-var', word);
         }
         return m;
     };
 
-    return {
-        highlight: (src) => esc(src).replace(TOKEN_RE, tokenize),
-    };
+    return { highlight: (src) => esc(src).replace(TOKEN_RE, tokenize) };
 })();
 
 // Worker
@@ -120,218 +85,177 @@ const Highlighter = (() => {
 const PythonWorker = (() => {
     const worker = new Worker('./worker.js');
 
-    const resolveWasmUrl = async () => {
+    const resolveUrl = async () => {
         const ver = await fetch('./version.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
         const bust = ver.v ? `?v=${ver.v}` : '';
-        return DEV
-            ? `https://demo.edgepython.com/compiler_lib.wasm${bust}`
-            : `./compiler_lib.wasm${bust}`;
+        return DEV ? `https://demo.edgepython.com/compiler_lib.wasm${bust}` : `./compiler_lib.wasm${bust}`;
     };
 
-    worker.onmessage = ({ data }) => {
-        if (data.type === 'ready') {
-            el.btn.disabled = false;
-            Status.ok(`Ready${DEV ? ' - Dev' : ''} (Loaded in ${fmt(data.ms)})`);
-        } else if (data.type === 'result') {
-            el.term.textContent = data.out;
-            Status.ok(`Ran in ${fmt(data.ms)}`);
-            el.btn.disabled = false;
-        } else if (data.type === 'error') {
-            Status.err('Load failed');
-            el.term.textContent = `Could not load WASM.\n\n${data.message}`;
-        }
+    const onMsg = {
+        ready: ({ ms }) => { el.btn.disabled = false; ok(`Ready${DEV ? ' - Dev' : ''} (Loaded in ${fmt(ms)})`); },
+        result: ({ out, ms }) => { el.term.textContent = out; ok(`Ran in ${fmt(ms)}`); el.btn.disabled = false; },
+        error: ({ message }) => { err('Load failed'); el.term.textContent = `Could not load WASM.\n\n${message}`; },
     };
+    worker.onmessage = ({ data }) => onMsg[data.type]?.(data);
 
     return {
         load: async () => {
-            Status.ok('Loading WASM...');
-            const url = await resolveWasmUrl();
-            worker.postMessage({ type: 'load', url, opts: FETCH_OPTS ?? {} });
+            ok('Loading WASM...');
+            worker.postMessage({ type: 'load', url: await resolveUrl(), opts: FETCH_OPTS ?? {} });
         },
         run: (src) => {
-            Status.ok('Running...');
+            ok('Running...');
             el.btn.disabled = true;
             worker.postMessage({ type: 'run', src });
         },
     };
 })();
 
-// Editor
+// Pure transitions avoid execCommand, resolving auto-close degradation and the bug where backspace eats lines.
 
 const Editor = (() => {
     const PAIRS = { '(': ')', '[': ']', '{': '}', '"': '"', "'": "'" };
+    const OPENERS = new Set(Object.keys(PAIRS));
     const CLOSERS = new Set(Object.values(PAIRS));
-    const STRING_START_RE = /^([fFrRbBuU]{0,2})("""|'''|"|')/;
+    const STRING_START = /^([fFrRbBuU]{0,2})("""|'''|"|')/;
 
-    const jar = CodeJar(el.ed, (editor) => {
-        editor.innerHTML = Highlighter.highlight(editor.textContent);
-    }, {
-        tab: '    ',
-        indentOn: /[:\[({][ \t]*$/,
-        spellcheck: false,
-        addClosing: false,
-    });
-
-    const syncLineNumbers = () => {
-        const lines = jar.toString().replace(/\n$/, '').split('\n');
-        const n = Math.max(1, Math.min(lines.length, MAX_LINES));
-        el.ln.textContent = Array.from({ length: n }, (_, i) => String(i + 1).padStart(2, '00')).join('\n');
-        el.ln.scrollTop = el.ed.scrollTop;
-    };
-
-    const analyzeStringContext = (src, caret) => {
-        let i = 0, inStr = false, quote = '', isF = false;
+    // Tiny state machine: walk from 0 to caret toggling between code/string; `quote === ''` means we're in code; otherwise we're inside that string.
+    const stringCtx = (src, caret) => {
+        let i = 0, quote = '', isF = false;
         while (i < caret) {
-            if (!inStr) {
+            if (!quote) {
                 if (src[i] === '#') {
                     const nl = src.indexOf('\n', i);
                     if (nl === -1 || nl >= caret) return { inStr: false, isF: false };
-                    i = nl + 1;
-                    continue;
+                    i = nl + 1; continue;
                 }
-                const m = src.slice(i).match(STRING_START_RE);
+                const m = src.slice(i).match(STRING_START);
                 if (m && i + m[0].length <= caret) {
-                    inStr = true;
-                    quote = m[2];
-                    isF = /[fF]/.test(m[1]);
-                    i += m[0].length;
-                    continue;
+                    quote = m[2]; isF = /[fF]/.test(m[1]);
+                    i += m[0].length; continue;
                 }
                 i++;
             } else {
                 if (quote.length === 1 && src[i] === '\\') { i += 2; continue; }
                 if (src.slice(i, i + quote.length) === quote) {
-                    inStr = false; quote = ''; isF = false;
-                    i += quote.length;
-                    continue;
+                    i += quote.length; quote = ''; isF = false; continue;
                 }
                 i++;
             }
         }
-        return { inStr, isF };
+        return { inStr: !!quote, isF };
     };
 
-    // Auto-close outside, {} in f-strings, skip existing closers, nothing in regular strings.
-    const handleAutoClose = (e) => {
-        const key = e.key;
-        const isOpener = Object.prototype.hasOwnProperty.call(PAIRS, key);
-        const isCloser = CLOSERS.has(key);
-        if (!isOpener && !isCloser) return;
+    const transitions = {
+        // Typed character: skip existing closer, or auto-close an opener.
+        char: (text, caret, key) => {
+            if (CLOSERS.has(key) && text[caret] === key) {
+                return { text, caret: caret + 1 };
+            }
+            if (OPENERS.has(key)) {
+                const { inStr, isF } = stringCtx(text, caret);
+                // Inside a normal string we don't auto-close anything; inside an f-string we still want `{` -> `{}` for expressions.
+                if (inStr && !(isF && key === '{')) return null;
+                return {
+                    text: text.slice(0, caret) + key + PAIRS[key] + text.slice(caret),
+                    caret: caret + 1,
+                };
+            }
+            return null;
+        },
 
-        const pos = jar.save();
-        if (pos.start !== pos.end) return;
-
-        const src = jar.toString();
-        const caret = pos.start;
-
-        if (isCloser && src[caret] === key) {
-            e.preventDefault();
-            e.stopPropagation();
-            jar.restore({ start: caret + 1, end: caret + 1 });
-            return;
-        }
-        if (!isOpener) return;
-
-        const { inStr, isF } = analyzeStringContext(src, caret);
-        if (inStr && !(isF && key === '{')) return;
-
-        e.preventDefault();
-        e.stopPropagation();
-        document.execCommand('insertText', false, key + PAIRS[key]);
-        jar.restore({ start: caret + 1, end: caret + 1 });
+        // Backspace: delete empty pair, or snap indent to previous tab stop.
+        backspace: (text, caret) => {
+            if (caret === 0) return null;
+            if (PAIRS[text[caret - 1]] === text[caret]) {
+                return {
+                    text: text.slice(0, caret - 1) + text.slice(caret + 1),
+                    caret: caret - 1,
+                };
+            }
+            const lineStart = text.lastIndexOf('\n', caret - 1) + 1;
+            const before = text.slice(lineStart, caret);
+            if (!before.length || !/^[ \t]+$/.test(before)) return null;
+            const prevStop = Math.floor((before.length - 1) / TAB_SIZE) * TAB_SIZE;
+            const del = before.length - prevStop;
+            return { text: text.slice(0, caret - del) + text.slice(caret), caret: caret - del };
+        },
     };
 
-    // Backspace deletes empty pairs; otherwise, leading whitespace snaps to previous tab stops.
-    const handleBackspace = (e) => {
-        const pos = jar.save();
-        if (pos.start !== pos.end) return;
-        const caret = pos.start;
-        if (caret === 0) return;
-        const text = jar.toString();
+    const jar = CodeJar(el.ed,
+        (ed) => { ed.innerHTML = Highlighter.highlight(ed.textContent); },
+        { tab: ' '.repeat(TAB_SIZE), indentOn: /[:\[({][ \t]*$/, spellcheck: false, addClosing: false }
+    );
 
-        const closerForPrev = PAIRS[text[caret - 1]];
-        if (closerForPrev && closerForPrev === text[caret]) {
-            e.preventDefault();
-            e.stopPropagation();
-            jar.restore({ start: caret - 1, end: caret + 1 });
-            document.execCommand('delete');
-            return;
-        }
+    const apply = (result) => {
+        if (!result) return false;
+        jar.updateCode(result.text);
+        jar.restore({ start: result.caret, end: result.caret });
+        return true;
+    };
 
-        const lineStart = text.lastIndexOf('\n', caret - 1) + 1;
-        const before = text.slice(lineStart, caret);
-        if (!before.length || !/^[ \t]+$/.test(before)) return;
-        e.preventDefault();
-        e.stopPropagation();
-        const prevStop = Math.floor((before.length - 1) / TAB_SIZE) * TAB_SIZE;
-        jar.restore({ start: caret - (before.length - prevStop), end: caret });
-        document.execCommand('delete');
+    const syncLines = () => {
+        const lines = jar.toString().replace(/\n$/, '').split('\n');
+        const n = Math.max(1, Math.min(lines.length, MAX_LINES));
+        el.ln.textContent = Array.from({ length: n }, (_, i) => String(i + 1).padStart(2, '0')).join('\n');
+        el.ln.scrollTop = el.ed.scrollTop;
     };
 
     el.ed.addEventListener('keydown', (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-            e.preventDefault();
-            e.stopPropagation();
-            PythonWorker.run(jar.toString());
-            return;
+            e.preventDefault(); PythonWorker.run(jar.toString()); return;
         }
         if (e.key === 'Enter' && jar.toString().split('\n').length >= MAX_LINES) {
-            e.preventDefault();
-            e.stopPropagation();
-            return;
+            e.preventDefault(); return;
         }
-        if (e.key === 'Backspace') { handleBackspace(e); return; }
-        handleAutoClose(e);
+        const pos = jar.save();
+        if (pos.start !== pos.end) return;
+
+        const text = jar.toString();
+        const result =
+            e.key === 'Backspace' ? transitions.backspace(text, pos.start) :
+            (OPENERS.has(e.key) || CLOSERS.has(e.key)) ? transitions.char(text, pos.start, e.key) :
+            null;
+
+        if (apply(result)) { e.preventDefault(); e.stopPropagation(); }
     }, true);
 
     el.ed.addEventListener('scroll', () => { el.ln.scrollTop = el.ed.scrollTop; });
-
-    jar.onUpdate(syncLineNumbers);
+    jar.onUpdate(syncLines);
     jar.updateCode(DEFAULT_CODE);
 
-    return {
-        getCode: () => jar.toString(),
-    };
+    return { getCode: () => jar.toString() };
 })();
 
 // Packages
 
-const Packages = (() => {
-    const createItem = async (pkg) => {
-        const iconSvg = await fetchSvg(pkg.icon, { class: 'size-3.5', 'aria-hidden': 'true', focusable: 'false' });
-
-        const li = document.createElement('li');
-        li.className = 'bg-[#1c1c1c] border border-[#2d2d2d] rounded-md w-full';
-        li.innerHTML = `
-            <div class="flex items-center">
-                <div class="px-2 py-2.5">
-                    <h3 class="text-[12px]">${pkg.name}</h3>
-                </div>
-                <div class="flex items-center gap-2 ml-auto px-1.5">
-                    ${iconSvg?.outerHTML ?? ''}
-                    <button disabled aria-label="Reload ${pkg['aria-label']}" class="bg-[#ffffff] p-[3.7px] rounded-full opacity-40 cursor-not-allowed">
-                        <svg data-icon="./static/cloud-download.svg" class="size-3.5" aria-hidden="true" focusable="false"></svg>
-                    </button>
-                </div>
-            </div>`;
-        return li;
-    };
-
-    return {
-        load: async () => {
-            if (!el.pkgList) return;
-            const packages = await fetch('./packages.json').then(r => r.json()).catch(() => []);
-            const items = await Promise.all(packages.map(createItem));
-            items.forEach(item => el.pkgList.appendChild(item));
-            await loadIcons(el.pkgList);
-        },
-    };
-})();
+const Packages = {
+    load: async () => {
+        if (!el.pkgList) return;
+        const pkgs = await fetch('./packages.json').then(r => r.json()).catch(() => []);
+        for (const pkg of pkgs) {
+            const icon = await fetchSvg(pkg.icon, { class: 'size-3.5', 'aria-hidden': 'true', focusable: 'false' });
+            const li = document.createElement('li');
+            li.className = 'bg-[#1c1c1c] border border-[#2d2d2d] rounded-md w-full';
+            li.innerHTML = `
+                <div class="flex items-center">
+                    <div class="px-2 py-2.5"><h3 class="text-[12px]">${pkg.name}</h3></div>
+                    <div class="flex items-center gap-2 ml-auto px-1.5">
+                        ${icon?.outerHTML ?? ''}
+                        <button disabled aria-label="Reload ${pkg['aria-label']}" class="bg-[#ffffff] p-[3.7px] rounded-full opacity-40 cursor-not-allowed">
+                            <svg data-icon="./static/cloud-download.svg" class="size-3.5" aria-hidden="true" focusable="false"></svg>
+                        </button>
+                    </div>
+                </div>`;
+            el.pkgList.appendChild(li);
+        }
+        await loadIcons(el.pkgList);
+    },
+};
 
 // Init
 
 el.btn.addEventListener('click', () => PythonWorker.run(Editor.getCode()));
-
 loadIcons();
 PythonWorker.load();
 Packages.load();
