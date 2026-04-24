@@ -388,6 +388,9 @@ impl<'a> VM<'a> {
                         && b.is_int() {
                             let exp = b.as_int();
                             if exp >= 0 {
+                                if exp > u32::MAX as i64 {
+                                    return Err(VmErr::Value("pow() exponent too large"));
+                                }
                                 let result = ba.pow_u32(exp as u32);
                                 let v = self.bigint_to_val(result)?;
                                 self.push(v);
@@ -396,10 +399,8 @@ impl<'a> VM<'a> {
                             self.push(Val::float(fpowi(ba.to_f64(), exp as i32)));
                             continue;
                     }
-                    let fa = if a.is_int() { a.as_int() as f64 } else if a.is_float() { a.as_float() }
-                            else { return Err(VmErr::Type("** requires numeric operands")); };
-                    let fb = if b.is_int() { b.as_int() as f64 } else if b.is_float() { b.as_float() }
-                            else { return Err(VmErr::Type("** requires numeric operands")); };
+                    let fa = if a.is_int() { a.as_int() as f64 } else if a.is_float() { a.as_float() } else { return Err(VmErr::Type("** requires numeric operands")); };
+                    let fb = if b.is_int() { b.as_int() as f64 } else if b.is_float() { b.as_float() } else { return Err(VmErr::Type("** requires numeric operands")); };
                     self.push(Val::float(fpowf(fa, fb)));
                 }
                 OpCode::FloorDiv => {
