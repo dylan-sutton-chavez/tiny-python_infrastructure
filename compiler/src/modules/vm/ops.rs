@@ -99,6 +99,9 @@ impl<'a> VM<'a> {
         }
         if v.is_float() {
             let f = v.as_float();
+            if f == 0.0 && f.is_sign_negative() {
+                return "-0.0".into();
+            }
             const I64_UPPER: f64 = i64::MAX as f64;
             if f.is_finite() && f >= (i64::MIN as f64) && f < I64_UPPER && f == (f as i64) as f64 {
                 let i = f as i64;
