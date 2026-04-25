@@ -22,7 +22,7 @@ pub enum OpCode {
     BuildSlice, MakeClass, SetupExcept, PopExcept, Raise, Import, ImportFrom, BitAnd, BitOr, BitXor, 
     BitNot, Shl, Shr, In, NotIn, Is, IsNot, UnpackSequence, BuildTuple, SetupWith, ExitWith, Yield, 
     Del, Assert, Global, Nonlocal, UnpackArgs, ListAppend, SetAdd, MapAdd, BuildSet, RaiseFrom, 
-    UnpackEx, LoadEllipsis, Await, MakeCoroutine, YieldFrom, TypeAlias, StoreItem, Dup2
+    UnpackEx, LoadEllipsis, Await, MakeCoroutine, YieldFrom, TypeAlias, StoreItem, Dup2,
 }
 
 /*
@@ -241,3 +241,36 @@ pub const BUILTIN_TYPES: &[&str] = &[
     "int", "float", "str", "bool", "list", 
     "tuple", "dict", "set", "range", "type", "NoneType"
 ];
+
+// Map each opcode to its functional group for streamlined execution logic.
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OpCategory {
+    Load, Store,
+    Arith, Bitwise, Compare, Logic, Identity,
+    ControlFlow, Iter,
+    Build, Container, Comprehension,
+    Function, Ssa, Yield, Side,
+    Unsupported,
+}
+
+impl OpCode {
+    pub fn category(self) -> OpCategory {
+        use OpCode::*;
+        match self {
+            LoadConst | LoadName | LoadTrue | LoadFalse | LoadNone | LoadEllipsis => OpCategory::Load, StoreName => OpCategory::Store,
+            Add | Sub | Mul | Div | Mod | Pow | FloorDiv | Minus => OpCategory::Arith, BitAnd | BitOr | BitXor | BitNot | Shl | Shr => OpCategory::Bitwise,
+            Eq | NotEq | Lt | Gt | LtEq | GtEq => OpCategory::Compare, And | Or | Not => OpCategory::Logic,
+            In | NotIn | Is | IsNot => OpCategory::Identity, Jump | JumpIfFalse | ReturnValue | PopTop | Dup2 => OpCategory::ControlFlow,
+            GetIter | ForIter => OpCategory::Iter,
+            BuildList | BuildTuple | BuildDict | BuildSet | BuildSlice | BuildString => OpCategory::Build,
+            GetItem | StoreItem | UnpackSequence | UnpackEx | FormatValue => OpCategory::Container,
+            ListAppend | SetAdd | MapAdd => OpCategory::Comprehension,
+            Call | MakeFunction | MakeCoroutine | CallPrint | CallLen | CallAbs | CallStr | CallInt | CallRange | CallChr | CallType | CallFloat | CallBool | CallRound | CallMin | CallMax | CallSum | CallSorted | CallEnumerate | CallZip | CallList | CallTuple | CallDict | CallIsInstance | CallSet | CallInput | CallOrd => OpCategory::Function,
+            Phi => OpCategory::Ssa,
+            Yield => OpCategory::Yield,
+            Assert | Del | Global | Nonlocal | TypeAlias | Import | ImportFrom | SetupExcept | PopExcept | Raise | RaiseFrom | Await | YieldFrom => OpCategory::Side,
+            MakeClass | LoadAttr | StoreAttr | SetupWith | ExitWith | UnpackArgs => OpCategory::Unsupported,
+        }
+    }
+}

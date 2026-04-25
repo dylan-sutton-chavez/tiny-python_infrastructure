@@ -97,12 +97,19 @@ cargo build --target wasm32-unknown-unknown --release --no-default-features --fe
 │   │   │   ├── stmt.rs
 │   │   │   └── types.rs
 │   │   └── vm
-│   │       ├── mod.rs
-│   │       ├── types.rs
-│   │       ├── cache.rs
-│   │       ├── ops.rs
 │   │       ├── builtins.rs
-│   │       └── collections.rs
+│   │       ├── cache.rs
+│   │       ├── collections.rs
+│   │       ├── handlers
+│   │       │   ├── arith.rs
+│   │       │   ├── control.rs
+│   │       │   ├── data.rs
+│   │       │   ├── function.rs
+│   │       │   ├── mod.rs
+│   │       │   └── unsupported.rs
+│   │       ├── mod.rs
+│   │       ├── ops.rs
+│   │       └── types.rs
 │   └── wasm.rs
 └── tests
     ├── cases
