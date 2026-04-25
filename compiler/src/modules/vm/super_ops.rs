@@ -1,12 +1,12 @@
 // vm/super_ops.rs
 
-//! Tier-2 JIT: superinstruction patterns built from inline pieces.
+//! Superinstruction patterns built from inline pieces.
 
 use super::types::Val;
 use crate::modules::parser::{OpCode, SSAChunk, Value};
 use alloc::{vec, vec::Vec};
 
-/* ── inline pieces (zero-cost, fully inlined into super bodies) ── */
+/* Inline pieces (zero-cost, fully inlined into super bodies) */
 
 #[inline(always)]
 fn p_load(slots: &[Option<Val>], s: u16) -> Option<Val> {
@@ -44,12 +44,9 @@ fn p_store_ssa(slots: &mut [Option<Val>], prev: &[Option<u16>], s: u16, v: Val) 
     }
 }
 
-/* ── def_super! macro ── */
+/* def_super! macro */
 
-/// Wraps a sequence of `#[inline(always)]` pieces into a single
-/// `#[inline(never)] extern "C" fn`. The non-inlined boundary keeps super
-/// bodies out of the hot dispatch loop's I-cache while still permitting full
-/// inlining of the inner pieces.
+// Wraps a sequence of `#[inline(always)]` pieces into a single `#[inline(never)] extern "C" fn`. The non-inlined boundary keeps super bodies out of the hot dispatch loop's I-cache while still permitting full inlining of the inner pieces.
 #[macro_export]
 macro_rules! def_super {
     (
@@ -63,10 +60,10 @@ macro_rules! def_super {
     };
 }
 
-/* ── initial superinstruction compositions ── */
+/* initial superinstruction compositions */
 
 def_super! {
-    /// load + const + add + store ⟶ `slot += delta` (e.g. `i += 1`).
+    // load + const + add + store -> `slot += delta` (e.g. `i += 1`).
     pub fn super_inc(
         slots: &mut [Option<Val>], prev: &[Option<u16>], slot: u16, delta: Val
     ) -> bool {
@@ -78,7 +75,7 @@ def_super! {
 }
 
 def_super! {
-    /// load + load + lt ⟶ `a < b`. Returns 1/0/-1 (true/false/deopt).
+    // load + load + lt ⟶ `a < b`. Returns 1/0/-1 (true/false/deopt).
     pub fn super_lt(slots: &[Option<Val>], a: u16, b: u16) -> i8 {
         let (Some(av), Some(bv)) = (p_load(slots, a), p_load(slots, b)) else { return -1 };
         match p_lt_int(av, bv) { Some(true) => 1, Some(false) => 0, None => -1 }
@@ -86,7 +83,7 @@ def_super! {
 }
 
 def_super! {
-    /// Loop-body folded: inc + lt for the canonical `i += k; i < n` header.
+    // Loop-body folded: inc + lt for the canonical `i += k; i < n` header.
     pub fn super_loop_guard(
         slots: &mut [Option<Val>], prev: &[Option<u16>],
         slot: u16, delta: Val, limit: u16
@@ -99,7 +96,7 @@ def_super! {
     }
 }
 
-/* ── pattern catalog and detection ── */
+/* pattern catalog and detection */
 
 #[derive(Debug, Clone, Copy)]
 pub enum SuperOp {
