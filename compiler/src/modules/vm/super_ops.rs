@@ -105,8 +105,7 @@ pub enum SuperOp {
     LoopGuard { slot: u16, delta: Val, limit: u16, jump_target: u16, len: u16 },
 }
 
-/// One-shot scan at chunk finalization. `Some(_)` only at pattern starts;
-/// later positions covered by a longer pattern remain `None`.
+// One-shot scan at chunk finalization. `Some(_)` only at pattern starts; positions covered by a longer pattern remain `None`.
 pub fn detect(chunk: &SSAChunk) -> Vec<Option<SuperOp>> {
     let ins = &chunk.instructions;
     let n = ins.len();
