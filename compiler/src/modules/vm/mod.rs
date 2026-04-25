@@ -15,8 +15,8 @@ use cache::{OpcodeCache, FastOp, Templates};
 use handlers::unsupported::unsupported;
 use handlers::ControlOutcome;
 
-use crate::modules::parser::{OpCategory, SSAChunk, Value, BUILTIN_TYPES};
-use alloc::{string::{String, ToString}, vec::Vec, vec, format, boxed::Box};
+use crate::modules::parser::{SSAChunk, Value, BUILTIN_TYPES};
+use alloc::{string::{String, ToString}, vec::Vec, vec, format};
 use crate::modules::fx::FxHashMap as HashMap;
 
 /*
@@ -305,26 +305,27 @@ impl<'a> VM<'a> {
 
     /*
     Main Dispatch Loop
-        Routes by OpCategory to a handler. Handlers return outcomes that the loop interprets. Unsupported opcodes go through a single point.
+        Three-tier dispatch: superinstruction (tier-2) -> inline cache (tier-1) -> flat opcode match (tier-0). LLVM lowers the flat match to a single jump table; cache lives on the exec stack frame to avoid heap traffic.
     */
 
     pub(crate) fn exec(&mut self, chunk: &SSAChunk, slots: &mut [Option<Val>]) -> Result<Val, VmErr> {
-        use super_ops::SuperOp;
+        use super_ops::{FusedOutcome, SuperOp};
 
         let slots_base = self.live_slots.len();
         let n = chunk.instructions.len();
-        let mut cache = Box::new(OpcodeCache::new(chunk));
+        let mut cache = OpcodeCache::new(chunk);  // stack-allocated, no Box
         let mut ip = 0usize;
-        let prev_slots = &chunk.prev_slots;
+        let prev_slots = chunk.prev_slots.as_slice();
+        let instructions = chunk.instructions.as_slice();
 
         loop {
             if ip >= n { return Ok(Val::none()); }
 
-            // Superinstruction dispatch with deopt fall-through.
+            // ── Tier-2: superinstruction dispatch ─────────────────────────
             if let Some(sop) = cache.get_super(ip) {
                 match sop {
-                    SuperOp::Inc { slot, delta, len } => {
-                        if super_ops::super_inc(slots, prev_slots, slot, delta) {
+                    SuperOp::Inc { load, store, delta, len } => {
+                        if super_ops::super_inc(slots, prev_slots, load, store, delta) {
                             ip += len as usize; continue;
                         }
                     }
@@ -335,12 +336,11 @@ impl<'a> VM<'a> {
                             ip += len as usize; continue;
                         }
                     }
-                    SuperOp::LoopGuard { slot, delta, limit, jump_target, len } => {
-                        let r = super_ops::super_loop_guard(slots, prev_slots, slot, delta, limit);
+                    SuperOp::LoopGuard { load, store, delta, limit, jump_target, len } => {
+                        let r = super_ops::super_loop_guard(slots, prev_slots, load, store, delta, limit);
                         if r != -1 {
-                            if r == 1 {
-                                ip += len as usize;
-                            } else {
+                            if r == 1 { ip += len as usize; }
+                            else {
                                 if self.budget == 0 { return Err(cold_budget()); }
                                 self.budget -= 1;
                                 if jump_target as usize > n {
@@ -351,11 +351,26 @@ impl<'a> VM<'a> {
                             continue;
                         }
                     }
+                    SuperOp::RangeIncFused { drop_slot, counter_load, counter_store, delta, end_ip } => {
+                        if let Some(iter) = self.iter_stack.last() {
+                            let outcome = super_ops::run_range_inc_fused(
+                                slots, prev_slots, iter, &mut self.budget,
+                                drop_slot, counter_load, counter_store, delta,
+                            );
+                            if let FusedOutcome::Done = outcome {
+                                self.iter_stack.pop();
+                                if end_ip as usize > n {
+                                    return Err(VmErr::Runtime("jump target out of bounds"));
+                                }
+                                ip = end_ip as usize;
+                                continue;
+                            }
+                        }
+                    }
                 }
-                // Fall through to IC + normal dispatch.
             }
 
-            // Inline-cache fast path
+            // ── Tier-1: IC fast path ──────────────────────────────────────
             if let Some(fast) = cache.get_fast(ip) {
                 ip += 1;
                 if self.exec_fast(fast)? { continue; }
@@ -363,46 +378,123 @@ impl<'a> VM<'a> {
                 ip -= 1;
             }
 
-            if ip >= n { return Err(VmErr::Runtime("instruction pointer out of bounds")); }
-
-            let ins = &chunk.instructions[ip];
+            // ── Tier-0: direct opcode dispatch (FLAT MATCH) ────────────────
+            // SAFETY: ip < n checked at loop top; instructions is chunk slice.
+            let ins = unsafe { instructions.get_unchecked(ip) };
             let op = ins.operand;
             let rip = ip;
             ip += 1;
 
-            // Group categorization for OpCode.
-            match ins.opcode.category() {
-                OpCategory::Load => self.handle_load(ins.opcode, op, chunk, slots)?,
-                OpCategory::Store => {
+            // ONE indirect jump. LLVM emits jump table directly.
+            // Hot opcodes first to bias branch prediction in the dense fall-through.
+            match ins.opcode {
+                // ── HOT: numeric ops (most frequent in loops) ──────────────
+                OpCode::LoadName => {
+                    let slot = op as usize;
+                    self.push(slots[slot].ok_or_else(|| VmErr::Name(chunk.names[slot].clone()))?);
+                }
+                OpCode::StoreName => {
                     self.handle_store(op, slots, prev_slots)?;
                     if self.heap.needs_gc() { self.collect(slots); }
                 }
-                OpCategory::Arith => self.handle_arith(ins.opcode, rip, &mut cache)?,
-                OpCategory::Bitwise => self.handle_bitwise(ins.opcode)?,
-                OpCategory::Compare => self.handle_compare(ins.opcode, rip, &mut cache)?,
-                OpCategory::Logic => self.handle_logic(ins.opcode)?,
-                OpCategory::Identity => self.handle_identity(ins.opcode)?,
-                OpCategory::ControlFlow => match self.handle_control(ins.opcode, op, n)? {
-                    ControlOutcome::Continue => {}
-                    ControlOutcome::Jump(t) => ip = t,
-                    ControlOutcome::Return(v) => {
-                        self.live_slots.truncate(slots_base);
-                        return Ok(v);
+                OpCode::LoadConst => {
+                    let v = self.val_from(&chunk.constants[op as usize])?;
+                    self.push(v);
+                }
+                OpCode::Add | OpCode::Sub | OpCode::Mul | OpCode::Div
+                | OpCode::Mod | OpCode::Pow | OpCode::FloorDiv | OpCode::Minus => {
+                    self.handle_arith(ins.opcode, rip, &mut cache)?;
+                }
+                OpCode::Eq | OpCode::NotEq | OpCode::Lt | OpCode::Gt
+                | OpCode::LtEq | OpCode::GtEq => {
+                    self.handle_compare(ins.opcode, rip, &mut cache)?;
+                }
+                OpCode::Jump => {
+                    ip = self.checked_jump(op as usize, n)?;
+                }
+                OpCode::JumpIfFalse => {
+                    let v = self.pop()?;
+                    if !self.truthy(v) { ip = self.checked_jump(op as usize, n)?; }
+                }
+                OpCode::ForIter => {
+                    if self.budget == 0 { return Err(cold_budget()); }
+                    self.budget -= 1;
+                    if self.heap.needs_gc() { self.collect(slots); }
+                    match self.iter_stack.last_mut().and_then(|f| f.next_item()) {
+                        Some(item) => self.push(item),
+                        None => {
+                            self.iter_stack.pop();
+                            if op as usize > n {
+                                return Err(VmErr::Runtime("jump target out of bounds"));
+                            }
+                            ip = op as usize;
+                        }
                     }
-                },
-                OpCategory::Iter => match self.handle_iter(ins.opcode, op, n, slots)? {
-                    ControlOutcome::Continue => {}
-                    ControlOutcome::Jump(t) => ip = t,
-                    ControlOutcome::Return(_) => unreachable!("iter never returns"),
-                },
-                OpCategory::Build => self.handle_build(ins.opcode, op)?,
-                OpCategory::Container => self.handle_container(ins.opcode, op)?,
-                OpCategory::Comprehension => self.handle_comprehension(ins.opcode)?,
-                OpCategory::Function => self.handle_function(ins.opcode, op, chunk, slots)?,
-                OpCategory::Ssa => Self::exec_phi(op, rip, &chunk.phi_map, slots, prev_slots, &chunk.phi_sources),
-                OpCategory::Yield => self.handle_yield()?,
-                OpCategory::Side => self.handle_side(ins.opcode, op, slots)?,
-                OpCategory::Unsupported => return Err(unsupported(ins.opcode)),
+                }
+                OpCode::PopTop => { self.pop()?; }
+                OpCode::ReturnValue => {
+                    let result = if self.stack.is_empty() { Val::none() } else { self.pop()? };
+                    self.live_slots.truncate(slots_base);
+                    return Ok(result);
+                }
+
+                // ── WARM: container ops, builtins ─────────────────────────
+                OpCode::GetItem => { self.get_item()?; }
+                OpCode::Call => self.handle_function(ins.opcode, op, chunk, slots)?,
+                OpCode::CallPrint | OpCode::CallLen | OpCode::CallAbs | OpCode::CallStr
+                | OpCode::CallInt | OpCode::CallFloat | OpCode::CallBool | OpCode::CallType
+                | OpCode::CallChr | OpCode::CallOrd | OpCode::CallSorted | OpCode::CallList
+                | OpCode::CallTuple | OpCode::CallEnumerate | OpCode::CallIsInstance
+                | OpCode::CallRange | OpCode::CallRound | OpCode::CallMin | OpCode::CallMax
+                | OpCode::CallSum | OpCode::CallZip | OpCode::CallDict | OpCode::CallSet
+                | OpCode::CallInput | OpCode::MakeFunction | OpCode::MakeCoroutine => {
+                    self.handle_function(ins.opcode, op, chunk, slots)?;
+                }
+                OpCode::GetIter => {
+                    let obj = self.pop()?;
+                    let frame = self.make_iter_frame(obj)?;
+                    self.iter_stack.push(frame);
+                }
+                OpCode::LoadTrue  => self.push(Val::bool(true)),
+                OpCode::LoadFalse => self.push(Val::bool(false)),
+                OpCode::LoadNone  => self.push(Val::none()),
+                OpCode::And | OpCode::Or | OpCode::Not => self.handle_logic(ins.opcode)?,
+                OpCode::In | OpCode::NotIn | OpCode::Is | OpCode::IsNot => self.handle_identity(ins.opcode)?,
+                OpCode::BitAnd | OpCode::BitOr | OpCode::BitXor | OpCode::BitNot
+                | OpCode::Shl | OpCode::Shr => self.handle_bitwise(ins.opcode)?,
+
+                // ── COLD: everything else falls through to handlers ────────
+                OpCode::BuildList | OpCode::BuildTuple | OpCode::BuildDict
+                | OpCode::BuildString | OpCode::BuildSet | OpCode::BuildSlice => {
+                    self.handle_build(ins.opcode, op)?;
+                }
+                OpCode::StoreItem | OpCode::UnpackSequence | OpCode::UnpackEx
+                | OpCode::FormatValue => {
+                    self.handle_container(ins.opcode, op)?;
+                }
+                OpCode::ListAppend | OpCode::SetAdd | OpCode::MapAdd => {
+                    self.handle_comprehension(ins.opcode)?;
+                }
+                OpCode::Phi => Self::exec_phi(op, rip, &chunk.phi_map, slots, prev_slots, &chunk.phi_sources),
+                OpCode::Yield => self.handle_yield()?,
+                OpCode::LoadEllipsis => {
+                    let v = self.heap.alloc(HeapObj::Str("...".to_string()))?;
+                    self.push(v);
+                }
+                OpCode::Dup2 => {
+                    let b = self.pop()?; let a = self.pop()?;
+                    self.push(a); self.push(b); self.push(a); self.push(b);
+                }
+                OpCode::Assert | OpCode::Del | OpCode::Global | OpCode::Nonlocal
+                | OpCode::TypeAlias | OpCode::Import | OpCode::ImportFrom
+                | OpCode::SetupExcept | OpCode::PopExcept | OpCode::Raise | OpCode::RaiseFrom
+                | OpCode::Await | OpCode::YieldFrom => {
+                    self.handle_side(ins.opcode, op, slots)?;
+                }
+                OpCode::MakeClass | OpCode::LoadAttr | OpCode::StoreAttr
+                | OpCode::SetupWith | OpCode::ExitWith | OpCode::UnpackArgs => {
+                    return Err(unsupported(ins.opcode));
+                }
             }
         }
     }

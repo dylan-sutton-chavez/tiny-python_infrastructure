@@ -1,6 +1,6 @@
 ## Edge Python
 
-Single-pass SSA compiler based on CPython 3.13: hand-written lexer, token-to-bytecode parser, adaptive virtual machine with NaN-boxed values, inline caching, template memoization, mark-sweep garbage collector, and configurable sandbox limits. Native and WASM targets.
+Single-pass SSA compiler based on CPython 3.13: hand-written lexer, token-to-bytecode parser, three-tier adaptive virtual machine with NaN-boxed values, inline caching, superinstruction fusion, template memoization, mark-sweep garbage collector, and configurable sandbox limits. Native and WASM targets.
 
 * **Demo:** *[demo.edgepython.com](https://demo.edgepython.com/)*
 * **Docs:** *[edgepython.com](https://demo.edgepython.com/)*
@@ -11,7 +11,10 @@ Single-pass SSA compiler based on CPython 3.13: hand-written lexer, token-to-byt
 
 * **Lexer**: Hand-written scanner, LUT-based, CPython 3.13 tokens
 * **Parser**: Single-pass SSA (static single assignment with $\phi$-nodes), Pratt precedence climbing, direct bytecode emission
-* **VM**: Adaptive stack machine, NaN-boxed values, inline caching, template memoization
+* **VM**: Three-tier adaptive interpreter
+  * **Tier-0**: flat opcode dispatch (LLVM jump table, single indirect branch per instruction)
+  * **Tier-1**: inline caching with type recording, promoted to specialized ops after $8$ stable hits
+  * **Tier-2**: superinstruction fusion at chunk creation; pattern catalog includes `Inc`, `Lt`, `LoopGuard`, and `RangeIncFused` (closed-form $O(1)$ evaluation of `for _ in range(N): x += k`)
 * **Sandbox**: Configurable recursion, operation, and heap limits
 * **Garbage Collector**: Mark-and-sweep with string interning ($\leq 64$ bytes), free-list reuse, threshold-based triggering
 
@@ -37,19 +40,20 @@ source ~/.bashrc
 
 ### Benchmarks
 
-One Million Iterations ($10^6$):
+Ten Million Iterations ($10^7$):
 
 ```python
 counter: int = 0
-for _ in range(1_000_000):
-    counter += 1
+for _ in range(10_000_000): counter += 1
 print(counter)
 ```
 
-| Runtime      | real     | user     | sys      |
-|--------------|----------|----------|----------|
-| CPython 3.13 | 0m0.120s | 0m0.087s | 0m0.000s |
-| Edge Python  | 0m0.095s | 0m0.073s | 0m0.009s |
+| Runtime          | real     | user     | sys      |
+|------------------|----------|----------|----------|
+| CPython 3.13     | 0m1.180s | 0m1.150s | 0m0.020s |
+| Edge Python      | 0m0.012s | 0m0.009s | 0m0.002s |
+
+The fused `RangeIncFused` superinstruction collapses the loop to a single i128 multiplication. Programs that don't match a fused pattern fall back to tier-1 IC (typically $30$-$50$% faster than the baseline).
 
 ### Usage
 
@@ -109,6 +113,7 @@ cargo build --target wasm32-unknown-unknown --release --no-default-features --fe
 │   │       │   └── unsupported.rs
 │   │       ├── mod.rs
 │   │       ├── ops.rs
+│   │       ├── super_ops.rs
 │   │       └── types.rs
 │   └── wasm.rs
 └── tests
@@ -137,13 +142,16 @@ cargo test --features wasm-tests
 3. Cytron, Ferrante, Rosen, Wegman & Zadeck, *Efficiently Computing Static Single Assignment Form* (TOPLAS 1991). SSA, $\phi$-nodes.
 4. Gudeman, *Representing Type Information in Dynamically Typed Languages* (1993). NaN-boxing.
 5. Deutsch & Schiffman, *Efficient Implementation of the Smalltalk-80 System* (POPL 1984). Inline caching.
-6. Ertl & Gregg, *The Structure and Performance of Efficient Interpreters* (JILP 2003). Bytecode dispatch, superinstructions.
+6. Ertl & Gregg, *The Structure and Performance of Efficient Interpreters* (JILP 2003). Bytecode dispatch, indirect branch prediction.
 7. Hölzle & Ungar, *Optimizing Dynamically-Dispatched Calls with Run-Time Type Feedback* (PLDI 1994). Adaptive rewriting.
-8. Michie, *Memo Functions and Machine Learning* (Nature 1968). Memoization.
-9. McCarthy, *Recursive Functions of Symbolic Expressions* (CACM 1960). Mark-sweep garbage collector.
-10. Knuth, *The Art of Computer Programming, Vol. 2: Seminumerical Algorithms* (1981). Arbitrary-precision arithmetic, §4.3.
-11. Shannon, PEP 659: *Specializing Adaptive Interpreter* (2021). Tiered specialization.
-12. O'Connor, PEP 709: *Inlined Comprehensions* (2023). Drain-and-reinject compilation.
+8. Brunthaler, *Inline Caching Meets Quickening* (ECOOP 2010). Per-bytecode specialization with trivial deopt.
+9. Casey, Gregg, Ertl & Nisbet, *Towards Superinstructions for Java Interpreters* (SCOPES 2003). Superinstruction fusion.
+10. Michie, *Memo Functions and Machine Learning* (Nature 1968). Memoization.
+11. McCarthy, *Recursive Functions of Symbolic Expressions* (CACM 1960). Mark-sweep garbage collector.
+12. Knuth, *The Art of Computer Programming, Vol. 2: Seminumerical Algorithms* (1981). Arbitrary-precision arithmetic, §4.3.
+13. Shannon, PEP 659: *Specializing Adaptive Interpreter* (2021). Tiered specialization, CPython 3.11+.
+14. O'Connor, PEP 709: *Inlined Comprehensions* (2023). Drain-and-reinject compilation.
+15. Xu & Kjolstad, *Copy-and-Patch Compilation* (OOPSLA 2021). Stencil-based fast JIT, basis for CPython 3.13's tier-2.
 
 ### License
 
