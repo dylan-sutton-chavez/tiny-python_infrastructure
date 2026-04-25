@@ -6,6 +6,7 @@ mod ops;
 mod builtins;
 mod collections;
 mod handlers;
+mod super_ops;
 
 pub use types::{Val, HeapObj, HeapPool, VmErr, Limits};
 
@@ -308,14 +309,51 @@ impl<'a> VM<'a> {
     */
 
     pub(crate) fn exec(&mut self, chunk: &SSAChunk, slots: &mut [Option<Val>]) -> Result<Val, VmErr> {
+        use super_ops::SuperOp;
+
         let slots_base = self.live_slots.len();
         let n = chunk.instructions.len();
-        let mut cache = Box::new(OpcodeCache::new(n));
+        let mut cache = Box::new(OpcodeCache::new(chunk));
         let mut ip = 0usize;
         let prev_slots = &chunk.prev_slots;
 
         loop {
             if ip >= n { return Ok(Val::none()); }
+
+            // Superinstruction dispatch with deopt fall-through.
+            if let Some(sop) = cache.get_super(ip) {
+                match sop {
+                    SuperOp::Inc { slot, delta, len } => {
+                        if super_ops::super_inc(slots, prev_slots, slot, delta) {
+                            ip += len as usize; continue;
+                        }
+                    }
+                    SuperOp::Lt { a, b, len } => {
+                        let r = super_ops::super_lt(slots, a, b);
+                        if r != -1 {
+                            self.push(Val::bool(r == 1));
+                            ip += len as usize; continue;
+                        }
+                    }
+                    SuperOp::LoopGuard { slot, delta, limit, jump_target, len } => {
+                        let r = super_ops::super_loop_guard(slots, prev_slots, slot, delta, limit);
+                        if r != -1 {
+                            if r == 1 {
+                                ip += len as usize;
+                            } else {
+                                if self.budget == 0 { return Err(cold_budget()); }
+                                self.budget -= 1;
+                                if jump_target as usize > n {
+                                    return Err(VmErr::Runtime("jump target out of bounds"));
+                                }
+                                ip = jump_target as usize;
+                            }
+                            continue;
+                        }
+                    }
+                }
+                // Fall through to IC + normal dispatch.
+            }
 
             // Inline-cache fast path
             if let Some(fast) = cache.get_fast(ip) {

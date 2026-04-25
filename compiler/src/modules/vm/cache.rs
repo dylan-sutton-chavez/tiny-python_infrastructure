@@ -1,7 +1,8 @@
 // vm/cache.rs
 
 use super::types::{Val, eq_vals_with_heap};
-use crate::modules::parser::OpCode;
+use super::super_ops::{self, SuperOp};
+use crate::modules::parser::{OpCode, SSAChunk};
 use alloc::{vec, vec::Vec};
 use crate::modules::fx::FxHashMap as HashMap;
 
@@ -35,10 +36,22 @@ struct CacheSlot {
     hot_fast: Option<FastOp>,
 }
 
-pub struct OpcodeCache { slots: Vec<CacheSlot> }
+pub struct OpcodeCache {
+    slots: Vec<CacheSlot>,
+    super_ops: Vec<Option<SuperOp>>,
+}
 
 impl OpcodeCache {
-    pub fn new(n: usize) -> Self { Self { slots: vec![CacheSlot::default(); n] } }
+    pub fn new(chunk: &SSAChunk) -> Self {
+        Self {
+            slots: vec![CacheSlot::default(); chunk.instructions.len()],
+            super_ops: super_ops::detect(chunk),
+        }
+    }
+
+    #[inline] pub fn get_super(&self, ip: usize) -> Option<SuperOp> {
+        self.super_ops.get(ip).copied().flatten()
+    }
 
     pub fn record(&mut self, ip: usize, opcode: &OpCode, ta: u8, tb: u8) {
         let Some(s) = self.slots.get_mut(ip) else { return };
