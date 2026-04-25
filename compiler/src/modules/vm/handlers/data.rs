@@ -2,6 +2,8 @@
 
 use super::*;
 
+use crate::alloc::string::ToString;
+
 impl<'a> VM<'a> {
     /*
     Load
