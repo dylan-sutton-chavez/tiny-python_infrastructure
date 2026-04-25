@@ -111,45 +111,49 @@ pub enum FusedOutcome { Done, Deopt }
 /// Closed-form executor for `RangeIncFused`. Evaluates the entire loop as
 /// `final = initial + delta * N` in O(1). Charges 2*N to the budget so
 /// sandbox accounting matches per-iteration bytecode dispatch.
+#[derive(Clone, Copy)]
+pub struct RangeIncOps {
+    pub drop:  u16,
+    pub load:  u16,
+    pub store: u16,
+    pub delta: Val,
+}
+
 #[inline]
 pub fn run_range_inc_fused(
     slots: &mut [Option<Val>],
     prev: &[Option<u16>],
     iter: &IterFrame,
     budget: &mut usize,
-    drop: u16, load: u16, store: u16, delta: Val,
+    ops: RangeIncOps,
 ) -> FusedOutcome {
     let (cur, end, step) = match *iter {
         IterFrame::Range { cur, end, step } => (cur, end, step),
         _ => return FusedOutcome::Deopt,
     };
 
-    // Iteration count from the live Range frame.
     let n: i64 = if step > 0 {
         if cur >= end { 0 } else { (end - cur + step - 1) / step }
     } else if cur <= end { 0 } else { (cur - end - step - 1) / -step };
 
     if n == 0 { return FusedOutcome::Done; }
 
-    // Sandbox accounting (one ForIter + one Jump per iteration).
     let charge = (n as usize).saturating_mul(2);
     if *budget < charge { return FusedOutcome::Deopt; }
     *budget -= charge;
 
-    // Closed-form: O(1) instead of O(N).
-    let Some(initial) = p_load(slots, load) else { return FusedOutcome::Deopt };
-    if !initial.is_int() || !delta.is_int() { return FusedOutcome::Deopt; }
+    let Some(initial) = p_load(slots, ops.load) else { return FusedOutcome::Deopt };
+    if !initial.is_int() || !ops.delta.is_int() { return FusedOutcome::Deopt; }
 
-    let total   = (delta.as_int() as i128) * (n as i128);
+    let total   = (ops.delta.as_int() as i128) * (n as i128);
     let final_v = (initial.as_int() as i128) + total;
     if final_v < Val::INT_MIN as i128 || final_v > Val::INT_MAX as i128 {
         return FusedOutcome::Deopt;
     }
-    p_store_ssa(slots, prev, store, Val::int(final_v as i64));
+    p_store_ssa(slots, prev, ops.store, Val::int(final_v as i64));
 
-    // Last yielded iter value, for `_v` slot semantics.
     let last_iter = cur + step * (n - 1);
-    p_store_ssa(slots, prev, drop, Val::int(last_iter));
+    p_store_ssa(slots, prev, ops.drop, Val::int(last_iter));
     FusedOutcome::Done
 }
 

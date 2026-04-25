@@ -2,38 +2,7 @@
 
 use super::*;
 
-use crate::alloc::string::ToString;
-
 impl<'a> VM<'a> {
-    /*
-    Load
-        Constantes, variables SSA, literales True/False/None y Ellipsis.
-    */
-
-    pub(crate) fn handle_load(
-        &mut self, op: OpCode, operand: u16,
-        chunk: &SSAChunk, slots: &[Option<Val>]
-    ) -> Result<(), VmErr> {
-        match op {
-            OpCode::LoadConst => {
-                let v = self.val_from(&chunk.constants[operand as usize])?;
-                self.push(v);
-            }
-            OpCode::LoadName => {
-                let slot = operand as usize;
-                self.push(slots[slot].ok_or_else(|| VmErr::Name(chunk.names[slot].clone()))?);
-            }
-            OpCode::LoadTrue => self.push(Val::bool(true)),
-            OpCode::LoadFalse => self.push(Val::bool(false)),
-            OpCode::LoadNone => self.push(Val::none()),
-            OpCode::LoadEllipsis => {
-                let v = self.heap.alloc(HeapObj::Str("...".to_string()))?;
-                self.push(v);
-            }
-            _ => unreachable!("non-load opcode in handle_load"),
-        }
-        Ok(())
-    }
 
     /*
     Store

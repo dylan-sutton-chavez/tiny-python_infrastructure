@@ -354,7 +354,12 @@ impl<'a> VM<'a> {
                         if let Some(iter) = self.iter_stack.last() {
                             let outcome = super_ops::run_range_inc_fused(
                                 slots, prev_slots, iter, &mut self.budget,
-                                drop_slot, counter_load, counter_store, delta,
+                                super_ops::RangeIncOps {
+                                    drop:  drop_slot,
+                                    load:  counter_load,
+                                    store: counter_store,
+                                    delta,
+                                },
                             );
                             if let FusedOutcome::Done = outcome {
                                 self.iter_stack.pop();
