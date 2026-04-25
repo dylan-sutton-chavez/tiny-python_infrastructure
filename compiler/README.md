@@ -51,7 +51,7 @@ print(counter)
 | Runtime          | real     | user     | sys      |
 |------------------|----------|----------|----------|
 | CPython 3.13     | 0m1.180s | 0m1.150s | 0m0.020s |
-| Edge Python      | 0m0.012s | 0m0.009s | 0m0.002s |
+| Edge Python      | 0m0.010s | 0m0.000s | 0m0.003s |
 
 The fused `RangeIncFused` superinstruction collapses the loop to a single i128 multiplication. Programs that don't match a fused pattern fall back to tier-1 IC (typically $30$-$50$% faster than the baseline).
 

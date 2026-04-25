@@ -13,9 +13,8 @@ pub use types::{Val, HeapObj, HeapPool, VmErr, Limits};
 use types::*;
 use cache::{OpcodeCache, FastOp, Templates};
 use handlers::unsupported::unsupported;
-use handlers::ControlOutcome;
 
-use crate::modules::parser::{SSAChunk, Value, BUILTIN_TYPES};
+use crate::modules::parser::{OpCode, SSAChunk, Value, BUILTIN_TYPES};
 use alloc::{string::{String, ToString}, vec::Vec, vec, format};
 use crate::modules::fx::FxHashMap as HashMap;
 
