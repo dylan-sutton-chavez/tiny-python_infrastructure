@@ -275,14 +275,13 @@ impl<'a> VM<'a> {
     pub fn call_list(&mut self) -> Result<(), VmErr> {
         let o = self.pop()?;
         // Str needs char allocation — handle before extract_iterable_full.
-        if o.is_heap() {
-            if let HeapObj::Str(s) = self.heap.get(o) {
+        if o.is_heap()
+            && let HeapObj::Str(s) = self.heap.get(o) {
                 let s = s.clone();
                 let items = self.str_to_char_vals(&s)?;
                 let val = self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(items))))?;
                 self.push(val);
                 return Ok(());
-            }
         }
         let items = self.extract_iterable_full(o)?;
         let val = self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(items))))?;

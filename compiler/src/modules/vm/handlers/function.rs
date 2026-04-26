@@ -67,11 +67,10 @@ impl<'a> VM<'a> {
         let mut captures: Vec<(usize, Val)> = Vec::new();
         for (bi, bname) in body.names.iter().enumerate() {
             if param_names.contains(bname.as_str()) { continue; }
-            if let Some(&si) = chunk_map.get(bname.as_str()) {
-                if let Some(Some(v)) = slots.get(si) {
+            if let Some(&si) = chunk_map.get(bname.as_str())
+                && let Some(Some(v)) = slots.get(si) {
                     captures.push((bi, *v));
                 }
-            }
         }
 
         let val = self.heap.alloc(HeapObj::Func(global, defaults, captures))?;
@@ -261,11 +260,10 @@ impl<'a> VM<'a> {
             if let Some(val) = best {
                 // Update all versions of this name in the caller's slots.
                 for (si, sname) in chunk.names.iter().enumerate() {
-                    if let Some(p) = sname.rfind('_') {
-                        if &sname[..p] == base.as_str() && si < slots.len() {
+                    if let Some(p) = sname.rfind('_')
+                        && &sname[..p] == base.as_str() && si < slots.len() {
                             slots[si] = Some(val);
                         }
-                    }
                 }
             }
         }
