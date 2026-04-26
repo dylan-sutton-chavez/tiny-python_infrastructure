@@ -22,7 +22,7 @@ name = "tests"
 path = "tests/main.rs"
 
 [dependencies]
-hashbrown = { version = "0.15", default-features = false }
+hashbrown = { version = "0.17", default-features = false }
 itoa = "1"
 ryu = "1"
 log = "0.4"
@@ -37,7 +37,7 @@ log = { version = "0.4", features = ["max_level_off", "release_max_level_off"] }
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-hashbrown = { version = "0.15", default-features = false, features = ["serde"] }
+hashbrown = { version = "0.17", default-features = false, features = ["serde"] }
 
 [features]
 wasm = ["lol_alloc"]
