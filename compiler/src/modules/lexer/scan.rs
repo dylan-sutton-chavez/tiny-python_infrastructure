@@ -1,7 +1,5 @@
 // lexer/scan.rs
 
-//! Lexical scanner of source code.
-
 use super::TokenType;
 use super::tables::*;
 

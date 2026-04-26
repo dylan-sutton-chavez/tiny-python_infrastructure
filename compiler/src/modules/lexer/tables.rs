@@ -1,7 +1,5 @@
 // lexer/tables.rs
 
-//! Lookup tables for lexer: byte classes, operators, keywords, prefixes.
-
 use super::TokenType;
 
 /* Byte class flags: ID_START, ID_CONT, DIGIT, SPACE. */
