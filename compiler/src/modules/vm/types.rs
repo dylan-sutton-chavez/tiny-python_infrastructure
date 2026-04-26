@@ -486,6 +486,9 @@ pub enum BuiltinMethodId {
     ListRemove,
     ListIndex,
     ListCount,
+    DictGet,
+    DictUpdate,
+    DictPop,
 }
 
 /*
@@ -546,6 +549,17 @@ impl Default for DictMap {
 
 impl DictMap {
     pub fn new() -> Self { Self { entries: Vec::new(), index: HashMap::default() } }
+
+    pub fn remove(&mut self, key: &Val) -> Option<Val> {
+        let idx = *self.index.get(key)?;
+        let val = self.entries[idx].1;
+        self.entries.remove(idx);
+        self.index.clear();
+        for (i, (k, _)) in self.entries.iter().enumerate() {
+            self.index.insert(*k, i);
+        }
+        Some(val)
+    }
 }
 
 /*

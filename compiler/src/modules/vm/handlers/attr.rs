@@ -33,6 +33,9 @@ impl<'a> VM<'a> {
             ("list", "remove")      => BuiltinMethodId::ListRemove,
             ("list", "index")       => BuiltinMethodId::ListIndex,
             ("list", "count")       => BuiltinMethodId::ListCount,
+            ("dict", "get")         => BuiltinMethodId::DictGet,
+            ("dict", "update")      => BuiltinMethodId::DictUpdate,
+            ("dict", "pop")         => BuiltinMethodId::DictPop,
             (ty, attr) => {
                 return Err(attr_not_found(ty, attr));
             }

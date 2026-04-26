@@ -512,7 +512,7 @@ impl<'a> VM<'a> {
                 self.push(Val::int(idx));
                 Ok(())
             }
-            ListCount => {
+ListCount => {
                 if positional.len() != 1 {
                     return Err(VmErr::Type("count() takes exactly one argument"));
                 }
@@ -524,6 +524,62 @@ impl<'a> VM<'a> {
                     _ => return Err(VmErr::Type("count: receiver is not a list")),
                 };
                 self.push(Val::int(n));
+                Ok(())
+            }
+            DictGet => {
+                if positional.is_empty() || positional.len() > 2 {
+                    return Err(VmErr::Type("get() takes 1 or 2 arguments"));
+                }
+                let key      = positional[0];
+                let default  = if positional.len() == 2 { positional[1] } else { Val::none() };
+                let result = match self.heap.get(recv) {
+                    HeapObj::Dict(rc) => rc.borrow().get(&key).copied().unwrap_or(default),
+                    _ => return Err(VmErr::Type("get: receiver is not a dict")),
+                };
+                self.push(result);
+                Ok(())
+            }
+            DictUpdate => {
+                if positional.len() != 1 {
+                    return Err(VmErr::Type("update() takes exactly one argument"));
+                }
+                let pairs = match self.heap.get(positional[0]) {
+                    HeapObj::Dict(rc) => rc.borrow().entries.clone(),
+                    _ => return Err(VmErr::Type("update() argument must be a dict")),
+                };
+                match self.heap.get_mut(recv) {
+                    HeapObj::Dict(rc) => {
+                        let mut b = rc.borrow_mut();
+                        for (k, v) in pairs { b.insert(k, v); }
+                    }
+                    _ => return Err(VmErr::Type("update: receiver is not a dict")),
+                }
+                self.mark_impure();
+                self.push(Val::none());
+                Ok(())
+            }
+            DictPop => {
+                if positional.is_empty() || positional.len() > 2 {
+                    return Err(VmErr::Type("pop() takes 1 or 2 arguments"));
+                }
+                let key     = positional[0];
+                let default = if positional.len() == 2 { Some(positional[1]) } else { None };
+                let result = match self.heap.get_mut(recv) {
+                    HeapObj::Dict(rc) => {
+                        let mut b = rc.borrow_mut();
+                        if let Some(val) = b.remove(&key) {
+                            val
+                        } else {
+                            match default {
+                                Some(d) => d,
+                                None    => return Err(VmErr::Value("key not found")),
+                            }
+                        }
+                    }
+                    _ => return Err(VmErr::Type("pop: receiver is not a dict")),
+                };
+                self.mark_impure();
+                self.push(result);
                 Ok(())
             }
         }

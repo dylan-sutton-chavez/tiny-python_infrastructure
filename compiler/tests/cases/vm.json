@@ -366,5 +366,9 @@
   {"src": "x = [1,2,3]\nx.insert(1, 99)\nprint(x)", "output": ["[1, 99, 2, 3]"], "result": "None"},
   {"src": "x = [1,2,2,3]\nx.remove(2)\nprint(x)", "output": ["[1, 2, 3]"], "result": "None"},
   {"src": "print([1,2,3].index(2))", "output": ["1"], "result": "None"},
-  {"src": "print([1,2,2,3].count(2))", "output": ["2"], "result": "None"}
+  {"src": "print([1,2,2,3].count(2))", "output": ["2"], "result": "None"},
+  {"src": "d = {'a':1}\nprint(d.get('a'))", "output": ["1"], "result": "None"},
+  {"src": "d = {'a':1}\nprint(d.get('z', 0))", "output": ["0"], "result": "None"},
+  {"src": "d = {'a':1,'b':2}\nd.update({'b':9,'c':3})\nprint(d)", "output": ["{'a': 1, 'b': 9, 'c': 3}"], "result": "None"},
+  {"src": "d = {'a':1}\nd.pop('a')\nprint(d)", "output": ["{}"], "result": "None"}
 ]
