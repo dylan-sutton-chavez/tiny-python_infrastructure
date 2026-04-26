@@ -782,18 +782,33 @@ pub enum VmErr {
     Raised(String),
 }
 
+impl VmErr {
+    /// Mensaje estático — no requiere core::fmt::write
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::CallDepth    => "RecursionError: max depth",
+            Self::Heap         => "MemoryError: heap limit",
+            Self::Budget       => "RuntimeError: budget exceeded",
+            Self::ZeroDiv      => "ZeroDivisionError: division by zero",
+            Self::Type(s)      => s,
+            Self::Value(s)     => s,
+            Self::Runtime(s)   => s,
+            // Name y Raised son String → no pueden ser &'static str
+            Self::Name(_)      => "NameError",
+            Self::Raised(_)    => "Exception",
+        }
+    }
+}
+
 impl fmt::Display for VmErr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::CallDepth => write!(f, "RecursionError: max depth"),
-            Self::Heap => write!(f, "MemoryError: heap limit"),
-            Self::Budget => write!(f, "RuntimeError: budget exceeded"),
-            Self::ZeroDiv => write!(f, "ZeroDivisionError: division by zero"),
-            Self::Name(s) => write!(f, "NameError: '{}'", s),
-            Self::Type(s) => write!(f, "TypeError: {}", s),
-            Self::Value(s) => write!(f, "ValueError: {}", s),
-            Self::Runtime(s) => write!(f, "RuntimeError: {}", s),
-            Self::Raised(s) => write!(f, "Exception: {}", s),
+            Self::Type(s)    => { f.write_str("TypeError: ")?; f.write_str(s) }
+            Self::Value(s)   => { f.write_str("ValueError: ")?; f.write_str(s) }
+            Self::Runtime(s) => { f.write_str("RuntimeError: ")?; f.write_str(s) }
+            Self::Name(s)    => { f.write_str("NameError: '")?; f.write_str(s)?; f.write_str("'") }
+            Self::Raised(s)  => { f.write_str("Exception: ")?;  f.write_str(s) }
+            other            => f.write_str(other.as_str()),
         }
     }
 }

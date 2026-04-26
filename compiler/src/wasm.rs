@@ -38,16 +38,35 @@ mod runtime {
 
         let (chunk, errs) = Parser::new(src, lexer(src)).parse();
 
-        let out: alloc::string::String = if !errs.is_empty() {
-            errs.iter()
-                .map(|e| alloc::format!("syntax error at line {}:{}: {}", e.line + 1, e.col, e.msg))
-                .collect::<alloc::vec::Vec<_>>()
-                .join("\n")
+        let out: String = if !errs.is_empty() {
+            let mut s = String::new();
+            for (i, e) in errs.iter().enumerate() {
+                if i > 0 { s.push('\n'); }
+                s.push_str("syntax error at line ");
+                s.push_str(itoa::Buffer::new().format(e.line + 1));
+                s.push(':');
+                s.push_str(itoa::Buffer::new().format(e.col));
+                s.push_str(": ");
+                s.push_str(&e.msg);
+            }
+            s
         } else {
             let mut vm = VM::with_limits(&chunk, Limits::sandbox());
-            vm.run()
-                .map(|_| vm.output.join("\n"))
-                .unwrap_or_else(|e| e.to_string())
+            match vm.run() {
+                Ok(_)  => vm.output.join("\n"),
+                Err(e) => {
+                    let mut s = String::new();
+                    match &e {
+                        VmErr::Type(m)    => { s.push_str("TypeError: "); s.push_str(m); }
+                        VmErr::Value(m)   => { s.push_str("ValueError: "); s.push_str(m); }
+                        VmErr::Runtime(m) => { s.push_str("RuntimeError: "); s.push_str(m); }
+                        VmErr::Name(n)    => { s.push_str("NameError: '"); s.push_str(n); s.push('\''); }
+                        VmErr::Raised(r)  => { s.push_str("Exception: "); s.push_str(r); }
+                        other             => s.push_str(other.as_str()),
+                    }
+                    s
+                }
+            }
         };
 
         unsafe { write_out(&out) }
