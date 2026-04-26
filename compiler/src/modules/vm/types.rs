@@ -552,13 +552,19 @@ impl DictMap {
     pub fn new() -> Self { Self { entries: Vec::new(), index: HashMap::default() } }
 
     pub fn remove(&mut self, key: &Val) -> Option<Val> {
-        let idx = *self.index.get(key)?;
-        let val = self.entries[idx].1;
+        let &idx = self.index.get(key)?;
+        let val  = self.entries[idx].1;
+
+        self.index.remove(key);
+
         self.entries.remove(idx);
-        self.index.clear();
-        for (i, (k, _)) in self.entries.iter().enumerate() {
-            self.index.insert(*k, i);
+
+        for (i, (k, _)) in self.entries[idx..].iter().enumerate() {
+            if let Some(entry) = self.index.get_mut(k) {
+                *entry = idx + i;
+            }
         }
+
         Some(val)
     }
 }
