@@ -337,11 +337,22 @@ impl<'a> VM<'a> {
         let (arg2, obj) = (self.pop()?, self.pop()?);
         let obj_ty = self.type_name(obj);
 
+        // Exception handler pushes the exception as a Str (e.g. "ZeroDivisionError").
+        // Allow isinstance("ZeroDivisionError", ZeroDivisionError) to return true
+        // by also comparing the string content against the type name.
+        let obj_as_str: Option<String> = if obj.is_heap() {
+            match self.heap.get(obj) {
+                HeapObj::Str(s) => Some(s.clone()),
+                _ => None,
+            }
+        } else { None };
+
         let check = |t: Val, heap: &HeapPool| -> Result<bool, VmErr> {
             match heap.get(t) {
                 HeapObj::Type(name) => Ok(
                     name == obj_ty
                     || (obj_ty == "bool" && name == "int")
+                    || obj_as_str.as_deref() == Some(name.as_str())
                 ),
                 _ => Err(VmErr::Type("isinstance() arg 2 must be a type or tuple of types")),
             }

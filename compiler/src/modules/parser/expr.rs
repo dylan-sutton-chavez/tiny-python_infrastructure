@@ -394,10 +394,15 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
     pub(super) fn parse_lambda(&mut self) {
         let mut params = Vec::new();
+        let mut defaults = 0u16;
         if !matches!(self.peek(), Some(TokenType::Colon)) {
             loop {
                 let p = self.advance();
                 params.push(self.lexeme(&p).to_string());
+                if self.eat_if(TokenType::Equal) {
+                    self.expr();
+                    defaults += 1;
+                }
                 if !self.eat_if(TokenType::Comma) {
                     break;
                 }
@@ -411,7 +416,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             s.chunk.emit(OpCode::ReturnValue, 0);
         });
         let fi = self.chunk.functions.len() as u16;
-        self.chunk.functions.push((params, body, 0, u16::MAX));
+        self.chunk.functions.push((params, body, defaults, u16::MAX));
         self.chunk.emit(OpCode::MakeFunction, fi);
     }
 }

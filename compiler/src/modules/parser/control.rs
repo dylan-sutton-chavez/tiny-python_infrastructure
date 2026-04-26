@@ -285,9 +285,14 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             self.eat(TokenType::Colon);
             self.compile_block();
 
-            // Only need a jump if there are more `except` arms after this one
-            // (i.e. we might fall through to another arm). Peek ahead.
-            if matches!(self.peek(), Some(TokenType::Except | TokenType::Else | TokenType::Finally)) {
+            // Always emit Jump after handler body — needed to skip remaining arms,
+            // the re-raise, and any else/finally. Exception: bare except with nothing
+            // after it (no else, no finally, no more except arms).
+            let more = matches!(
+                self.peek(),
+                Some(TokenType::Except | TokenType::Else | TokenType::Finally)
+            );
+            if !had_bare || more {
                 self.chunk.emit(OpCode::Jump, 0);
                 end_jumps.push(self.chunk.instructions.len() - 1);
             }

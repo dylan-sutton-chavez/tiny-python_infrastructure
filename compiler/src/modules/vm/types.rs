@@ -466,6 +466,9 @@ pub enum HeapObj {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BuiltinMethodId {
     ListAppend,
+    DictKeys,
+    DictValues,
+    DictItems,
 }
 
 /*

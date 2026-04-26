@@ -123,6 +123,9 @@ impl<'a> VM<'a> {
             HeapObj::Func(i, _) => format!("<function {}>", i),
             HeapObj::BoundMethod(_, id) => match id {
                 BuiltinMethodId::ListAppend => "<built-in method append>".into(),
+                BuiltinMethodId::DictKeys   => "<built-in method keys>".into(),
+                BuiltinMethodId::DictValues => "<built-in method values>".into(),
+                BuiltinMethodId::DictItems  => "<built-in method items>".into(),
             },
             HeapObj::Slice(s, e, st) => format!("slice({}, {}, {})",
                 self.display(*s), self.display(*e), self.display(*st)),

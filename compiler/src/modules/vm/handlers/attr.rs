@@ -13,8 +13,10 @@ impl<'a> VM<'a> {
 
         let method_id = match (self.type_name(obj), name.as_str()) {
             ("list", "append") => BuiltinMethodId::ListAppend,
+            ("dict", "keys")   => BuiltinMethodId::DictKeys,
+            ("dict", "values") => BuiltinMethodId::DictValues,
+            ("dict", "items")  => BuiltinMethodId::DictItems,
             (ty, attr) => {
-                // Out-of-line so the hot path stays small.
                 return Err(attr_not_found(ty, attr));
             }
         };

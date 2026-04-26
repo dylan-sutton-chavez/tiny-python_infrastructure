@@ -239,8 +239,15 @@ fn unescape(s: &str) -> String {
 
 // Array containing the default data types for the language.
 pub const BUILTIN_TYPES: &[&str] = &[
-    "int", "float", "str", "bool", "list", 
-    "tuple", "dict", "set", "range", "type", "NoneType"
+    "int", "float", "str", "bool", "list",
+    "tuple", "dict", "set", "range", "type", "NoneType",
+    "Exception", "BaseException",
+    "ValueError", "TypeError", "NameError", "KeyError",
+    "IndexError", "AttributeError", "RuntimeError",
+    "ZeroDivisionError", "OverflowError", "MemoryError",
+    "RecursionError", "StopIteration", "NotImplementedError",
+    "OSError", "IOError", "ImportError", "ModuleNotFoundError",
+    "AssertionError", "ArithmeticError", "LookupError",
 ];
 
 // Map each opcode to its functional group for streamlined execution logic.

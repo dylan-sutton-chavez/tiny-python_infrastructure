@@ -234,6 +234,47 @@ impl<'a> VM<'a> {
                 self.push(Val::none());
                 Ok(())
             }
+            DictKeys => {
+                if !positional.is_empty() {
+                    return Err(VmErr::Type("keys() takes no arguments"));
+                }
+                let keys: Vec<Val> = match self.heap.get(recv) {
+                    HeapObj::Dict(rc) => rc.borrow().keys().collect(),
+                    _ => return Err(VmErr::Type("keys: receiver is not a dict")),
+                };
+                let val = self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(keys))))?;
+                self.push(val);
+                Ok(())
+            }
+            DictValues => {
+                if !positional.is_empty() {
+                    return Err(VmErr::Type("values() takes no arguments"));
+                }
+                let values: Vec<Val> = match self.heap.get(recv) {
+                    HeapObj::Dict(rc) => rc.borrow().entries.iter().map(|&(_, v)| v).collect(),
+                    _ => return Err(VmErr::Type("values: receiver is not a dict")),
+                };
+                let val = self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(values))))?;
+                self.push(val);
+                Ok(())
+            }
+            DictItems => {
+                if !positional.is_empty() {
+                    return Err(VmErr::Type("items() takes no arguments"));
+                }
+                let pairs: Vec<(Val, Val)> = match self.heap.get(recv) {
+                    HeapObj::Dict(rc) => rc.borrow().entries.clone(),
+                    _ => return Err(VmErr::Type("items: receiver is not a dict")),
+                };
+                let mut items: Vec<Val> = Vec::with_capacity(pairs.len());
+                for (k, v) in pairs {
+                    let t = self.heap.alloc(HeapObj::Tuple(vec![k, v]))?;
+                    items.push(t);
+                }
+                let val = self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(items))))?;
+                self.push(val);
+                Ok(())
+            }
         }
     }
 }
