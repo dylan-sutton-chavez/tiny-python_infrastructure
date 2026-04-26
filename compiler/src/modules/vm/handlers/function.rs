@@ -1,6 +1,7 @@
 // vm/handlers/function.rs
 
 use super::*;
+use crate::alloc::string::ToString;
 
 impl<'a> VM<'a> {
     pub(crate) fn handle_function(
