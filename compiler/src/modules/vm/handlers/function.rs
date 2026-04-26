@@ -275,6 +275,126 @@ impl<'a> VM<'a> {
                 self.push(val);
                 Ok(())
             }
+            StrUpper => {
+                let s = self.recv_str(recv)?;
+                let val = self.heap.alloc(HeapObj::Str(s.to_uppercase()))?;
+                self.push(val);
+                Ok(())
+            }
+            StrLower => {
+                let s = self.recv_str(recv)?;
+                let val = self.heap.alloc(HeapObj::Str(s.to_lowercase()))?;
+                self.push(val);
+                Ok(())
+            }
+            StrStrip => {
+                let s = self.recv_str(recv)?;
+                let val = self.heap.alloc(HeapObj::Str(s.trim().to_string()))?;
+                self.push(val);
+                Ok(())
+            }
+            StrSplit => {
+                let s = self.recv_str(recv)?;
+                let parts: Vec<Val> = if positional.is_empty() {
+                    s.split_whitespace()
+                        .map(|p| self.heap.alloc(HeapObj::Str(p.to_string())))
+                        .collect::<Result<_, _>>()?
+                } else {
+                    let sep = self.val_to_str(positional[0])?;
+                    s.split(sep.as_str())
+                        .map(|p| self.heap.alloc(HeapObj::Str(p.to_string())))
+                        .collect::<Result<_, _>>()?
+                };
+                let val = self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(parts))))?;
+                self.push(val);
+                Ok(())
+            }
+            StrJoin => {
+                let sep = self.recv_str(recv)?;
+                if positional.len() != 1 {
+                    return Err(VmErr::Type("join() takes exactly one argument"));
+                }
+                let items = match self.heap.get(positional[0]) {
+                    HeapObj::List(rc)  => rc.borrow().clone(),
+                    HeapObj::Tuple(v)  => v.clone(),
+                    _ => return Err(VmErr::Type("join() argument must be iterable")),
+                };
+                let mut parts: Vec<String> = Vec::with_capacity(items.len());
+                for v in items {
+                    parts.push(self.val_to_str(v)?);
+                }
+                let val = self.heap.alloc(HeapObj::Str(parts.join(sep.as_str())))?;
+                self.push(val);
+                Ok(())
+            }
+            StrReplace => {
+                if positional.len() != 2 {
+                    return Err(VmErr::Type("replace() takes exactly 2 arguments"));
+                }
+                let s   = self.recv_str(recv)?;
+                let old = self.val_to_str(positional[0])?;
+                let new = self.val_to_str(positional[1])?;
+                let val = self.heap.alloc(HeapObj::Str(s.replace(old.as_str(), new.as_str())))?;
+                self.push(val);
+                Ok(())
+            }
+            StrStartswith => {
+                if positional.len() != 1 {
+                    return Err(VmErr::Type("startswith() takes exactly one argument"));
+                }
+                let s      = self.recv_str(recv)?;
+                let prefix = self.val_to_str(positional[0])?;
+                self.push(Val::bool(s.starts_with(prefix.as_str())));
+                Ok(())
+            }
+            StrEndswith => {
+                if positional.len() != 1 {
+                    return Err(VmErr::Type("endswith() takes exactly one argument"));
+                }
+                let s      = self.recv_str(recv)?;
+                let suffix = self.val_to_str(positional[0])?;
+                self.push(Val::bool(s.ends_with(suffix.as_str())));
+                Ok(())
+            }
+            StrFind => {
+                if positional.len() != 1 {
+                    return Err(VmErr::Type("find() takes exactly one argument"));
+                }
+                let s   = self.recv_str(recv)?;
+                let sub = self.val_to_str(positional[0])?;
+                let idx = s.find(sub.as_str())
+                    .map(|i| s[..i].chars().count() as i64)
+                    .unwrap_or(-1);
+                self.push(Val::int(idx));
+                Ok(())
+            }
+            StrCount => {
+                if positional.len() != 1 {
+                    return Err(VmErr::Type("count() takes exactly one argument"));
+                }
+                let s   = self.recv_str(recv)?;
+                let sub = self.val_to_str(positional[0])?;
+                let n   = s.matches(sub.as_str()).count() as i64;
+                self.push(Val::int(n));
+                Ok(())
+            }
         }
     }
+
+    // Extracts the string content from a Str receiver.
+    fn recv_str(&self, recv: Val) -> Result<String, VmErr> {
+        match self.heap.get(recv) {
+            HeapObj::Str(s) => Ok(s.clone()),
+            _ => Err(VmErr::Type("method requires a string receiver")),
+        }
+    }
+
+    // Converts a Val to String for use as a method argument.
+    fn val_to_str(&self, v: Val) -> Result<String, VmErr> {
+        match self.heap.get(v) {
+            HeapObj::Str(s) => Ok(s.clone()),
+            _ => Err(VmErr::Type("argument must be a string")),
+        }
+    }
+    
 }

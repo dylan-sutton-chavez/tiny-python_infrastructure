@@ -469,6 +469,16 @@ pub enum BuiltinMethodId {
     DictKeys,
     DictValues,
     DictItems,
+    StrUpper,
+    StrLower,
+    StrStrip,
+    StrSplit,
+    StrJoin,
+    StrReplace,
+    StrStartswith,
+    StrEndswith,
+    StrFind,
+    StrCount,
 }
 
 /*

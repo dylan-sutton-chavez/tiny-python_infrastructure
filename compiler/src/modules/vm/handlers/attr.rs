@@ -12,10 +12,20 @@ impl<'a> VM<'a> {
         let obj = self.pop()?;
 
         let method_id = match (self.type_name(obj), name.as_str()) {
-            ("list", "append") => BuiltinMethodId::ListAppend,
-            ("dict", "keys")   => BuiltinMethodId::DictKeys,
-            ("dict", "values") => BuiltinMethodId::DictValues,
-            ("dict", "items")  => BuiltinMethodId::DictItems,
+            ("list", "append")      => BuiltinMethodId::ListAppend,
+            ("dict", "keys")        => BuiltinMethodId::DictKeys,
+            ("dict", "values")      => BuiltinMethodId::DictValues,
+            ("dict", "items")       => BuiltinMethodId::DictItems,
+            ("str", "upper")        => BuiltinMethodId::StrUpper,
+            ("str", "lower")        => BuiltinMethodId::StrLower,
+            ("str", "strip")        => BuiltinMethodId::StrStrip,
+            ("str", "split")        => BuiltinMethodId::StrSplit,
+            ("str", "join")         => BuiltinMethodId::StrJoin,
+            ("str", "replace")      => BuiltinMethodId::StrReplace,
+            ("str", "startswith")   => BuiltinMethodId::StrStartswith,
+            ("str", "endswith")     => BuiltinMethodId::StrEndswith,
+            ("str", "find")         => BuiltinMethodId::StrFind,
+            ("str", "count")        => BuiltinMethodId::StrCount,
             (ty, attr) => {
                 return Err(attr_not_found(ty, attr));
             }

@@ -349,5 +349,15 @@
   {"src": "print('abcde'[3:0:-1])", "output": ["dcb"], "result": "None"},
   {"src": "for a, *b in [[1,2,3],[4,5,6]]:\n    print(a, b)", "output": ["1 [2, 3]", "4 [5, 6]"], "result": "None"},
   {"src": "try:\n    x = 1/0\nexcept ZeroDivisionError as e:\n    print('caught')", "output": ["caught"], "result": "None"},
-  {"src": "f = lambda x, y=10: x + y\nprint(f(5))\nprint(f(5, 1))", "output": ["15", "6"], "result": "None"}
+  {"src": "f = lambda x, y=10: x + y\nprint(f(5))\nprint(f(5, 1))", "output": ["15", "6"], "result": "None"},
+  {"src": "print('hello'.upper())", "output": ["HELLO"], "result": "None"},
+  {"src": "print('HELLO'.lower())", "output": ["hello"], "result": "None"},
+  {"src": "print('  hi  '.strip())", "output": ["hi"], "result": "None"},
+  {"src": "print('a,b,c'.split(','))", "output": ["['a', 'b', 'c']"], "result": "None"},
+  {"src": "print(','.join(['a','b','c']))", "output": ["a,b,c"], "result": "None"},
+  {"src": "print('hello'.replace('l','r'))", "output": ["herro"], "result": "None"},
+  {"src": "print('hello'.startswith('he'))", "output": ["True"], "result": "None"},
+  {"src": "print('hello'.endswith('lo'))", "output": ["True"], "result": "None"},
+  {"src": "print('hello'.find('ll'))", "output": ["2"], "result": "None"},
+  {"src": "print('hello'.count('l'))", "output": ["2"], "result": "None"}
 ]
