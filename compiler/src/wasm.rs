@@ -80,7 +80,7 @@ mod tests {
     #[test]
     fn vm_cases() {
         let cases: Vec<Case> = serde_json::from_str(
-            include_str!("../tests/cases/vm_cases.json")
+            include_str!("../tests/cases/vm.json")
         ).expect("invalid JSON");
 
         for case in cases {
