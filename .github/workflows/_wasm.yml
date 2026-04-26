@@ -32,8 +32,15 @@ jobs:
             | tar -xz --strip-components=2 -C /usr/local/bin binaryen-version_121/bin/wasm-opt
           wasm-opt --version
 
-      - name: Run Clippy
-        run: cargo +nightly clippy --lib --target wasm32-unknown-unknown --features wasm -- -D warnings
+      - name: Build
+        run: |
+          RUSTFLAGS="-Z location-detail=none -Z fmt-debug=none -Z unstable-options -C panic=immediate-abort" \
+          cargo +nightly build \
+            --target wasm32-unknown-unknown \
+            --features wasm \
+            --lib \
+            --release \
+            -Z build-std=core,alloc,panic_abort
         working-directory: compiler
 
       - name: Size (unoptimized)
