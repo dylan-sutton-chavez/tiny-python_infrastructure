@@ -378,6 +378,154 @@ impl<'a> VM<'a> {
                 self.push(Val::int(n));
                 Ok(())
             }
+            ListSort => {
+                if !positional.is_empty() {
+                    return Err(VmErr::Type("sort() takes no arguments"));
+                }
+                let items = match self.heap.get(recv) {
+                    HeapObj::List(rc) => rc.borrow().clone(),
+                    _ => return Err(VmErr::Type("sort: receiver is not a list")),
+                };
+                let mut sorted = items;
+                let mut sort_err: Option<VmErr> = None;
+                sorted.sort_by(|&a, &b| {
+                    if sort_err.is_some() { return core::cmp::Ordering::Equal; }
+                    match self.lt_vals(a, b) {
+                        Ok(true)  => core::cmp::Ordering::Less,
+                        Ok(false) => match self.lt_vals(b, a) {
+                            Ok(true)  => core::cmp::Ordering::Greater,
+                            Ok(false) => core::cmp::Ordering::Equal,
+                            Err(e)    => { sort_err = Some(e); core::cmp::Ordering::Equal }
+                        },
+                        Err(e) => { sort_err = Some(e); core::cmp::Ordering::Equal }
+                    }
+                });
+                if let Some(e) = sort_err { return Err(e); }
+                match self.heap.get_mut(recv) {
+                    HeapObj::List(rc) => *rc.borrow_mut() = sorted,
+                    _ => return Err(VmErr::Type("sort: receiver is not a list")),
+                }
+                self.mark_impure();
+                self.push(Val::none());
+                Ok(())
+            }
+            ListReverse => {
+                if !positional.is_empty() {
+                    return Err(VmErr::Type("reverse() takes no arguments"));
+                }
+                match self.heap.get_mut(recv) {
+                    HeapObj::List(rc) => rc.borrow_mut().reverse(),
+                    _ => return Err(VmErr::Type("reverse: receiver is not a list")),
+                }
+                self.mark_impure();
+                self.push(Val::none());
+                Ok(())
+            }
+            ListPop => {
+                if positional.len() > 1 {
+                    return Err(VmErr::Type("pop() takes at most one argument"));
+                }
+                let popped = match self.heap.get_mut(recv) {
+                    HeapObj::List(rc) => {
+                        let mut b = rc.borrow_mut();
+                        if b.is_empty() {
+                            return Err(VmErr::Value("pop from empty list"));
+                        }
+                        if positional.is_empty() {
+                            b.pop().unwrap()
+                        } else {
+                            if !positional[0].is_int() {
+                                return Err(VmErr::Type("list indices must be integers"));
+                            }
+                            let i = positional[0].as_int();
+                            let ui = if i < 0 { (b.len() as i64 + i) as usize } else { i as usize };
+                            if ui >= b.len() {
+                                return Err(VmErr::Value("pop index out of range"));
+                            }
+                            b.remove(ui)
+                        }
+                    }
+                    _ => return Err(VmErr::Type("pop: receiver is not a list")),
+                };
+                self.mark_impure();
+                self.push(popped);
+                Ok(())
+            }
+            ListInsert => {
+                if positional.len() != 2 {
+                    return Err(VmErr::Type("insert() takes exactly 2 arguments"));
+                }
+                if !positional[0].is_int() {
+                    return Err(VmErr::Type("list indices must be integers"));
+                }
+                let item = positional[1];
+                match self.heap.get_mut(recv) {
+                    HeapObj::List(rc) => {
+                        let mut b = rc.borrow_mut();
+                        let i  = positional[0].as_int();
+                        let ui = if i < 0 {
+                            (b.len() as i64 + i).max(0) as usize
+                        } else {
+                            (i as usize).min(b.len())
+                        };
+                        b.insert(ui, item);
+                    }
+                    _ => return Err(VmErr::Type("insert: receiver is not a list")),
+                }
+                self.mark_impure();
+                self.push(Val::none());
+                Ok(())
+            }
+            ListRemove => {
+                if positional.len() != 1 {
+                    return Err(VmErr::Type("remove() takes exactly one argument"));
+                }
+                let target = positional[0];
+                let items = match self.heap.get(recv) {
+                    HeapObj::List(rc) => rc.borrow().clone(),
+                    _ => return Err(VmErr::Type("remove: receiver is not a list")),
+                };
+                let pos = items.iter()
+                    .position(|&v| eq_vals_with_heap(v, target, &self.heap))
+                    .ok_or(VmErr::Value("list.remove: value not found"))?;
+                match self.heap.get_mut(recv) {
+                    HeapObj::List(rc) => { rc.borrow_mut().remove(pos); }
+                    _ => return Err(VmErr::Type("remove: receiver is not a list")),
+                }
+                self.mark_impure();
+                self.push(Val::none());
+                Ok(())
+            }
+            ListIndex => {
+                if positional.len() != 1 {
+                    return Err(VmErr::Type("index() takes exactly one argument"));
+                }
+                let target = positional[0];
+                let idx = match self.heap.get(recv) {
+                    HeapObj::List(rc) => {
+                        rc.borrow().iter().position(|&v| eq_vals_with_heap(v, target, &self.heap))
+                            .map(|i| i as i64)
+                            .ok_or(VmErr::Value("value not found in list"))?
+                    }
+                    _ => return Err(VmErr::Type("index: receiver is not a list")),
+                };
+                self.push(Val::int(idx));
+                Ok(())
+            }
+            ListCount => {
+                if positional.len() != 1 {
+                    return Err(VmErr::Type("count() takes exactly one argument"));
+                }
+                let target = positional[0];
+                let n = match self.heap.get(recv) {
+                    HeapObj::List(rc) => {
+                        rc.borrow().iter().filter(|&&v| eq_vals_with_heap(v, target, &self.heap)).count() as i64
+                    }
+                    _ => return Err(VmErr::Type("count: receiver is not a list")),
+                };
+                self.push(Val::int(n));
+                Ok(())
+            }
         }
     }
 

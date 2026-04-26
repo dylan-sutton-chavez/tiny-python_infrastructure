@@ -359,5 +359,12 @@
   {"src": "print('hello'.startswith('he'))", "output": ["True"], "result": "None"},
   {"src": "print('hello'.endswith('lo'))", "output": ["True"], "result": "None"},
   {"src": "print('hello'.find('ll'))", "output": ["2"], "result": "None"},
-  {"src": "print('hello'.count('l'))", "output": ["2"], "result": "None"}
+  {"src": "print('hello'.count('l'))", "output": ["2"], "result": "None"},
+  {"src": "x = [3,1,2]\nx.sort()\nprint(x)", "output": ["[1, 2, 3]"], "result": "None"},
+  {"src": "x = [1,2,3]\nx.reverse()\nprint(x)", "output": ["[3, 2, 1]"], "result": "None"},
+  {"src": "x = [1,2,3]\nprint(x.pop())\nprint(x)", "output": ["3", "[1, 2]"], "result": "None"},
+  {"src": "x = [1,2,3]\nx.insert(1, 99)\nprint(x)", "output": ["[1, 99, 2, 3]"], "result": "None"},
+  {"src": "x = [1,2,2,3]\nx.remove(2)\nprint(x)", "output": ["[1, 2, 3]"], "result": "None"},
+  {"src": "print([1,2,3].index(2))", "output": ["1"], "result": "None"},
+  {"src": "print([1,2,2,3].count(2))", "output": ["2"], "result": "None"}
 ]

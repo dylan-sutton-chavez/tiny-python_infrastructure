@@ -479,6 +479,13 @@ pub enum BuiltinMethodId {
     StrEndswith,
     StrFind,
     StrCount,
+    ListSort,
+    ListReverse,
+    ListPop,
+    ListInsert,
+    ListRemove,
+    ListIndex,
+    ListCount,
 }
 
 /*

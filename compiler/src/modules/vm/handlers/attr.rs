@@ -26,6 +26,13 @@ impl<'a> VM<'a> {
             ("str", "endswith")     => BuiltinMethodId::StrEndswith,
             ("str", "find")         => BuiltinMethodId::StrFind,
             ("str", "count")        => BuiltinMethodId::StrCount,
+            ("list", "sort")        => BuiltinMethodId::ListSort,
+            ("list", "reverse")     => BuiltinMethodId::ListReverse,
+            ("list", "pop")         => BuiltinMethodId::ListPop,
+            ("list", "insert")      => BuiltinMethodId::ListInsert,
+            ("list", "remove")      => BuiltinMethodId::ListRemove,
+            ("list", "index")       => BuiltinMethodId::ListIndex,
+            ("list", "count")       => BuiltinMethodId::ListCount,
             (ty, attr) => {
                 return Err(attr_not_found(ty, attr));
             }
