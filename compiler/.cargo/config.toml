@@ -4,8 +4,9 @@
 rustflags = [
     "-Zlocation-detail=none",
     "-Zfmt-debug=none",
+    "-Zunstable-options",
+    "-Cpanic=immediate-abort",
 ]
 
 [unstable]
 build-std = ["core", "alloc", "panic_abort"]
-build-std-features = ["panic_immediate_abort"]
