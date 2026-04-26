@@ -62,8 +62,8 @@ macro_rules! def_super {
     ) => {
         $(#[$meta])*
         #[inline(never)]
-        #[allow(improper_ctypes_definitions)]
-        $vis extern "C" fn $name($($arg: $ty),*) -> $ret $body
+        #[cold]
+        $vis fn $name($($arg: $ty),*) -> $ret $body
     };
 }
 
