@@ -40,7 +40,7 @@ jobs:
             --features wasm \
             --lib \
             --release \
-            -Z build-std=core,alloc,panic_abort
+            -Z build-std=std,panic_abort
         working-directory: compiler
 
       - name: Size (unoptimized)
