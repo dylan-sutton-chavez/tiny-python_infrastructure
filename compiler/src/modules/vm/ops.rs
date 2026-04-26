@@ -121,47 +121,7 @@ impl<'a> VM<'a> {
             HeapObj::BigInt(b) => b.to_decimal(),
             HeapObj::Type(name) => format!("<class '{}'>", name),
             HeapObj::Func(i, _, _) => format!("<function {}>", i),
-            HeapObj::BoundMethod(_, id) => match id {
-                BuiltinMethodId::ListAppend    => "<built-in method append>".into(),
-                BuiltinMethodId::DictKeys      => "<built-in method keys>".into(),
-                BuiltinMethodId::DictValues    => "<built-in method values>".into(),
-                BuiltinMethodId::DictItems     => "<built-in method items>".into(),
-                BuiltinMethodId::StrUpper      => "<built-in method upper>".into(),
-                BuiltinMethodId::StrLower      => "<built-in method lower>".into(),
-                BuiltinMethodId::StrStrip      => "<built-in method strip>".into(),
-                BuiltinMethodId::StrSplit      => "<built-in method split>".into(),
-                BuiltinMethodId::StrJoin       => "<built-in method join>".into(),
-                BuiltinMethodId::StrReplace    => "<built-in method replace>".into(),
-                BuiltinMethodId::StrStartswith => "<built-in method startswith>".into(),
-                BuiltinMethodId::StrEndswith   => "<built-in method endswith>".into(),
-                BuiltinMethodId::StrFind       => "<built-in method find>".into(),
-                BuiltinMethodId::StrCount       => "<built-in method count>".into(),
-                BuiltinMethodId::ListSort       => "<built-in method sort>".into(),
-                BuiltinMethodId::ListReverse    => "<built-in method reverse>".into(),
-                BuiltinMethodId::ListPop        => "<built-in method pop>".into(),
-                BuiltinMethodId::ListInsert     => "<built-in method insert>".into(),
-                BuiltinMethodId::ListRemove     => "<built-in method remove>".into(),
-                BuiltinMethodId::ListIndex      => "<built-in method index>".into(),
-                BuiltinMethodId::ListCount      => "<built-in method count>".into(),
-                BuiltinMethodId::DictGet        => "<built-in method get>".into(),
-                BuiltinMethodId::DictUpdate     => "<built-in method update>".into(),
-                BuiltinMethodId::DictPop        => "<built-in method pop>".into(),
-                BuiltinMethodId::DictSetDefault => "<built-in method setdefault>".into(),
-                BuiltinMethodId::StrLstrip      => "<built-in method lstrip>".into(),
-                BuiltinMethodId::StrRstrip      => "<built-in method rstrip>".into(),
-                BuiltinMethodId::StrIsDigit     => "<built-in method isdigit>".into(),
-                BuiltinMethodId::StrIsAlpha     => "<built-in method isalpha>".into(),
-                BuiltinMethodId::StrIsAlnum     => "<built-in method isalnum>".into(),
-                BuiltinMethodId::StrCapitalize  => "<built-in method capitalize>".into(),
-                BuiltinMethodId::StrTitle       => "<built-in method title>".into(),
-                BuiltinMethodId::StrCenter      => "<built-in method center>".into(),
-                BuiltinMethodId::StrZfill       => "<built-in method zfill>".into(),
-                BuiltinMethodId::ListExtend     => "<built-in method extend>".into(),
-                BuiltinMethodId::ListClear      => "<built-in method clear>".into(),
-                BuiltinMethodId::ListCopy       => "<built-in method copy>".into(),                
-            },
-            HeapObj::Slice(s, e, st) => format!("slice({}, {}, {})",
-                self.display(*s), self.display(*e), self.display(*st)),
+            HeapObj::Slice(s, e, st) => format!("slice({}, {}, {})", self.display(*s), self.display(*e), self.display(*st)),
             HeapObj::Range(s, e, st) => if *st == 1 {
                 format!("range({}, {})", s, e)
             } else {
@@ -173,9 +133,8 @@ impl<'a> VM<'a> {
             } else {
                 format!("({})", self.join_reprs(t.iter()))
             },
-            HeapObj::Dict(d) => format!("{{{}}}", d.borrow().iter()
-                .map(|(k, v)| format!("{}: {}", self.repr(k), self.repr(v)))
-                .collect::<Vec<_>>().join(", ")),
+            HeapObj::Dict(d) => format!("{{{}}}", d.borrow().iter().map(|(k, v)| format!("{}: {}", self.repr(k), self.repr(v))).collect::<Vec<_>>().join(", ")),
+            HeapObj::BoundMethod(_, id) => format!("<built-in method {}>", id.name()),
             HeapObj::Set(s) => {
                 let mut items: Vec<Val> = s.borrow().iter().cloned().collect();
                 if items.is_empty() { return "set()".into(); }
