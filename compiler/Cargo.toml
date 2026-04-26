@@ -21,11 +21,12 @@ path = "src/main.rs"
 name = "tests"
 path = "tests/main.rs"
 
+[dependencies]
 hashbrown = { version = "0.15", default-features = false }
-log = "0.4" # Se mantiene aquí para que el código compile siempre
-lol_alloc = { version = "0.4", optional = true }
 itoa = "1"
 ryu = "1"
+log = "0.4"
+lol_alloc = { version = "0.4", optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.11"
@@ -38,13 +39,13 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 hashbrown = { version = "0.15", default-features = false, features = ["serde"] }
 
+[features]
+wasm = ["lol_alloc"]
+wasm-tests = []
+
 [profile.release]
 opt-level = "z"
 lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
-
-[features]
-wasm = ["lol_alloc"]
-wasm-tests = []
