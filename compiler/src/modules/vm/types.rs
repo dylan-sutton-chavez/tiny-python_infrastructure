@@ -459,7 +459,13 @@ pub enum HeapObj {
     Range(i64, i64, i64),
     Slice(Val, Val, Val),
     Type(String),
-    BigInt(BigInt)
+    BigInt(BigInt),
+    BoundMethod(Val, BuiltinMethodId),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BuiltinMethodId {
+    ListAppend,
 }
 
 /*
@@ -602,6 +608,9 @@ impl HeapPool {
                         }
                     }
                 }
+                Some(HeapObj::BoundMethod(recv, _)) => {
+                    if recv.is_heap() { worklist.push(recv.as_heap()); }
+                }
                 _ => {}
             }
         }
@@ -671,6 +680,7 @@ impl HeapPool {
                     Some(HeapObj::Slice(..)) => 12,
                     Some(HeapObj::Type(_)) => 13,
                     Some(HeapObj::BigInt(_)) => 14,
+                    Some(HeapObj::BoundMethod(_, _)) => 15,
                     None => 0,
                 }
             } else { 0 }

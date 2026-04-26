@@ -78,6 +78,16 @@ impl<'a> VM<'a> {
 
         let callee = self.pop()?;
         if !callee.is_heap() { return Err(VmErr::Type("object is not callable")); }
+
+        // Bound methods short-circuit the user-function machinery.
+        // No SSA frame, no template cache, no recursion budget — they
+        // mutate the receiver directly and push the result.
+        if let HeapObj::BoundMethod(recv, id) = self.heap.get(callee) {
+            let recv = *recv;
+            let id = *id;
+            return self.exec_bound_method(recv, id, positional, kw_flat);
+        }
+
         let (fi, captured_defaults) = match self.heap.get(callee) {
             HeapObj::Func(i, d) => (*i, d.clone()),
             _ => return Err(VmErr::Type("object is not callable")),
@@ -92,7 +102,7 @@ impl<'a> VM<'a> {
         self.depth += 1;
         let (params, body, _defaults, name_idx) = self.functions[fi];
         let name_idx = *name_idx;
-        
+
         let mut fn_slots = self.fill_builtins(&body.names);
 
         let mut body_map: HashMap<&str, usize> =
@@ -192,5 +202,37 @@ impl<'a> VM<'a> {
             self.push(result);
         }
         Ok(())
+    }
+
+    /// Bound-method dispatcher. Pure builtins go here; mutation marks
+    /// the caller's frame impure so memoization deopts correctly.
+    fn exec_bound_method(
+        &mut self,
+        recv: Val,
+        id: crate::modules::vm::types::BuiltinMethodId,
+        positional: Vec<Val>,
+        kw_flat: Vec<Val>,
+    ) -> Result<(), VmErr> {
+        use crate::modules::vm::types::BuiltinMethodId::*;
+
+        if !kw_flat.is_empty() {
+            return Err(VmErr::Type("builtin method takes no keyword arguments"));
+        }
+
+        match id {
+            ListAppend => {
+                if positional.len() != 1 {
+                    return Err(VmErr::Type("list.append() takes exactly one argument"));
+                }
+                let item = positional[0];
+                match self.heap.get_mut(recv) {
+                    HeapObj::List(rc) => rc.borrow_mut().push(item),
+                    _ => return Err(VmErr::Type("list.append: receiver is not a list")),
+                }
+                self.mark_impure();
+                self.push(Val::none());
+                Ok(())
+            }
+        }
     }
 }

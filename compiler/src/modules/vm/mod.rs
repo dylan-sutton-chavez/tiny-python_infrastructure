@@ -601,7 +601,8 @@ impl<'a> VM<'a> {
             | OpCode::Raise | OpCode::RaiseFrom | OpCode::Await | OpCode::YieldFrom => {
                 self.handle_side(ins.opcode, op, slots)?;
             }
-            OpCode::MakeClass | OpCode::LoadAttr | OpCode::StoreAttr
+            OpCode::LoadAttr => self.handle_load_attr(op, chunk)?,
+            OpCode::MakeClass | OpCode::StoreAttr
             | OpCode::SetupWith | OpCode::ExitWith | OpCode::UnpackArgs => {
                 return Err(unsupported(ins.opcode));
             }

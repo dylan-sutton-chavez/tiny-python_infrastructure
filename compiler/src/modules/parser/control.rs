@@ -229,24 +229,27 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.chunk.emit(OpCode::SetupExcept, 0);
         let setup = self.chunk.instructions.len() - 1;
 
-        self.enter_block();
-        self.compile_block();
+    self.enter_block();
+    self.compile_block();
 
-        // Try body succeeded: pop except frame, skip past all handlers.
-        self.chunk.emit(OpCode::PopExcept, 0);
-        self.chunk.emit(OpCode::Jump, 0);
-        let success_jump = self.chunk.instructions.len() - 1;
+    // Try body succeeded: pop except frame, skip past all handlers.
+    self.chunk.emit(OpCode::PopExcept, 0);
+    self.chunk.emit(OpCode::Jump, 0);
+    let success_jump = self.chunk.instructions.len() - 1;
 
-        // Handler region starts here. Stack on entry: [..., exception_str].
-        self.patch(setup);
+    // Snapshot try-branch SSA versions and reset to entry baseline so
+    // handlers compile with the same starting state as the try body
+    // (mirrors if/else: both branches see the same pre-block versions).
+    self.mid_block();
 
-        // Each except arm jumps to `end_jumps` after its body runs.
-        // Each typed except that doesn't match jumps to the next arm.
-        let mut end_jumps: Vec<usize> = Vec::new();
-        let mut next_arm_jump: Option<usize> = None;
-        let mut had_bare = false;
+    // Handler region starts here. Stack on entry: [..., exception_str].
+    self.patch(setup);
 
-        while self.eat_if(TokenType::Except) {
+    let mut end_jumps: Vec<usize> = Vec::new();
+    let mut next_arm_jump: Option<usize> = None;
+    let mut had_bare = false;
+
+    while self.eat_if(TokenType::Except) {
             // If a previous typed arm jumped here on no-match, patch it.
             if let Some(j) = next_arm_jump.take() {
                 self.patch(j);

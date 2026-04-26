@@ -53,7 +53,8 @@ impl<'a> VM<'a> {
             HeapObj::Range(s,e,st) => if *st > 0 { s < e } else { s > e },
             HeapObj::Type(_) => true,
             HeapObj::Func(_, _) => true,
-            HeapObj::Slice(..) => true
+            HeapObj::Slice(..) => true,
+            HeapObj::BoundMethod(..) => true,
         }
     }
 
@@ -86,6 +87,7 @@ impl<'a> VM<'a> {
             HeapObj::Type(_) => "type",
             HeapObj::Range(..) => "range",
             HeapObj::Slice(..) => "slice",
+            HeapObj::BoundMethod(..) => "builtin_function_or_method",
         }}
     }
 
@@ -119,6 +121,9 @@ impl<'a> VM<'a> {
             HeapObj::BigInt(b) => b.to_decimal(),
             HeapObj::Type(name) => format!("<class '{}'>", name),
             HeapObj::Func(i, _) => format!("<function {}>", i),
+            HeapObj::BoundMethod(_, id) => match id {
+                BuiltinMethodId::ListAppend => "<built-in method append>".into(),
+            },
             HeapObj::Slice(s, e, st) => format!("slice({}, {}, {})",
                 self.display(*s), self.display(*e), self.display(*st)),
             HeapObj::Range(s, e, st) => if *st == 1 {

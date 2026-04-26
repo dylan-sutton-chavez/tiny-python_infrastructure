@@ -4,6 +4,7 @@ pub(crate) mod arith;
 pub(crate) mod data;
 pub(crate) mod function;
 pub(crate) mod unsupported;
+pub(crate) mod attr;
 
 pub(super) use crate::modules::vm::{
     VM, Val, VmErr, HeapObj, DictMap, cache, ops,
