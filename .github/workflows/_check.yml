@@ -34,11 +34,14 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
         working-directory: compiler
 
-      # Lint for wasm target.
-      - name: Install wasm target
-        run: rustup target add wasm32-unknown-unknown
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: clippy
+
+      - name: Install wasm target (nightly)
+        run: rustup target add wasm32-unknown-unknown --toolchain nightly
         working-directory: compiler
 
       - name: Clippy (wasm)
-        run: cargo clippy --lib --target wasm32-unknown-unknown --features wasm -- -D warnings
-        working-directory: compiler
+        run: cargo +nightly clippy --lib --target wasm32-unknown-unknown --features wasm -- -D warnings
+        working-directory: compiler+
