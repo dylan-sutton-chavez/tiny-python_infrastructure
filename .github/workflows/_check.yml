@@ -44,4 +44,4 @@ jobs:
 
       - name: Clippy (wasm)
         run: cargo +nightly clippy --lib --target wasm32-unknown-unknown --features wasm -- -D warnings
-        working-directory: compiler+
+        working-directory: compiler
