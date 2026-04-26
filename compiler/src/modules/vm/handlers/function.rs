@@ -11,7 +11,7 @@ impl<'a> VM<'a> {
         match op {
             // User functions
             OpCode::Call => self.exec_call(operand, chunk, slots),
-            OpCode::MakeFunction | OpCode::MakeCoroutine => self.exec_make_function(operand, chunk),
+            OpCode::MakeFunction | OpCode::MakeCoroutine => self.exec_make_function(operand, chunk, slots),
 
             // Pure built-ins
             OpCode::CallLen => self.call_len(),
@@ -46,17 +46,35 @@ impl<'a> VM<'a> {
         }
     }
 
-    fn exec_make_function(&mut self, operand: u16, chunk: &SSAChunk) -> Result<(), VmErr> {
-        // `operand` is the local index in `chunk.functions`. Translate to the
-        // global id assigned during VM init so the resulting Func resolves
-        // correctly even after escaping its defining scope.
+    fn exec_make_function(&mut self, operand: u16, chunk: &SSAChunk, slots: &[Option<Val>]) -> Result<(), VmErr> {
         let global = self.fn_index
             .get(&(chunk as *const _))
             .and_then(|v| v.get(operand as usize).copied())
-            .ok_or(VmErr::Runtime("MakeFunction: unknown function index"))?;
-        let n_defaults = self.functions[global as usize].2 as usize;
+            .ok_or(VmErr::Runtime("MakeFunction: unknown function index"))? as usize;
+
+        let n_defaults = self.functions[global].2 as usize;
         let defaults = if n_defaults > 0 { self.pop_n(n_defaults)? } else { vec![] };
-        let val = self.heap.alloc(HeapObj::Func(global as usize, defaults))?;
+
+        // Build chunk name -> slot index map for capture lookup.
+        let chunk_map: HashMap<&str, usize> = chunk.names.iter()
+            .enumerate().map(|(i, n)| (n.as_str(), i)).collect();
+
+        // Capture free variables from the enclosing frame at function-creation time.
+        let (params, body, _, _) = self.functions[global];
+        let param_names: alloc::collections::BTreeSet<String> = params.iter()
+            .map(|p| format!("{}_0", p.trim_start_matches('*')))
+            .collect();
+        let mut captures: Vec<(usize, Val)> = Vec::new();
+        for (bi, bname) in body.names.iter().enumerate() {
+            if param_names.contains(bname.as_str()) { continue; }
+            if let Some(&si) = chunk_map.get(bname.as_str()) {
+                if let Some(Some(v)) = slots.get(si) {
+                    captures.push((bi, *v));
+                }
+            }
+        }
+
+        let val = self.heap.alloc(HeapObj::Func(global, defaults, captures))?;
         self.push(val);
         Ok(())
     }
@@ -89,8 +107,8 @@ impl<'a> VM<'a> {
             return self.exec_bound_method(recv, id, positional, kw_flat);
         }
 
-        let (fi, captured_defaults) = match self.heap.get(callee) {
-            HeapObj::Func(i, d) => (*i, d.clone()),
+        let (fi, captured_defaults, captured_env) = match self.heap.get(callee) {
+            HeapObj::Func(i, d, c) => (*i, d.clone(), c.clone()),
             _ => return Err(VmErr::Type("object is not callable")),
         };
 
@@ -165,6 +183,26 @@ impl<'a> VM<'a> {
                         fn_slots[s] = Some(dv);
                     }
                 }
+            }
+        }
+
+        // Apply captured environment from function-creation time (closures).
+        // Skip nonlocal variables — they must always come from the live enclosing
+        // scope (handled below) so that mutations between calls are visible.
+        let nonlocal_body_slots: alloc::collections::BTreeSet<usize> = body.nonlocals.iter()
+            .flat_map(|base| {
+                body.names.iter().enumerate().filter_map(|(i, n)| {
+                    n.rfind('_').filter(|&p| n[p+1..].parse::<u32>().is_ok())
+                        .filter(|&p| &n[..p] == base.as_str())
+                        .map(|_| i)
+                })
+            })
+            .collect();
+
+        for (bi, val) in &captured_env {
+            if nonlocal_body_slots.contains(bi) { continue; }
+            if *bi < fn_slots.len() && fn_slots[*bi].is_none() {
+                fn_slots[*bi] = Some(*val);
             }
         }
 
@@ -555,7 +593,7 @@ impl<'a> VM<'a> {
                 self.push(Val::int(idx));
                 Ok(())
             }
-ListCount => {
+            ListCount => {
                 if positional.len() != 1 {
                     return Err(VmErr::Type("count() takes exactly one argument"));
                 }
@@ -624,6 +662,132 @@ ListCount => {
                 self.mark_impure();
                 self.push(result);
                 Ok(())
+            }
+            DictSetDefault => {
+                if positional.is_empty() {
+                    return Err(VmErr::Type("setdefault() requires at least one argument"));
+                }
+                let key = positional[0];
+                let default = if positional.len() > 1 { positional[1] } else { Val::none() };
+                let result = match self.heap.get_mut(recv) {
+                    HeapObj::Dict(rc) => {
+                        let already = rc.borrow().get(&key).copied();
+                        if let Some(v) = already { v } else {
+                            rc.borrow_mut().insert(key, default);
+                            default
+                        }
+                    }
+                    _ => return Err(VmErr::Type("setdefault: receiver is not a dict")),
+                };
+                self.mark_impure();
+                self.push(result);
+                Ok(())
+            }
+            StrLstrip => {
+                let s = self.recv_str(recv)?;
+                let result = if positional.is_empty() { s.trim_start().to_string() }
+                    else { let p = self.val_to_str(positional[0])?; s.trim_start_matches(|c| p.contains(c)).to_string() };
+                let val = self.heap.alloc(HeapObj::Str(result))?;
+                self.push(val); Ok(())
+            }
+            StrRstrip => {
+                let s = self.recv_str(recv)?;
+                let result = if positional.is_empty() { s.trim_end().to_string() }
+                    else { let p = self.val_to_str(positional[0])?; s.trim_end_matches(|c| p.contains(c)).to_string() };
+                let val = self.heap.alloc(HeapObj::Str(result))?;
+                self.push(val); Ok(())
+            }
+            StrIsDigit => {
+                let s = self.recv_str(recv)?;
+                self.push(Val::bool(!s.is_empty() && s.chars().all(|c| c.is_ascii_digit())));
+                Ok(())
+            }
+            StrIsAlpha => {
+                let s = self.recv_str(recv)?;
+                self.push(Val::bool(!s.is_empty() && s.chars().all(|c| c.is_alphabetic())));
+                Ok(())
+            }
+            StrIsAlnum => {
+                let s = self.recv_str(recv)?;
+                self.push(Val::bool(!s.is_empty() && s.chars().all(|c| c.is_alphanumeric())));
+                Ok(())
+            }
+            StrCapitalize => {
+                let s = self.recv_str(recv)?;
+                let result = if s.is_empty() { s } else {
+                    let mut cs = s.chars();
+                    cs.next().unwrap().to_uppercase().to_string() + &cs.as_str().to_lowercase()
+                };
+                let val = self.heap.alloc(HeapObj::Str(result))?;
+                self.push(val); Ok(())
+            }
+            StrTitle => {
+                let s = self.recv_str(recv)?;
+                let result = s.split_whitespace()
+                    .map(|w| { let mut cs = w.chars(); cs.next().map(|c| c.to_uppercase().to_string() + cs.as_str()).unwrap_or_default() })
+                    .collect::<Vec<_>>().join(" ");
+                let val = self.heap.alloc(HeapObj::Str(result))?;
+                self.push(val); Ok(())
+            }
+            StrCenter => {
+                if positional.is_empty() { return Err(VmErr::Type("center() requires at least one argument")); }
+                let s = self.recv_str(recv)?;
+                if !positional[0].is_int() { return Err(VmErr::Type("center() width must be an integer")); }
+                let width = positional[0].as_int() as usize;
+                let fill = if positional.len() > 1 { self.val_to_str(positional[1])?.chars().next().unwrap_or(' ') } else { ' ' };
+                let pad = width.saturating_sub(s.len());
+                let left = pad / 2;
+                let right = pad - left;
+                let result = fill.to_string().repeat(left) + &s + &fill.to_string().repeat(right);
+                let val = self.heap.alloc(HeapObj::Str(result))?;
+                self.push(val); Ok(())
+            }
+            StrZfill => {
+                if positional.is_empty() || !positional[0].is_int() {
+                    return Err(VmErr::Type("zfill() requires an integer argument"));
+                }
+                let s = self.recv_str(recv)?;
+                let width = positional[0].as_int() as usize;
+                let result = if s.len() >= width { s } else {
+                    let pad = "0".repeat(width - s.len());
+                    if s.starts_with('+') || s.starts_with('-') {
+                        s[..1].to_string() + &pad + &s[1..]
+                    } else { pad + &s }
+                };
+                let val = self.heap.alloc(HeapObj::Str(result))?;
+                self.push(val); Ok(())
+            }
+            ListExtend => {
+                if positional.len() != 1 { return Err(VmErr::Type("extend() takes exactly one argument")); }
+                let items: Vec<Val> = if positional[0].is_heap() {
+                    match self.heap.get(positional[0]) {
+                        HeapObj::List(rc) => rc.borrow().clone(),
+                        HeapObj::Tuple(v) => v.clone(),
+                        _ => return Err(VmErr::Type("extend() argument must be iterable")),
+                    }
+                } else { return Err(VmErr::Type("extend() argument must be iterable")); };
+                match self.heap.get_mut(recv) {
+                    HeapObj::List(rc) => rc.borrow_mut().extend_from_slice(&items),
+                    _ => return Err(VmErr::Type("extend: receiver is not a list")),
+                }
+                self.mark_impure();
+                self.push(Val::none()); Ok(())
+            }
+            ListClear => {
+                match self.heap.get_mut(recv) {
+                    HeapObj::List(rc) => rc.borrow_mut().clear(),
+                    _ => return Err(VmErr::Type("clear: receiver is not a list")),
+                }
+                self.mark_impure();
+                self.push(Val::none()); Ok(())
+            }
+            ListCopy => {
+                let items = match self.heap.get(recv) {
+                    HeapObj::List(rc) => rc.borrow().clone(),
+                    _ => return Err(VmErr::Type("copy: receiver is not a list")),
+                };
+                let val = self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(items))))?;
+                self.push(val); Ok(())
             }
         }
     }

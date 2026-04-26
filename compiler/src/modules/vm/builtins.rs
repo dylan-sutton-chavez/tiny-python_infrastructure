@@ -117,6 +117,7 @@ impl<'a> VM<'a> {
     pub fn call_float(&mut self) -> Result<(), VmErr> {
         let o = self.pop()?;
         let f = if o.is_float() { o.as_float() }
+            else if o.is_bool() { o.as_bool() as i64 as f64 }
             else if o.is_int() { o.as_int() as f64 }
             else if o.is_heap() { match self.heap.get(o) {
                 HeapObj::Str(s) => s.trim().parse().map_err(|_| VmErr::Value("float(): invalid literal"))?,
@@ -273,6 +274,16 @@ impl<'a> VM<'a> {
 
     pub fn call_list(&mut self) -> Result<(), VmErr> {
         let o = self.pop()?;
+        // Str needs char allocation — handle before extract_iterable_full.
+        if o.is_heap() {
+            if let HeapObj::Str(s) = self.heap.get(o) {
+                let s = s.clone();
+                let items = self.str_to_char_vals(&s)?;
+                let val = self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(items))))?;
+                self.push(val);
+                return Ok(());
+            }
+        }
         let items = self.extract_iterable_full(o)?;
         let val = self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(items))))?;
         self.push(val); Ok(())
@@ -429,6 +440,15 @@ impl<'a> VM<'a> {
                 if step > 0 { while cur < end { v.push(Val::int(cur)); cur += step; } }
                 else { while cur > end { v.push(Val::int(cur)); cur += step; } }
                 v
+            }
+            HeapObj::Str(s) => {
+                let s = s.clone();
+                drop(s);
+                let s = match self.heap.get(o) { HeapObj::Str(s) => s.clone(), _ => unreachable!() };
+                s.chars().map(|c| {
+                    // Can't alloc here — caller must handle
+                    Val::int(c as i64)
+                }).collect()
             }
             _ => return Err(VmErr::Type("list() argument must be iterable")),
         })

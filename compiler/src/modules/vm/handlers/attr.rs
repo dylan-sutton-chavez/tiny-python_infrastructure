@@ -36,6 +36,19 @@ impl<'a> VM<'a> {
             ("dict", "get")         => BuiltinMethodId::DictGet,
             ("dict", "update")      => BuiltinMethodId::DictUpdate,
             ("dict", "pop")         => BuiltinMethodId::DictPop,
+            ("dict", "setdefault")  => BuiltinMethodId::DictSetDefault,
+            ("str", "lstrip")       => BuiltinMethodId::StrLstrip,
+            ("str", "rstrip")       => BuiltinMethodId::StrRstrip,
+            ("str", "isdigit")      => BuiltinMethodId::StrIsDigit,
+            ("str", "isalpha")      => BuiltinMethodId::StrIsAlpha,
+            ("str", "isalnum")      => BuiltinMethodId::StrIsAlnum,
+            ("str", "capitalize")   => BuiltinMethodId::StrCapitalize,
+            ("str", "title")        => BuiltinMethodId::StrTitle,
+            ("str", "center")       => BuiltinMethodId::StrCenter,
+            ("str", "zfill")        => BuiltinMethodId::StrZfill,
+            ("list", "extend")      => BuiltinMethodId::ListExtend,
+            ("list", "clear")       => BuiltinMethodId::ListClear,
+            ("list", "copy")        => BuiltinMethodId::ListCopy,
             (ty, attr) => {
                 return Err(attr_not_found(ty, attr));
             }

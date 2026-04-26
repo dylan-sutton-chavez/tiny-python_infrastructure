@@ -418,11 +418,28 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
         self.eat(TokenType::Colon);
 
+        // Capture outer scope versions so free variables (e.g. `n` from enclosing
+        // function) resolve correctly inside the lambda body.
+        let outer_versions = self.ssa_versions.clone();
+
         let body = self.with_fresh_chunk(|s| {
+            // Seed with outer scope first, then params override (params shadow outer names).
+            s.ssa_versions = outer_versions;
             for p in &params { s.ssa_versions.insert(p.clone(), 0); }
             s.expr();
             s.chunk.emit(OpCode::ReturnValue, 0);
         });
+        // Ensure free variables used inside the lambda appear in the outer chunk's
+        // name table so exec_make_function can find their slot indices for capture.
+        let param_slots: alloc::collections::BTreeSet<String> = params.iter()
+            .map(|p| format!("{}_0", p.trim_start_matches('*')))
+            .collect();
+        for name in &body.names {
+            if !param_slots.contains(name.as_str()) {
+                self.chunk.push_name(name);
+            }
+        }
+
         let fi = self.chunk.functions.len() as u16;
         self.chunk.functions.push((params, body, defaults, u16::MAX));
         self.chunk.emit(OpCode::MakeFunction, fi);
