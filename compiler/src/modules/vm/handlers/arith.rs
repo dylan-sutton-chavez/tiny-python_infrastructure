@@ -167,14 +167,6 @@ impl<'a> VM<'a> {
 
     pub(crate) fn handle_logic(&mut self, op: OpCode) -> Result<(), VmErr> {
         match op {
-            OpCode::And => {
-                let (a, b) = self.pop2()?;
-                self.push(if self.truthy(a) { b } else { a });
-            }
-            OpCode::Or => {
-                let (a, b) = self.pop2()?;
-                self.push(if self.truthy(a) { a } else { b });
-            }
             OpCode::Not => {
                 let v = self.pop()?;
                 self.push(Val::bool(!self.truthy(v)));

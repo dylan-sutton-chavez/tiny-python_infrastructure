@@ -90,6 +90,17 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             let Some((l_bp, r_bp, op)) = Self::binding_power(&tok) else { break };
             if l_bp < min_bp { break; }
             self.advance();
+
+            // Short-circuit: peek-and-jump preserves the actual value (Python semantics).
+            if matches!(op, OpCode::And | OpCode::Or) {
+                let jump_op = if op == OpCode::And { OpCode::JumpIfFalseOrPop } else { OpCode::JumpIfTrueOrPop };
+                self.chunk.emit(jump_op, 0);
+                let jmp = self.chunk.instructions.len() - 1;
+                self.expr_bp(r_bp);
+                self.patch(jmp);
+                continue;
+            }
+
             self.expr_bp(r_bp);
             self.chunk.emit(op, 0);
         }
@@ -131,17 +142,21 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         match self.peek() {
             Some(TokenType::Minus) => {
                 self.advance();
-                self.parse_unary();
+                // Python: `**` binds tighter than unary `-` on its left.
+                // `-2**3` parses as `-(2**3)`, not `(-2)**3`.
+                // We parse the operand with min_bp = pow_right_bp (21) so `**`
+                // (left_bp=22) gets to consume the atom first.
+                self.expr_bp(21);
                 self.chunk.emit(OpCode::Minus, 0);
             }
             Some(TokenType::Tilde) => {
                 self.advance();
-                self.parse_unary();
+                self.expr_bp(21);
                 self.chunk.emit(OpCode::BitNot, 0);
             }
             Some(TokenType::Await) => {
                 self.advance();
-                self.parse_unary();
+                self.expr_bp(21);
                 self.chunk.emit(OpCode::Await, 0);
             }
             _ => self.parse_atom(),

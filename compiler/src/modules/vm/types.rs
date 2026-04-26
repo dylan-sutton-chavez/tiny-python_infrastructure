@@ -12,8 +12,8 @@ Sandbox Limits
 pub struct Limits { pub calls: usize, pub ops: usize, pub heap: usize }
 
 impl Limits {
-    pub fn none() -> Self { Self { calls: usize::MAX, ops: usize::MAX, heap: 10_000_000 } }
-    pub fn sandbox() -> Self { Self { calls: 512, ops: 100_000_000, heap: 100_000 } }
+    pub fn none() -> Self { Self { calls: 1_000, ops: usize::MAX, heap: 10_000_000 } }
+    pub fn sandbox() -> Self { Self { calls: 256, ops: 100_000_000, heap: 100_000 } }
 }
 
 /*

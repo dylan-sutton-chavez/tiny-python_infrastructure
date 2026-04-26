@@ -23,6 +23,12 @@ VM State
     Stack, heap, iterators, yield buffer, templates and sandbox counters.
 */
 
+pub(crate) struct ExceptionFrame {
+    pub handler_ip: usize,
+    pub stack_depth: usize,
+    pub iter_depth: usize,
+}
+
 pub struct VM<'a> {
     pub(crate) stack: Vec<Val>,
     pub(crate) heap: HeapPool,
@@ -36,11 +42,35 @@ pub struct VM<'a> {
     pub(crate) depth: usize,
     pub(crate) max_calls: usize,
     pub(crate) observed_impure: Vec<bool>,
+    pub(crate) exception_stack: Vec<ExceptionFrame>,
     pub output: Vec<String>,
+
+    // ── NEW: flat global function table built at VM init ──
+    /// All function descriptors in the program, flattened. Index is the
+    /// global function id stored in `HeapObj::Func`.
+    pub(crate) functions: Vec<&'a (Vec<String>, SSAChunk, u16, u16)>,
+    /// For each chunk seen during the flatten pass: the global ids of its
+    /// local `chunk.functions` entries, in order. `MakeFunction <local>`
+    /// inside `chunk` resolves via `fn_index[&(chunk as *const _)][local]`.
+    pub(crate) fn_index: HashMap<*const SSAChunk, Vec<u32>>,
 }
 
 impl<'a> VM<'a> {
     pub fn new(chunk: &'a SSAChunk) -> Self { Self::with_limits(chunk, Limits::none()) }
+
+    /// One-shot recursive flatten of nested `def`s. Each chunk's local function
+    /// table maps to a contiguous range of global ids; nested bodies are walked
+    /// depth-first so a closure defined inside a nested function still resolves.
+    fn build_function_table(&mut self, chunk: &'a SSAChunk) {
+        let mut indices = Vec::with_capacity(chunk.functions.len());
+        for desc in chunk.functions.iter() {
+            let global = self.functions.len() as u32;
+            self.functions.push(desc);
+            indices.push(global);
+            self.build_function_table(&desc.1);  // recurse into body
+        }
+        self.fn_index.insert(chunk as *const _, indices);
+    }
 
     /*
     Fill Builtins
@@ -180,7 +210,11 @@ impl<'a> VM<'a> {
             max_calls: limits.calls,
             output: Vec::new(),
             observed_impure: Vec::new(),
+            exception_stack: Vec::new(),
+            functions: Vec::new(),
+            fn_index: HashMap::default(),
         };
+        vm.build_function_table(chunk);
         for &name in BUILTIN_TYPES {
             if let Ok(type_obj) = vm.heap.alloc(HeapObj::Type(name.to_string())) {
                 vm.globals.insert(name.to_string(), type_obj);
@@ -307,18 +341,22 @@ impl<'a> VM<'a> {
         Three-tier dispatch: superinstruction (tier-2) -> inline cache (tier-1) -> flat opcode match (tier-0). LLVM lowers the flat match to a single jump table; cache lives on the exec stack frame to avoid heap traffic.
     */
 
+    // ── Tier-2 y Tier-1 se mantienen igual, pero el Tier-0 cambia ──
     pub(crate) fn exec(&mut self, chunk: &SSAChunk, slots: &mut [Option<Val>]) -> Result<Val, VmErr> {
         use super_ops::{FusedOutcome, SuperOp};
 
-        let slots_base = self.live_slots.len();
-        let n = chunk.instructions.len();
-        let mut cache = OpcodeCache::new(chunk);  // stack-allocated, no Box
-        let mut ip = 0usize;
-        let prev_slots = chunk.prev_slots.as_slice();
-        let instructions = chunk.instructions.as_slice();
+        let slots_base  = self.live_slots.len();
+        let exc_base    = self.exception_stack.len();
+        let n           = chunk.instructions.len();
+        let mut cache   = OpcodeCache::new(chunk);
+        let mut ip      = 0usize;
+        let prev_slots  = chunk.prev_slots.as_slice();
 
         loop {
-            if ip >= n { return Ok(Val::none()); }
+            if ip >= n {
+                self.exception_stack.truncate(exc_base);
+                return Ok(Val::none());
+            }
 
             // ── Tier-2: superinstruction dispatch ─────────────────────────
             if let Some(sop) = cache.get_super(ip) {
@@ -382,124 +420,197 @@ impl<'a> VM<'a> {
                 ip -= 1;
             }
 
-            // ── Tier-0: direct opcode dispatch (FLAT MATCH) ────────────────
-            // SAFETY: ip < n checked at loop top; instructions is chunk slice.
-            let ins = unsafe { instructions.get_unchecked(ip) };
-            let op = ins.operand;
-            let rip = ip;
-            ip += 1;
-
-            // ONE indirect jump. LLVM emits jump table directly.
-            // Hot opcodes first to bias branch prediction in the dense fall-through.
-            match ins.opcode {
-                // ── HOT: numeric ops (most frequent in loops) ──────────────
-                OpCode::LoadName => {
-                    let slot = op as usize;
-                    self.push(slots[slot].ok_or_else(|| VmErr::Name(chunk.names[slot].clone()))?);
-                }
-                OpCode::StoreName => {
-                    self.handle_store(op, slots, prev_slots)?;
-                    if self.heap.needs_gc() { self.collect(slots); }
-                }
-                OpCode::LoadConst => {
-                    let v = self.val_from(&chunk.constants[op as usize])?;
-                    self.push(v);
-                }
-                OpCode::Add | OpCode::Sub | OpCode::Mul | OpCode::Div
-                | OpCode::Mod | OpCode::Pow | OpCode::FloorDiv | OpCode::Minus => {
-                    self.handle_arith(ins.opcode, rip, &mut cache)?;
-                }
-                OpCode::Eq | OpCode::NotEq | OpCode::Lt | OpCode::Gt
-                | OpCode::LtEq | OpCode::GtEq => {
-                    self.handle_compare(ins.opcode, rip, &mut cache)?;
-                }
-                OpCode::Jump => {
-                    ip = self.checked_jump(op as usize, n)?;
-                }
-                OpCode::JumpIfFalse => {
-                    let v = self.pop()?;
-                    if !self.truthy(v) { ip = self.checked_jump(op as usize, n)?; }
-                }
-                OpCode::ForIter => {
-                    if self.budget == 0 { return Err(cold_budget()); }
-                    self.budget -= 1;
-                    if self.heap.needs_gc() { self.collect(slots); }
-                    match self.iter_stack.last_mut().and_then(|f| f.next_item()) {
-                        Some(item) => self.push(item),
-                        None => {
-                            self.iter_stack.pop();
-                            if op as usize > n {
-                                return Err(VmErr::Runtime("jump target out of bounds"));
-                            }
-                            ip = op as usize;
-                        }
-                    }
-                }
-                OpCode::PopTop => { self.pop()?; }
-                OpCode::ReturnValue => {
-                    let result = if self.stack.is_empty() { Val::none() } else { self.pop()? };
+            // ── Tier-0 dispatch wrapped for exception capture ─────────────
+            match self.dispatch_flat(chunk, slots, &mut cache, &mut ip, n, prev_slots) {
+                Ok(None) => {}
+                Ok(Some(v)) => {
                     self.live_slots.truncate(slots_base);
-                    return Ok(result);
+                    self.exception_stack.truncate(exc_base);
+                    return Ok(v);
                 }
-
-                // ── WARM: container ops, builtins ─────────────────────────
-                OpCode::GetItem => { self.get_item()?; }
-                OpCode::Call => self.handle_function(ins.opcode, op, chunk, slots)?,
-                OpCode::CallPrint | OpCode::CallLen | OpCode::CallAbs | OpCode::CallStr
-                | OpCode::CallInt | OpCode::CallFloat | OpCode::CallBool | OpCode::CallType
-                | OpCode::CallChr | OpCode::CallOrd | OpCode::CallSorted | OpCode::CallList
-                | OpCode::CallTuple | OpCode::CallEnumerate | OpCode::CallIsInstance
-                | OpCode::CallRange | OpCode::CallRound | OpCode::CallMin | OpCode::CallMax
-                | OpCode::CallSum | OpCode::CallZip | OpCode::CallDict | OpCode::CallSet
-                | OpCode::CallInput | OpCode::MakeFunction | OpCode::MakeCoroutine => {
-                    self.handle_function(ins.opcode, op, chunk, slots)?;
-                }
-                OpCode::GetIter => {
-                    let obj = self.pop()?;
-                    let frame = self.make_iter_frame(obj)?;
-                    self.iter_stack.push(frame);
-                }
-                OpCode::LoadTrue  => self.push(Val::bool(true)),
-                OpCode::LoadFalse => self.push(Val::bool(false)),
-                OpCode::LoadNone  => self.push(Val::none()),
-                OpCode::And | OpCode::Or | OpCode::Not => self.handle_logic(ins.opcode)?,
-                OpCode::In | OpCode::NotIn | OpCode::Is | OpCode::IsNot => self.handle_identity(ins.opcode)?,
-                OpCode::BitAnd | OpCode::BitOr | OpCode::BitXor | OpCode::BitNot
-                | OpCode::Shl | OpCode::Shr => self.handle_bitwise(ins.opcode)?,
-
-                // ── COLD: everything else falls through to handlers ────────
-                OpCode::BuildList | OpCode::BuildTuple | OpCode::BuildDict
-                | OpCode::BuildString | OpCode::BuildSet | OpCode::BuildSlice => {
-                    self.handle_build(ins.opcode, op)?;
-                }
-                OpCode::StoreItem | OpCode::UnpackSequence | OpCode::UnpackEx
-                | OpCode::FormatValue => {
-                    self.handle_container(ins.opcode, op)?;
-                }
-                OpCode::ListAppend | OpCode::SetAdd | OpCode::MapAdd => {
-                    self.handle_comprehension(ins.opcode)?;
-                }
-                OpCode::Phi => Self::exec_phi(op, rip, &chunk.phi_map, slots, prev_slots, &chunk.phi_sources),
-                OpCode::Yield => self.handle_yield()?,
-                OpCode::LoadEllipsis => {
-                    let v = self.heap.alloc(HeapObj::Str("...".to_string()))?;
-                    self.push(v);
-                }
-                OpCode::Dup2 => {
-                    let b = self.pop()?; let a = self.pop()?;
-                    self.push(a); self.push(b); self.push(a); self.push(b);
-                }
-                OpCode::Assert | OpCode::Del | OpCode::Global | OpCode::Nonlocal
-                | OpCode::TypeAlias | OpCode::Import | OpCode::ImportFrom
-                | OpCode::SetupExcept | OpCode::PopExcept | OpCode::Raise | OpCode::RaiseFrom
-                | OpCode::Await | OpCode::YieldFrom => {
-                    self.handle_side(ins.opcode, op, slots)?;
-                }
-                OpCode::MakeClass | OpCode::LoadAttr | OpCode::StoreAttr
-                | OpCode::SetupWith | OpCode::ExitWith | OpCode::UnpackArgs => {
-                    return Err(unsupported(ins.opcode));
+                Err(e) => {
+                    if self.exception_stack.len() > exc_base {
+                        let frame = self.exception_stack.pop().unwrap();
+                        self.stack.truncate(frame.stack_depth);
+                        self.iter_stack.truncate(frame.iter_depth);
+                        // Empuja la exception real como string. El handler hace isinstance
+                        // contra el tipo esperado (o lo descarta si es bare except).
+                        let msg = match &e {
+                            VmErr::ZeroDiv      => "ZeroDivisionError",
+                            VmErr::Type(_)      => "TypeError",
+                            VmErr::Value(_)     => "ValueError",
+                            VmErr::Name(_)      => "NameError",
+                            VmErr::CallDepth    => "RecursionError",
+                            VmErr::Heap         => "MemoryError",
+                            VmErr::Budget       => "RuntimeError",
+                            VmErr::Runtime(_)   => "RuntimeError",
+                            VmErr::Raised(_)    => "Exception",
+                        };
+                        let exc = self.heap.alloc(HeapObj::Str(msg.to_string()))?;
+                        self.push(exc);
+                        ip = frame.handler_ip;
+                    } else {
+                        self.exception_stack.truncate(exc_base);
+                        return Err(e);
+                    }
                 }
             }
         }
+    }
+
+    #[inline]
+    fn dispatch_flat(
+        &mut self, chunk: &SSAChunk, slots: &mut [Option<Val>],
+        cache: &mut OpcodeCache, ip: &mut usize, n: usize,
+        prev_slots: &[Option<u16>],
+    ) -> Result<Option<Val>, VmErr> {
+        if *ip >= n { return Err(VmErr::Runtime("instruction pointer out of bounds")); }
+
+        let ins = unsafe { chunk.instructions.get_unchecked(*ip) };
+        let op  = ins.operand;
+        let rip = *ip;
+        *ip += 1;
+
+        match ins.opcode {
+            // ── EXCEPTION HANDLING ────────────────────────────────────────
+            OpCode::SetupExcept => {
+                self.exception_stack.push(ExceptionFrame {
+                    handler_ip:  op as usize,
+                    stack_depth: self.stack.len(),
+                    iter_depth:  self.iter_stack.len(),
+                });
+            }
+            OpCode::PopExcept => {
+                self.exception_stack.pop();
+            }
+
+            // ── SHORT-CIRCUIT JUMPS ───────────────────────────────────────
+            OpCode::JumpIfFalseOrPop => {
+                let v = *self.stack.last().ok_or(VmErr::Runtime("stack underflow"))?;
+                if !self.truthy(v) { *ip = op as usize; }
+                else { self.pop()?; }
+            }
+            OpCode::JumpIfTrueOrPop => {
+                let v = *self.stack.last().ok_or(VmErr::Runtime("stack underflow"))?;
+                if self.truthy(v) { *ip = op as usize; }
+                else { self.pop()?; }
+            }
+
+            // ── HOT OPCODES ───────────────────────────────────────────────
+            OpCode::LoadName => {
+                let slot = op as usize;
+                self.push(slots[slot].ok_or_else(|| VmErr::Name(chunk.names[slot].clone()))?);
+            }
+            OpCode::StoreName => {
+                self.handle_store(op, slots, prev_slots)?;
+                if self.heap.needs_gc() { self.collect(slots); }
+            }
+            OpCode::LoadConst => {
+                let v = self.val_from(&chunk.constants[op as usize])?;
+                self.push(v);
+            }
+            OpCode::Add | OpCode::Sub | OpCode::Mul | OpCode::Div
+            | OpCode::Mod | OpCode::Pow | OpCode::FloorDiv | OpCode::Minus => {
+                self.handle_arith(ins.opcode, rip, cache)?;
+            }
+            OpCode::Eq | OpCode::NotEq | OpCode::Lt | OpCode::Gt
+            | OpCode::LtEq | OpCode::GtEq => {
+                self.handle_compare(ins.opcode, rip, cache)?;
+            }
+            OpCode::Jump => {
+                *ip = self.checked_jump(op as usize, n)?;
+            }
+            OpCode::JumpIfFalse => {
+                let v = self.pop()?;
+                if !self.truthy(v) { *ip = self.checked_jump(op as usize, n)?; }
+            }
+            OpCode::ForIter => {
+                if self.budget == 0 { return Err(cold_budget()); }
+                self.budget -= 1;
+                if self.heap.needs_gc() { self.collect(slots); }
+                match self.iter_stack.last_mut().and_then(|f| f.next_item()) {
+                    Some(item) => self.push(item),
+                    None => {
+                        self.iter_stack.pop();
+                        if op as usize > n {
+                            return Err(VmErr::Runtime("jump target out of bounds"));
+                        }
+                        *ip = op as usize;
+                    }
+                }
+            }
+            OpCode::PopTop => { self.pop()?; }
+            OpCode::ReturnValue => {
+                let result = if self.stack.is_empty() { Val::none() } else { self.pop()? };
+                return Ok(Some(result));
+            }
+
+            // ── WARM OPCODES ──────────────────────────────────────────────
+            OpCode::GetItem => { self.get_item()?; }
+            OpCode::Call => self.handle_function(ins.opcode, op, chunk, slots)?,
+            OpCode::CallPrint | OpCode::CallLen | OpCode::CallAbs | OpCode::CallStr
+            | OpCode::CallInt | OpCode::CallFloat | OpCode::CallBool | OpCode::CallType
+            | OpCode::CallChr | OpCode::CallOrd | OpCode::CallSorted | OpCode::CallList
+            | OpCode::CallTuple | OpCode::CallEnumerate | OpCode::CallIsInstance
+            | OpCode::CallRange | OpCode::CallRound | OpCode::CallMin | OpCode::CallMax
+            | OpCode::CallSum | OpCode::CallZip | OpCode::CallDict | OpCode::CallSet
+            | OpCode::CallInput | OpCode::MakeFunction | OpCode::MakeCoroutine => {
+                self.handle_function(ins.opcode, op, chunk, slots)?;
+            }
+            OpCode::GetIter => {
+                let obj = self.pop()?;
+                let frame = self.make_iter_frame(obj)?;
+                self.iter_stack.push(frame);
+            }
+            OpCode::LoadTrue  => self.push(Val::bool(true)),
+            OpCode::LoadFalse => self.push(Val::bool(false)),
+            OpCode::LoadNone  => self.push(Val::none()),
+            OpCode::Not => self.handle_logic(ins.opcode)?,
+            OpCode::In | OpCode::NotIn | OpCode::Is | OpCode::IsNot => self.handle_identity(ins.opcode)?,
+            OpCode::BitAnd | OpCode::BitOr | OpCode::BitXor | OpCode::BitNot
+            | OpCode::Shl | OpCode::Shr => self.handle_bitwise(ins.opcode)?,
+
+            // ── COLD OPCODES ──────────────────────────────────────────────
+            OpCode::BuildList | OpCode::BuildTuple | OpCode::BuildDict
+            | OpCode::BuildString | OpCode::BuildSet | OpCode::BuildSlice => {
+                self.handle_build(ins.opcode, op)?;
+            }
+            OpCode::StoreItem | OpCode::UnpackSequence | OpCode::UnpackEx
+            | OpCode::FormatValue => {
+                self.handle_container(ins.opcode, op)?;
+            }
+            OpCode::ListAppend | OpCode::SetAdd | OpCode::MapAdd => {
+                self.handle_comprehension(ins.opcode)?;
+            }
+            OpCode::Phi => Self::exec_phi(op, rip, &chunk.phi_map, slots, prev_slots, &chunk.phi_sources),
+            OpCode::Yield => self.handle_yield()?,
+            OpCode::LoadEllipsis => {
+                let v = self.heap.alloc(HeapObj::Str("...".to_string()))?;
+                self.push(v);
+            }
+            OpCode::Dup => {
+                let v = *self.stack.last().ok_or(VmErr::Runtime("stack underflow"))?;
+                self.push(v);
+            }
+            OpCode::Dup2 => {
+                let b = self.pop()?; let a = self.pop()?;
+                self.push(a); self.push(b); self.push(a); self.push(b);
+            }
+            OpCode::Assert | OpCode::Del | OpCode::Global | OpCode::Nonlocal
+            | OpCode::TypeAlias | OpCode::Import | OpCode::ImportFrom
+            | OpCode::Raise | OpCode::RaiseFrom | OpCode::Await | OpCode::YieldFrom => {
+                self.handle_side(ins.opcode, op, slots)?;
+            }
+            OpCode::MakeClass | OpCode::LoadAttr | OpCode::StoreAttr
+            | OpCode::SetupWith | OpCode::ExitWith | OpCode::UnpackArgs => {
+                return Err(unsupported(ins.opcode));
+            }
+            
+            // Cubrir explícitamente And/Or si es que por error llegaran hasta aquí
+            OpCode::And | OpCode::Or => {
+                 return Err(VmErr::Runtime("And/Or reached VM dispatch (should be short-circuited)"));
+            }
+        }
+        Ok(None)
     }
 }

@@ -36,7 +36,7 @@ fn p_lt_int(a: Val, b: Val) -> Option<bool> {
 /// Mirrors `handle_store`: writes `v` to slot `s` and back-propagates through
 /// the SSA `prev_slots` chain so the Phi at the join sees the new value.
 #[inline(always)]
-fn p_store_ssa(slots: &mut [Option<Val>], prev: &[Option<u16>], s: u16, v: Val) {
+pub(crate) fn p_store_ssa(slots: &mut [Option<Val>], prev: &[Option<u16>], s: u16, v: Val) {
     let mut cur = s as usize;
     if cur < slots.len() { slots[cur] = Some(v); }
     let mut guard = prev.len();
@@ -70,7 +70,7 @@ macro_rules! def_super {
 /* ─── small supers ─── */
 
 def_super! {
-    /// `load → +const → store` (e.g. `i = i + 1` across two SSA versions).
+    /// `load -> +const -> store` (e.g. `i = i + 1` across two SSA versions).
     pub fn super_inc(
         slots: &mut [Option<Val>], prev: &[Option<u16>],
         load: u16, store: u16, delta: Val,
@@ -138,21 +138,30 @@ pub fn run_range_inc_fused(
 
     if n == 0 { return FusedOutcome::Done; }
 
+    // 1. Validate everything before any side effect.
+    let Some(initial) = p_load(slots, ops.load) else { return FusedOutcome::Deopt };
+    if !initial.is_int() || !ops.delta.is_int() { return FusedOutcome::Deopt; }
+
+    let total = (ops.delta.as_int() as i128).checked_mul(n as i128);
+    let Some(total) = total else { return FusedOutcome::Deopt };
+    let final_v = (initial.as_int() as i128).checked_add(total);
+    let Some(final_v) = final_v else { return FusedOutcome::Deopt };
+    if final_v < Val::INT_MIN as i128 || final_v > Val::INT_MAX as i128 {
+        return FusedOutcome::Deopt;
+    }
+
+    let last_iter = match step.checked_mul(n - 1).and_then(|s| cur.checked_add(s)) {
+        Some(v) => v,
+        None => return FusedOutcome::Deopt,
+    };
+
+    // 2. Charge budget last so deopts don't corrupt accounting.
     let charge = (n as usize).saturating_mul(2);
     if *budget < charge { return FusedOutcome::Deopt; }
     *budget -= charge;
 
-    let Some(initial) = p_load(slots, ops.load) else { return FusedOutcome::Deopt };
-    if !initial.is_int() || !ops.delta.is_int() { return FusedOutcome::Deopt; }
-
-    let total   = (ops.delta.as_int() as i128) * (n as i128);
-    let final_v = (initial.as_int() as i128) + total;
-    if final_v < Val::INT_MIN as i128 || final_v > Val::INT_MAX as i128 {
-        return FusedOutcome::Deopt;
-    }
+    // 3. Commit.
     p_store_ssa(slots, prev, ops.store, Val::int(final_v as i64));
-
-    let last_iter = cur + step * (n - 1);
     p_store_ssa(slots, prev, ops.drop, Val::int(last_iter));
     FusedOutcome::Done
 }

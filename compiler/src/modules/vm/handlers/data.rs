@@ -11,21 +11,7 @@ impl<'a> VM<'a> {
     
     pub(crate) fn handle_store(&mut self, operand: u16, slots: &mut [Option<Val>], prev_slots: &[Option<u16>]) -> Result<(), VmErr> {
         let v = self.pop()?;
-        let slot = operand as usize;
-        slots[slot] = Some(v);
-
-        let mut cur = slot;
-        let mut guard = prev_slots.len();
-        while guard > 0 {
-            guard -= 1;
-            match prev_slots.get(cur).and_then(|p| *p) {
-                Some(prev) if (prev as usize) != cur => {
-                    slots[prev as usize] = Some(v);
-                    cur = prev as usize;
-                }
-                _ => break,
-            }
-        }
+        super::super::super_ops::p_store_ssa(slots, prev_slots, operand, v);
         Ok(())
     }
 
@@ -162,19 +148,14 @@ impl<'a> VM<'a> {
             }
             OpCode::Global | OpCode::Nonlocal => self.mark_impure(),
             OpCode::TypeAlias => { self.pop()?; }
-            OpCode::Import => {
-                self.mark_impure();
-                self.push(Val::none());
+            OpCode::Import | OpCode::ImportFrom => {
+                return Err(VmErr::Runtime("import not supported in sandbox"));
             }
-            OpCode::ImportFrom => {
-                self.mark_impure();
-                self.pop()?;
-                self.push(Val::none());
-            }
-            OpCode::SetupExcept | OpCode::PopExcept => {}
             OpCode::Raise | OpCode::RaiseFrom => {
                 self.mark_impure();
-                return Err(VmErr::Runtime("exception raised"));
+                let exc = self.pop()?;
+                let msg = self.display(exc);
+                return Err(VmErr::Raised(msg));
             }
             OpCode::Await | OpCode::YieldFrom => {}
             _ => unreachable!("non-side opcode in handle_side"),

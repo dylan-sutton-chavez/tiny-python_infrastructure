@@ -22,7 +22,8 @@ pub enum OpCode {
     BuildSlice, MakeClass, SetupExcept, PopExcept, Raise, Import, ImportFrom, BitAnd, BitOr, BitXor, 
     BitNot, Shl, Shr, In, NotIn, Is, IsNot, UnpackSequence, BuildTuple, SetupWith, ExitWith, Yield, 
     Del, Assert, Global, Nonlocal, UnpackArgs, ListAppend, SetAdd, MapAdd, BuildSet, RaiseFrom, 
-    UnpackEx, LoadEllipsis, Await, MakeCoroutine, YieldFrom, TypeAlias, StoreItem, Dup2,
+    UnpackEx, LoadEllipsis, Await, MakeCoroutine, YieldFrom, TypeAlias, StoreItem, Dup2, 
+    JumpIfFalseOrPop, JumpIfTrueOrPop, Dup,
 }
 
 /*
@@ -261,7 +262,8 @@ impl OpCode {
             LoadConst | LoadName | LoadTrue | LoadFalse | LoadNone | LoadEllipsis => OpCategory::Load, StoreName => OpCategory::Store,
             Add | Sub | Mul | Div | Mod | Pow | FloorDiv | Minus => OpCategory::Arith, BitAnd | BitOr | BitXor | BitNot | Shl | Shr => OpCategory::Bitwise,
             Eq | NotEq | Lt | Gt | LtEq | GtEq => OpCategory::Compare, And | Or | Not => OpCategory::Logic,
-            In | NotIn | Is | IsNot => OpCategory::Identity, Jump | JumpIfFalse | ReturnValue | PopTop | Dup2 => OpCategory::ControlFlow,
+            In | NotIn | Is | IsNot => OpCategory::Identity, 
+            Jump | JumpIfFalse | JumpIfFalseOrPop | JumpIfTrueOrPop | ReturnValue | PopTop | Dup | Dup2 => OpCategory::ControlFlow,
             GetIter | ForIter => OpCategory::Iter,
             BuildList | BuildTuple | BuildDict | BuildSet | BuildSlice | BuildString => OpCategory::Build,
             GetItem | StoreItem | UnpackSequence | UnpackEx | FormatValue => OpCategory::Container,

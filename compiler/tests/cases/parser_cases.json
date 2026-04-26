@@ -1502,14 +1502,14 @@
     "src": "x = a and b or c", 
     "constants": [], 
     "names": ["a_0","b_0","c_0","x_1"], 
-    "instructions": [["LoadName",0],["LoadName",1],["And",0],["LoadName",2],["Or",0],["StoreName",3],["ReturnValue",0]], 
+    "instructions": [["LoadName", 0], ["JumpIfFalseOrPop", 3], ["LoadName", 1], ["JumpIfTrueOrPop", 5], ["LoadName", 2], ["StoreName", 3], ["ReturnValue", 0]], 
     "annotations": {}
   },
   {
     "src": "x = a or b and c", 
     "constants": [], 
     "names": ["a_0","b_0","c_0","x_1"], 
-    "instructions": [["LoadName",0],["LoadName",1],["LoadName",2],["And",0],["Or",0],["StoreName",3],["ReturnValue",0]], 
+    "instructions": [["LoadName", 0], ["JumpIfTrueOrPop", 5], ["LoadName", 1], ["JumpIfFalseOrPop", 5], ["LoadName", 2], ["StoreName", 3], ["ReturnValue", 0]], 
     "annotations": {}
   },
   {
@@ -1530,7 +1530,7 @@
     "src": "x = not a and not b", 
     "constants": [], 
     "names": ["a_0","b_0","x_1"], 
-    "instructions": [["LoadName",0],["Not",0],["LoadName",1],["Not",0],["And",0],["StoreName",2],["ReturnValue",0]], 
+    "instructions": [["LoadName", 0], ["Not", 0], ["JumpIfFalseOrPop", 5], ["LoadName", 1], ["Not", 0], ["StoreName", 2], ["ReturnValue", 0]], 
     "annotations": {}
   },
   {

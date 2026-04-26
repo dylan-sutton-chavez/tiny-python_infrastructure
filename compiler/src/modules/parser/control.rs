@@ -232,26 +232,73 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.enter_block();
         self.compile_block();
 
+        // Try body succeeded: pop except frame, skip past all handlers.
         self.chunk.emit(OpCode::PopExcept, 0);
         self.chunk.emit(OpCode::Jump, 0);
-        let jmp = self.chunk.instructions.len() - 1;
+        let success_jump = self.chunk.instructions.len() - 1;
 
+        // Handler region starts here. Stack on entry: [..., exception_str].
         self.patch(setup);
 
+        // Each except arm jumps to `end_jumps` after its body runs.
+        // Each typed except that doesn't match jumps to the next arm.
+        let mut end_jumps: Vec<usize> = Vec::new();
+        let mut next_arm_jump: Option<usize> = None;
+        let mut had_bare = false;
+
         while self.eat_if(TokenType::Except) {
-            if !matches!(self.peek(), Some(TokenType::Colon)) {
-                self.expr();
+            // If a previous typed arm jumped here on no-match, patch it.
+            if let Some(j) = next_arm_jump.take() {
+                self.patch(j);
+            }
+            if had_bare {
+                // bare except eats everything; subsequent arms are dead code.
+                self.error("default 'except:' must be last");
+                break;
+            }
+
+            if matches!(self.peek(), Some(TokenType::Colon)) {
+                // bare `except:` — discard exception, run body unconditionally.
+                had_bare = true;
+                self.chunk.emit(OpCode::PopTop, 0);
+            } else {
+                // `except T:` or `except T as name:` — type dispatch.
+                // Stack: [..., exc]. Need to compare exc against T.
+                self.chunk.emit(OpCode::Dup, 0);          // [..., exc, exc]
+                self.expr();                              // [..., exc, exc, T]
+                self.chunk.emit(OpCode::CallIsInstance, 0); // [..., exc, bool]
+                self.chunk.emit(OpCode::JumpIfFalse, 0);  // [..., exc] (consumes bool)
+                next_arm_jump = Some(self.chunk.instructions.len() - 1);
+
+                // Match: handle `as name` or discard.
                 if self.eat_if(TokenType::As) {
                     let t = self.advance();
                     let name = self.lexeme(&t).to_string();
-                    self.store_name(name);
+                    self.store_name(name);  // [..., ] — exc bound to name
+                } else {
+                    self.chunk.emit(OpCode::PopTop, 0);  // [..., ]
                 }
             }
             self.eat(TokenType::Colon);
             self.compile_block();
+
+            // After successful handler: jump past all remaining arms.
+            self.chunk.emit(OpCode::Jump, 0);
+            end_jumps.push(self.chunk.instructions.len() - 1);
         }
 
-        self.patch(jmp);
+        // If the last typed arm didn't match and there's no bare except,
+        // re-raise: stack still has [..., exc]. Emit Raise.
+        if let Some(j) = next_arm_jump {
+            self.patch(j);
+            self.chunk.emit(OpCode::Raise, 0);
+        }
+
+        // Successful try body and all matched handlers land here.
+        self.patch(success_jump);
+        for j in end_jumps {
+            self.patch(j);
+        }
 
         if self.eat_if(TokenType::Else) {
             self.eat(TokenType::Colon);

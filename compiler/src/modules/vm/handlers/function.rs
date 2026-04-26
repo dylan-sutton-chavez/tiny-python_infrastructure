@@ -10,7 +10,7 @@ impl<'a> VM<'a> {
         match op {
             // User functions
             OpCode::Call => self.exec_call(operand, chunk, slots),
-            OpCode::MakeFunction | OpCode::MakeCoroutine => self.exec_make_function(operand),
+            OpCode::MakeFunction | OpCode::MakeCoroutine => self.exec_make_function(operand, chunk),
 
             // Pure built-ins
             OpCode::CallLen => self.call_len(),
@@ -45,10 +45,17 @@ impl<'a> VM<'a> {
         }
     }
 
-    fn exec_make_function(&mut self, operand: u16) -> Result<(), VmErr> {
-        let n_defaults = self.chunk.functions[operand as usize].2 as usize;
+    fn exec_make_function(&mut self, operand: u16, chunk: &SSAChunk) -> Result<(), VmErr> {
+        // `operand` is the local index in `chunk.functions`. Translate to the
+        // global id assigned during VM init so the resulting Func resolves
+        // correctly even after escaping its defining scope.
+        let global = self.fn_index
+            .get(&(chunk as *const _))
+            .and_then(|v| v.get(operand as usize).copied())
+            .ok_or(VmErr::Runtime("MakeFunction: unknown function index"))?;
+        let n_defaults = self.functions[global as usize].2 as usize;
         let defaults = if n_defaults > 0 { self.pop_n(n_defaults)? } else { vec![] };
-        let val = self.heap.alloc(HeapObj::Func(operand as usize, defaults))?;
+        let val = self.heap.alloc(HeapObj::Func(global as usize, defaults))?;
         self.push(val);
         Ok(())
     }
@@ -83,7 +90,9 @@ impl<'a> VM<'a> {
         }
 
         self.depth += 1;
-        let (params, body, _defaults, name_idx) = &self.chunk.functions[fi];
+        let (params, body, _defaults, name_idx) = self.functions[fi];
+        let name_idx = *name_idx;
+        
         let mut fn_slots = self.fill_builtins(&body.names);
 
         let mut body_map: HashMap<&str, usize> =
@@ -129,18 +138,22 @@ impl<'a> VM<'a> {
             }
         }
 
+        // Captura del enclosing scope: nombres del frame que llama (`chunk`),
+        // valores de sus slots. `.get()` defensivo si las longitudes divergen.
         for (si, sv) in slots.iter().enumerate() {
             if let Some(v) = sv
-                && let Some(&bs) = body_map.get(chunk.names[si].as_str())
+                && let Some(name) = chunk.names.get(si)
+                && let Some(&bs) = body_map.get(name.as_str())
                 && fn_slots[bs].is_none()
             {
                 fn_slots[bs] = Some(*v);
             }
         }
 
-        let name_idx = *name_idx;
-        if name_idx != u16::MAX {
-            let raw_name = &self.chunk.names[name_idx as usize];
+        // Self-reference: `name_idx` referencia el chunk del CALLER, no el módulo.
+        if name_idx != u16::MAX
+            && let Some(raw_name) = chunk.names.get(name_idx as usize)
+        {
             let base = raw_name.rfind('_')
                 .filter(|&p| raw_name[p+1..].parse::<u32>().is_ok())
                 .map(|p| &raw_name[..p])
@@ -156,14 +169,17 @@ impl<'a> VM<'a> {
         let yields_before = self.yields.len();
         let snap = self.live_slots.len();
         self.live_slots.extend(slots.iter().flatten().copied());
-
         self.observed_impure.push(false);
-        let result = self.exec(body, &mut fn_slots)?;
-        let callee_impure = self.observed_impure.pop().unwrap_or(true);
-        if callee_impure { self.mark_impure(); }
 
+        // Capturar el Result; cleanup corre incondicionalmente antes de propagar Err.
+        let exec_result = self.exec(body, &mut fn_slots);
+
+        let callee_impure = self.observed_impure.pop().unwrap_or(true);
         self.live_slots.truncate(snap);
         self.depth -= 1;
+
+        let result = exec_result?;
+        if callee_impure { self.mark_impure(); }
 
         if self.yields.len() > yields_before {
             let fn_yields = self.yields.split_off(yields_before);
