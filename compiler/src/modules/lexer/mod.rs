@@ -6,6 +6,7 @@ pub mod tables;
 pub use tables::utf8_char_len;
 
 mod scan;
+
 use scan::Scanner;
 
 // Source size limit of 10 MiB.

@@ -4,14 +4,12 @@ use super::Parser;
 use super::types::OpCode;
 
 use crate::modules::lexer::{Token, TokenType};
+
 use alloc::{string::{String, ToString}, vec, vec::Vec, format};
 
 impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
-    /*
-    If Statement
-        Compiles if/elif/else chains with SSA block merging and conditional jumps.
-    */
+    /* Compiles if/elif/else chains with SSA block merging and conditional jumps. */
 
     pub(super) fn if_stmt(&mut self) {
         self.advance();
@@ -54,16 +52,13 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
     }
 
-    /*
-    Match Statement
-        Implements match/case with subject storage and equality-based dispatch.
-    */
+    /* Implements match/case with subject storage and equality-based dispatch. */
 
     pub(super) fn match_stmt(&mut self) {
         self.advance();
         self.expr();
 
-        let ver  = self.increment_version("__match__");
+        let ver = self.increment_version("__match__");
         let subj = self.chunk.push_name(&format!("__match__{}", ver));
         self.chunk.emit(OpCode::StoreName, subj);
 
@@ -102,10 +97,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
     }
 
-    /*
-    While Statement
-        Builds while loops with break/continue support and optional else clause.
-    */
+    /* Builds while loops with break/continue support and optional else clause. */
 
     pub(super) fn while_stmt(&mut self) {
         self.advance();
@@ -138,16 +130,13 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.commit_block();
     }
 
-    /*
-    For Statement
-        Parses for loops (sync or async) including variable unpacking and iterator logic.
-    */
+    /* Parses for loops (sync or async) including variable unpacking and iterator logic. */
 
     pub(super) fn for_stmt_inner(&mut self, is_async: bool) {
         self.advance();
 
         let parens = self.eat_if(TokenType::Lpar);
-        let mut vars     = Vec::new();
+        let mut vars = Vec::new();
         let mut star_pos: Option<usize> = None;
         loop {
             if self.eat_if(TokenType::Star) {
@@ -186,7 +175,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             self.store_name(vars[0].clone());
         } else if let Some(sp) = star_pos {
             let before = sp as u16;
-            let after  = (vars.len() - sp - 1) as u16;
+            let after = (vars.len() - sp - 1) as u16;
             self.chunk.emit(OpCode::UnpackEx, (before << 8) | after);
             for var in &vars {
                 self.store_name(var.clone());
@@ -217,10 +206,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.commit_block();
     }
 
-    /*
-    Try Statement
-        Handles try/except/else/finally with exception setup and cleanup jumps.
-    */
+    /* Handles try/except/else/finally with exception setup and cleanup jumps. */
 
     pub(super) fn try_stmt(&mut self) {
         self.advance();
@@ -229,65 +215,51 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.chunk.emit(OpCode::SetupExcept, 0);
         let setup = self.chunk.instructions.len() - 1;
 
-    self.enter_block();
-    self.compile_block();
+        self.enter_block();
+        self.compile_block();
 
-    // Try body succeeded: pop except frame, skip past all handlers.
-    self.chunk.emit(OpCode::PopExcept, 0);
-    self.chunk.emit(OpCode::Jump, 0);
-    let success_jump = self.chunk.instructions.len() - 1;
+        self.chunk.emit(OpCode::PopExcept, 0);
+        self.chunk.emit(OpCode::Jump, 0);
+        let success_jump = self.chunk.instructions.len() - 1;
 
-    // Snapshot try-branch SSA versions and reset to entry baseline so
-    // handlers compile with the same starting state as the try body
-    // (mirrors if/else: both branches see the same pre-block versions).
-    self.mid_block();
+        self.mid_block();
 
-    // Handler region starts here. Stack on entry: [..., exception_str].
-    self.patch(setup);
+        self.patch(setup);
 
-    let mut end_jumps: Vec<usize> = Vec::new();
-    let mut next_arm_jump: Option<usize> = None;
-    let mut had_bare = false;
+        let mut end_jumps: Vec<usize> = Vec::new();
+        let mut next_arm_jump: Option<usize> = None;
+        let mut had_bare = false;
 
-    while self.eat_if(TokenType::Except) {
-            // If a previous typed arm jumped here on no-match, patch it.
+        while self.eat_if(TokenType::Except) {
             if let Some(j) = next_arm_jump.take() {
                 self.patch(j);
             }
             if had_bare {
-                // bare except eats everything; subsequent arms are dead code.
                 self.error("default 'except:' must be last");
                 break;
             }
 
             if matches!(self.peek(), Some(TokenType::Colon)) {
-                // bare `except:` — discard exception, run body unconditionally.
                 had_bare = true;
                 self.chunk.emit(OpCode::PopTop, 0);
             } else {
-                // `except T:` or `except T as name:` — type dispatch.
-                // Stack: [..., exc]. Need to compare exc against T.
-                self.chunk.emit(OpCode::Dup, 0);          // [..., exc, exc]
-                self.expr();                              // [..., exc, exc, T]
-                self.chunk.emit(OpCode::CallIsInstance, 0); // [..., exc, bool]
-                self.chunk.emit(OpCode::JumpIfFalse, 0);  // [..., exc] (consumes bool)
+                self.chunk.emit(OpCode::Dup, 0);
+                self.expr();
+                self.chunk.emit(OpCode::CallIsInstance, 0);
+                self.chunk.emit(OpCode::JumpIfFalse, 0);
                 next_arm_jump = Some(self.chunk.instructions.len() - 1);
 
-                // Match: handle `as name` or discard.
                 if self.eat_if(TokenType::As) {
                     let t = self.advance();
                     let name = self.lexeme(&t).to_string();
-                    self.store_name(name);  // [..., ] — exc bound to name
+                    self.store_name(name);
                 } else {
-                    self.chunk.emit(OpCode::PopTop, 0);  // [..., ]
+                    self.chunk.emit(OpCode::PopTop, 0);
                 }
             }
             self.eat(TokenType::Colon);
             self.compile_block();
 
-            // Always emit Jump after handler body — needed to skip remaining arms,
-            // the re-raise, and any else/finally. Exception: bare except with nothing
-            // after it (no else, no finally, no more except arms).
             let more = matches!(
                 self.peek(),
                 Some(TokenType::Except | TokenType::Else | TokenType::Finally)
@@ -298,14 +270,11 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             }
         }
 
-        // If the last typed arm didn't match and there's no bare except,
-        // re-raise: stack still has [..., exc]. Emit Raise.
         if let Some(j) = next_arm_jump {
             self.patch(j);
             self.chunk.emit(OpCode::Raise, 0);
         }
 
-        // Successful try body and all matched handlers land here.
         self.patch(success_jump);
         for j in end_jumps {
             self.patch(j);
@@ -324,10 +293,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.commit_block();
     }
 
-    /*
-    With Statement
-        Compiles with/as blocks (sync/async) including context manager enter/exit.
-    */
+    /* Compiles with/as blocks (sync/async) including context manager enter/exit. */
 
     pub(super) fn with_stmt_inner(&mut self, is_async: bool) {
         self.advance();
@@ -349,10 +315,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.chunk.emit(OpCode::ExitWith, operand);
     }
 
-    /*
-    Import Statements
-        Parses import and from-import syntax with optional aliases and star imports.
-    */
+    /* Parses import and from-import syntax with optional aliases and star imports. */
 
     pub(super) fn import_stmt(&mut self) {
         self.advance();

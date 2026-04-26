@@ -2,18 +2,16 @@
 
 use super::Parser;
 use super::types::builtin;
-
 use super::types::{OpCode, Value, SSAChunk, Instruction};
+
 use crate::modules::lexer::{Token, TokenType, utf8_char_len};
-use alloc::{string::{String, ToString}, vec::Vec, format};
 use crate::modules::fx::FxHashMap as HashMap;
+
+use alloc::{string::{String, ToString}, vec::Vec, format};
 
 impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
-    /*
-    Brace Literal Handler
-        Parses {} for dict/set literals and dict/set comprehensions.
-    */
+    /* Parses {} for dict/set literals and dict/set comprehensions. */
 
     pub(super) fn brace_literal(&mut self) {
         if matches!(self.peek(), Some(TokenType::Rbrace)) {
@@ -34,7 +32,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                     let key_ins: Vec<Instruction> = self.chunk.instructions.drain(key_start..).collect();
                     self.chunk.emit(OpCode::BuildDict, 0);
                     self.comprehension_loop(&[key_ins, val_ins], OpCode::MapAdd, &versions_before);
-                    self.advance(); // Rbrace
+                    self.advance();
                 } else {
                     let mut pairs = 1u16;
                     while self.eat_if(TokenType::Comma) {
@@ -53,7 +51,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 let elem_ins: Vec<Instruction> = self.chunk.instructions.drain(key_start..).collect();
                 self.chunk.emit(OpCode::BuildSet, 0);
                 self.comprehension_loop(&[elem_ins], OpCode::SetAdd, &versions_before);
-                self.advance(); // Rbrace
+                self.advance();
             }
             _ => {
                 let mut count = 1u16;
@@ -68,10 +66,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
     }
 
-    /*
-    List Literal Handler
-        Parses [] for list literals and list comprehensions.
-    */
+    /* Parses [] for list literals and list comprehensions. */
 
     pub(super) fn list_literal(&mut self) {
         if matches!(self.peek(), Some(TokenType::Rsqb)) {
@@ -86,7 +81,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             let elem_ins: Vec<Instruction> = self.chunk.instructions.drain(elem_start..).collect();
             self.chunk.emit(OpCode::BuildList, 0);
             self.comprehension_loop(&[elem_ins], OpCode::ListAppend, &versions_before);
-            self.advance(); // Rsqb
+            self.advance();
         } else {
             let mut count = 1u16;
             while self.eat_if(TokenType::Comma) {
@@ -99,10 +94,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
     }
 
-    /*
-    Comprehension Loop
-        Builds for/if scaffolding and reinjects element body with SSA slot rewriting.
-    */
+    /* Builds for/if scaffolding and reinjects element body with SSA slot rewriting. */
 
     pub(super) fn comprehension_loop(&mut self, elem_bodies: &[Vec<Instruction>], append_op: OpCode, versions_before: &HashMap<String, u32>) {
         let mut loop_starts: Vec<u16> = Vec::new();
@@ -138,14 +130,13 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
             while self.eat_if(TokenType::If) {
                 self.expr_bp(1);
-                self.chunk.emit(OpCode::JumpIfFalse, ls); // fail -> next iteration
+                self.chunk.emit(OpCode::JumpIfFalse, ls);
             }
 
             loop_starts.push(ls);
             for_iters.push(fi);
         }
 
-        // Map pre-loop slots to current versions, skipping non-existent element references.
         let mut var_map: HashMap<u16, u16> = HashMap::default();
         for var in &all_vars {
             let old_ver = versions_before.get(var).copied().unwrap_or(0);
@@ -170,17 +161,13 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
         self.chunk.emit(append_op, 0);
 
-        // Close loops innermost-first: Jump back to header, patch matching ForIter to the point past it.
         for i in (0..for_iters.len()).rev() {
             self.chunk.emit(OpCode::Jump, loop_starts[i]);
             self.patch(for_iters[i]);
         }
     }
 
-    /*
-    F-String Parser
-        Parses f-strings with embedded expressions and format specs.
-    */
+    /* Parses f-strings with embedded expressions and format specs. */
 
     pub(super) fn fstring(&mut self) {
         let mut parts = 0u16;
@@ -249,10 +236,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
     }
 
-    /*
-    Function Call Handler
-        Dispatches print/range/builtins or general function calls with args.
-    */
+    /* Dispatches print/range/builtins or general function calls with args. */
 
     pub(super) fn call(&mut self, name: String) -> bool {
         if name == "print" {
@@ -348,10 +332,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         (pos, kw)
     }
 
-    /*
-    Class Definition
-        Parses class header, compiles body separately and emits MakeClass.
-    */
+    /* Parses class header, compiles body separately and emits MakeClass. */
 
     pub(super) fn class_def(&mut self) {
         let n = self.advance();
@@ -378,10 +359,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.chunk.emit(OpCode::StoreName, i);
     }
 
-    /*
-    Function Definition
-        Parses params/defaults, compiles body and emits MakeFunction or coroutine.
-    */
+    /* Parses params/defaults, compiles body and emits MakeFunction or coroutine. */
 
     pub(super) fn func_def_inner(&mut self, decorators: u16, is_async: bool) {
         let fname = {

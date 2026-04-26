@@ -1,15 +1,13 @@
 // parser/types.rs
 
 use alloc::{string::{String, ToString}, vec, vec::Vec, format};
+
 use crate::modules::fx::FxHashMap as HashMap;
 
 pub(crate) const MAX_EXPR_DEPTH: usize = 200;
 pub(crate) const MAX_INSTRUCTIONS: usize = 65_535;
 
-/*
-OpCodes
-    Enumeration of all bytecode instructions supported by the virtual machine.
-*/
+/* Enumeration of all bytecode instructions supported by the virtual machine. */
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OpCode { 
@@ -26,10 +24,7 @@ pub enum OpCode {
     JumpIfFalseOrPop, JumpIfTrueOrPop, Dup,
 }
 
-/*
-Builtin Dispatch
-    O(1) lookup table mapping Python builtin names to their corresponding OpCodes.
-*/
+/* O(1) lookup table mapping Python builtin names to their corresponding OpCodes. */
 
 pub(super) fn builtin(name: &str) -> Option<(OpCode, bool)> {
     match name {
@@ -59,10 +54,7 @@ pub(super) fn builtin(name: &str) -> Option<(OpCode, bool)> {
     }
 }
 
-/*
-Value
-    Represents constant literals stored in the bytecode constants pool.
-*/
+/* Represents constant literals stored in the bytecode constants pool. */
 
 #[derive(Debug)]
 pub enum Value {
@@ -74,21 +66,15 @@ pub enum Value {
     None,
 }
 
-/*
-Instruction
-    Single bytecode instruction containing an opcode and 16-bit operand.
-*/
+/* Single bytecode instruction containing an opcode and 16-bit operand. */
 
 #[derive(Debug)]
 pub struct Instruction {
-    pub opcode:  OpCode,
+    pub opcode: OpCode,
     pub operand: u16,
 }
 
-/*
-SSAChunk
-    Container for generated instructions, constants, names, PHI sources and metadata.
-*/
+/* Container for generated instructions, constants, names, PHI sources and metadata. */
 
 #[derive(Default)]
 pub struct SSAChunk {
@@ -109,7 +95,7 @@ pub struct SSAChunk {
 
 impl SSAChunk {
     pub(super) fn emit(&mut self, op: OpCode, operand: u16) {
-        // Sets overflow flag for post-parse diagnostic instead of panicking
+        // Sets overflow flag for post parse diagnostic instead of panicking
         if self.instructions.len() >= MAX_INSTRUCTIONS {
             self.overflow = true;
             return;
@@ -126,7 +112,7 @@ impl SSAChunk {
     }
 
     pub(super) fn push_name(&mut self, n: &str) -> u16 {
-        if let Some(&i) = self.name_index.get(n) { return i; } // interning: same string -> same index
+        if let Some(&i) = self.name_index.get(n) { return i; }
         if self.names.len() >= u16::MAX as usize {
             return 0;
         }
@@ -165,20 +151,14 @@ impl SSAChunk {
     }
 }
 
-/*
-JoinNode
-    Tracks SSA versions before/after branches to insert correct PHI nodes later.
-*/
+/* Tracks SSA versions before/after branches to insert correct PHI nodes later. */
 
 pub(crate) struct JoinNode {
     pub(super) backup: HashMap<String, u32>,
     pub(super) then: Option<HashMap<String, u32>>,
 }
 
-/*
-Diagnostic
-    Stores parsing error details including line, column range and message.
-*/
+/* Stores parsing error details including line, column range and message. */
 
 pub struct Diagnostic {
     pub line: usize,
@@ -193,10 +173,7 @@ impl core::fmt::Display for Diagnostic {
     }
 }
 
-/*
-String Helpers
-    Parses and unescapes Python string literals from lexer tokens.
-*/
+/* Parses and unescapes Python string literals from lexer tokens. */
 
 pub(super) fn parse_string(s: &str) -> String {
     let is_raw = s.contains('r') || s.contains('R');
@@ -251,7 +228,7 @@ pub const BUILTIN_TYPES: &[&str] = &[
     "AssertionError", "ArithmeticError", "LookupError",
 ];
 
-// Map each opcode to its functional group for streamlined execution logic.
+/* Map each opcode to its functional group for streamlined execution logic. */
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OpCategory {

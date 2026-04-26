@@ -10,15 +10,12 @@ mod literals;
 pub use types::*;
 
 use crate::modules::lexer::{Token, TokenType};
-use alloc::{string::{String, ToString}, vec::Vec, format};
-
 use crate::modules::fx::FxHashMap as HashMap;
+
+use alloc::{string::{String, ToString}, vec::Vec, format};
 use core::iter::Peekable;
 
-/*
-Parser Struct
-    Main parser state holding source, tokens, SSA chunk, versions and control stacks.
-*/
+/* Main parser state holding source, tokens, SSA chunk, versions and control stacks. */
 
 pub struct Parser<'src, I: Iterator<Item = Token>> {
     pub(super) source: &'src str,
@@ -34,10 +31,7 @@ pub struct Parser<'src, I: Iterator<Item = Token>> {
     pub errors: Vec<Diagnostic>,
 }
 
-/*
-SSA Version Management
-    Tracks and updates SSA versions for variables to enable static single assignment.
-*/
+/* Tracks and updates SSA versions for variables to enable static single assignment. */
 
 impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     pub(super) fn current_version(&self, name: &str) -> u32 {
@@ -104,10 +98,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     }
 }
 
-/*
-Block and Branch Management
-    Handles SSA merging for if/else blocks and creates PHI nodes at control-flow joins.
-*/
+/* Handles SSA merging for if/else blocks and creates PHI nodes at control-flow joins. */
 
 impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     pub(super) fn enter_block(&mut self) {
@@ -155,16 +146,14 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             let ib = self.chunk.push_name(Self::ssa_name(name, vb, &mut bb));
             let v = self.increment_version(name);
             let ix = self.chunk.push_name(Self::ssa_name(name, v, &mut bx));
+
             self.chunk.phi_sources.push((ia, ib));
             self.chunk.emit(OpCode::Phi, ix);
         }
     }
 }
 
-/*
-Token Helpers
-    Utility methods to advance, peek, eat tokens and report parser errors cleanly.
-*/
+/* Utility methods to advance, peek, eat tokens and report parser errors cleanly. */
 
 impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     pub(super) fn advance(&mut self) -> Token {
@@ -196,13 +185,9 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
     }
 
-    pub(super) fn at_end(&mut self) -> bool {
-        self.peek().is_none()
-    }
+    pub(super) fn at_end(&mut self) -> bool { self.peek().is_none() }
 
-    pub(super) fn lexeme(&self, t: &Token) -> &'src str {
-        &self.source[t.start..t.end]
-    }
+    pub(super) fn lexeme(&self, t: &Token) -> &'src str { &self.source[t.start..t.end] }
 
     pub(super) fn peek(&mut self) -> Option<TokenType> {
         loop {
@@ -240,10 +225,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     }
 }
 
-/*
-Top-Level Entry Points
-    Parser constructor and main parse method that drives full compilation to SSA.
-*/
+/* Parser constructor and main parse method that drives full compilation to SSA. */
 
 impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     pub fn new(source: &'src str, iter: I) -> Self {
@@ -268,9 +250,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             if self.at_end() { break; }
 
             let produced_value = self.stmt();
-            if !self.at_end() && produced_value {
-                self.chunk.emit(OpCode::PopTop, 0);
-            }
+            if !self.at_end() && produced_value { self.chunk.emit(OpCode::PopTop, 0); }
         }
 
         if self.chunk.overflow {

@@ -2,27 +2,28 @@
 
 use super::Parser;
 use super::types::{OpCode, Value, MAX_EXPR_DEPTH, Instruction};
+
 use super::types::parse_string;
 use crate::modules::lexer::{Token, TokenType};
+
 use alloc::{string::ToString, vec::Vec, vec, format, string::String};
 
 impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
-    /*
-    Expression Entry Point
-        Main driver for expressions with recursion guard, ternary support and tails.
-    */
+    /* Main driver for expressions with recursion guard, ternary support and tails. */
 
     pub(super) fn expr(&mut self) {
         self.expr_depth += 1;
-        // A04:2021 - Insecure Design: cap recursion depth to prevent stack overflow.
+
         if self.expr_depth > MAX_EXPR_DEPTH {
             self.expr_depth -= 1;
             self.error("expression too deeply nested");
             return;
         }
+
         self.saw_newline = false;
         self.expr_bp(0);
+
         if !self.saw_newline && matches!(self.peek(), Some(TokenType::If)) {
             self.advance();
             self.expr_bp(0);
@@ -36,6 +37,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             self.expr_bp(0);
             self.patch(jmp);
         }
+
         self.expr_depth -= 1;
     }
 
@@ -44,10 +46,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.infix_bp(0);
     }
 
-    /*
-    Pratt Parser
-        Implements Pratt parsing for infix operators using binding powers and precedence.
-    */
+    /* Implements Pratt parsing for infix operators using binding powers and precedence. */
 
     pub(super) fn expr_bp(&mut self, min_bp: u8) {
         match self.peek() {
@@ -63,7 +62,6 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
     pub(super) fn infix_bp(&mut self, min_bp: u8) {
         while let Some(tok) = self.peek() {
-            // `is` / `is not`
             if tok == TokenType::Is {
                 if 7 < min_bp { break; }
                 self.advance();
@@ -77,7 +75,6 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 continue;
             }
 
-            // `not in`
             if tok == TokenType::Not {
                 if 7 < min_bp { break; }
                 self.advance();
@@ -91,7 +88,6 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             if l_bp < min_bp { break; }
             self.advance();
 
-            // Short-circuit: peek-and-jump preserves the actual value (Python semantics).
             if matches!(op, OpCode::And | OpCode::Or) {
                 let jump_op = if op == OpCode::And { OpCode::JumpIfFalseOrPop } else { OpCode::JumpIfTrueOrPop };
                 self.chunk.emit(jump_op, 0);
@@ -103,8 +99,6 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
             self.expr_bp(r_bp);
 
-            // Chained comparisons: `a < b < c` => `(a < b) and (b < c)` with b evaluated once.
-            // Store b in a temp SSA slot so it can be reused as LHS of the next comparison.
             if matches!(op, OpCode::Eq | OpCode::NotEq | OpCode::Lt | OpCode::Gt | OpCode::LtEq | OpCode::GtEq)
                 && let Some(next_tok) = self.peek()
                 && matches!(next_tok, TokenType::Less | TokenType::Greater | TokenType::LessEqual | TokenType::GreaterEqual | TokenType::EqEqual | TokenType::NotEqual)
@@ -149,23 +143,16 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             TokenType::Percent => Some((19, 20, OpCode::Mod)),
             TokenType::DoubleSlash => Some((19, 20, OpCode::FloorDiv)),
             TokenType::DoubleStar => Some((22, 21, OpCode::Pow)),
-            _ => None
+            _ => None,
         }
     }
 
-    /*
-    Unary Parser
-        Recursively handles unary minus, bitwise not and await operators.
-    */
+    /* Recursively handles unary minus, bitwise not and await operators. */
 
     pub(super) fn parse_unary(&mut self) {
         match self.peek() {
             Some(TokenType::Minus) => {
                 self.advance();
-                // Python: `**` binds tighter than unary `-` on its left.
-                // `-2**3` parses as `-(2**3)`, not `(-2)**3`.
-                // We parse the operand with min_bp = pow_right_bp (21) so `**`
-                // (left_bp=22) gets to consume the atom first.
                 self.expr_bp(21);
                 self.chunk.emit(OpCode::Minus, 0);
             }
@@ -179,14 +166,11 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 self.expr_bp(21);
                 self.chunk.emit(OpCode::Await, 0);
             }
-            _ => self.parse_atom(),
+            _ => self.parse_atom()
         }
     }
 
-    /*
-    Atom Parser
-        Parses primary atoms: literals, names, numbers, strings, f-strings and containers.
-    */
+    /* Parses primary atoms: literals, names, numbers, strings, f-strings and containers. */
 
     pub(super) fn parse_atom(&mut self) {
         let t = self.advance();
@@ -227,7 +211,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                         let elem_ins: Vec<Instruction> = self.chunk.instructions.drain(elem_start..).collect();
                         self.chunk.emit(OpCode::BuildList, 0);
                         self.comprehension_loop(&[elem_ins], OpCode::ListAppend, &versions_before);
-                        self.advance(); // Rpar
+                        self.advance();
                     } else if self.eat_if(TokenType::Comma) {
                         let mut count = 1u16;
                         while !matches!(self.peek(), Some(TokenType::Rpar) | None) {
@@ -244,18 +228,13 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             }
             TokenType::Lambda => self.parse_lambda(),
             _ => {
-                if t.kind != TokenType::Endmarker {
-                    self.error("unexpected token");
-                }
+                if t.kind != TokenType::Endmarker { self.error("unexpected token"); }
             }
         }
         self.postfix_tail();
     }
 
-    /*
-    Name Handler
-        Special parsing for names including assignment, walrus operator and function calls.
-    */
+    /* Special parsing for names including assignment, walrus operator and function calls. */
 
     pub(super) fn name(&mut self, t: Token) {
         let name = self.lexeme(&t).to_string();
@@ -290,10 +269,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
     pub(super) fn parse_number(&mut self, raw: &str, kind: TokenType) {
         let s = raw.replace('_', "");
-        if kind == TokenType::Float {
-            self.emit_const(Value::Float(s.parse().unwrap_or(0.0)));
-            return;
-        }
+        if kind == TokenType::Float { self.emit_const(Value::Float(s.parse().unwrap_or(0.0))); return; }
         let (digits, base) = Self::parse_int_prefix(&s);
         let maybe = if base == 10 {
             digits.parse().ok()
@@ -331,10 +307,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         out
     }
 
-    /*
-    Postfix Tail
-        Handles attribute access, indexing, slicing and method calls after atoms.
-    */
+    /* Handles attribute access, indexing, slicing and method calls after atoms. */
     
     pub(super) fn postfix_tail(&mut self) {
         loop {
@@ -367,7 +340,6 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                         self.chunk.emit(OpCode::GetItem, 0);
                     } else {
                         self.eat(TokenType::Rsqb);
-                        // Chained subscript assignment: a[i][j] = v
                         if !is_slice && matches!(self.peek(), Some(TokenType::Equal)) {
                             self.advance();
                             self.expr();
@@ -390,15 +362,12 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                         self.chunk.emit(OpCode::Call, encoded);
                     }
                 }
-                _ => break,
+                _ => break
             }
         }
     }
 
-    /*
-    Lambda Parser
-        Parses lambda expressions by compiling body into a MakeFunction object.
-    */
+    /* Parses lambda expressions by compiling body into a MakeFunction object. */
 
     pub(super) fn parse_lambda(&mut self) {
         let mut params = Vec::new();
@@ -418,22 +387,16 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
         self.eat(TokenType::Colon);
 
-        // Capture outer scope versions so free variables (e.g. `n` from enclosing
-        // function) resolve correctly inside the lambda body.
         let outer_versions = self.ssa_versions.clone();
 
         let body = self.with_fresh_chunk(|s| {
-            // Seed with outer scope first, then params override (params shadow outer names).
             s.ssa_versions = outer_versions;
             for p in &params { s.ssa_versions.insert(p.clone(), 0); }
             s.expr();
             s.chunk.emit(OpCode::ReturnValue, 0);
         });
-        // Ensure free variables used inside the lambda appear in the outer chunk's
-        // name table so exec_make_function can find their slot indices for capture.
-        let param_slots: alloc::collections::BTreeSet<String> = params.iter()
-            .map(|p| format!("{}_0", p.trim_start_matches('*')))
-            .collect();
+
+        let param_slots: alloc::collections::BTreeSet<String> = params.iter().map(|p| format!("{}_0", p.trim_start_matches('*'))).collect();
         for name in &body.names {
             if !param_slots.contains(name.as_str()) {
                 self.chunk.push_name(name);

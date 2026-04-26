@@ -2,15 +2,14 @@
 
 use super::Parser;
 use super::types::OpCode;
+
 use crate::modules::lexer::{Token, TokenType};
+
 use alloc::{string::{String, ToString}, vec, format};
 
 impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
-    /*
-    Statement Dispatcher
-        Routes each statement type (if/for/def/etc) to its specific handler.
-    */
+    /* Routes each statement type (if/for/def/etc) to its specific handler. */
 
     pub(super) fn stmt(&mut self) -> bool {
         match self.peek() {
@@ -70,7 +69,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                         self.advance();
                         self.func_def_inner(0, true);
                     }
-                    Some(TokenType::For)  => { self.for_stmt_inner(true); }
+                    Some(TokenType::For) => { self.for_stmt_inner(true); }
                     Some(TokenType::With) => { self.with_stmt_inner(true); }
                     _ => {}
                 }
@@ -147,9 +146,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 let t = self.advance();
                 let name = self.lexeme(&t).to_string();
                 let mut buf = [0u8; 128];
-                let idx = self.chunk.push_name(
-                    Self::ssa_name(&name, self.current_version(&name), &mut buf)
-                );
+                let idx = self.chunk.push_name( Self::ssa_name(&name, self.current_version(&name), &mut buf) );
                 self.chunk.emit(OpCode::Del, idx);
                 false
             }
@@ -182,7 +179,6 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             }
             Some(TokenType::Continue) => {
                 self.advance();
-                // A04:2021 – Insecure Design: safe guard against continue outside loop.
                 if let Some(&start) = self.loop_starts.last() {
                     self.chunk.emit(OpCode::Jump, start);
                 } else {
@@ -195,9 +191,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 let t = self.advance();
                 let mut targets = vec![format!("*{}", self.lexeme(&t))];
                 while self.eat_if(TokenType::Comma) {
-                    if !matches!(self.peek(), Some(TokenType::Name)) {
-                        break;
-                    }
+                    if !matches!(self.peek(), Some(TokenType::Name)) { break; }
                     let t = self.advance();
                     targets.push(self.lexeme(&t).to_string());
                 }
@@ -205,9 +199,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 self.expr();
                 let after = (targets.len() - 1) as u16;
                 self.chunk.emit(OpCode::UnpackEx, after);
-                for target in targets {
-                    self.store_name(target.trim_start_matches('*').to_string());
-                }
+                for target in targets { self.store_name(target.trim_start_matches('*').to_string()); }
                 false
             }
             Some(TokenType::Return) => {
@@ -221,9 +213,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                         self.expr();
                         count += 1;
                     }
-                    if count > 1 {
-                        self.chunk.emit(OpCode::BuildTuple, count);
-                    }
+                    if count > 1 { self.chunk.emit(OpCode::BuildTuple, count); }
                 }
                 self.chunk.emit(OpCode::ReturnValue, 0);
                 false
@@ -251,9 +241,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             let name = self.lexeme(&t).to_string();
             let idx = self.chunk.push_name(&name);
             self.chunk.emit(op, idx);
-            if !self.eat_if(TokenType::Comma) {
-                break;
-            }
+            if !self.eat_if(TokenType::Comma) { break; }
         }
     }
 
@@ -278,16 +266,11 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 self.chunk.emit(OpCode::PopTop, 0);
             }
 
-            if !indented && !matches!(self.peek(), Some(TokenType::Semi)) {
-                break;
-            }
+            if !indented && !matches!(self.peek(), Some(TokenType::Semi)) { break; }
         }
     }
 
-    /*
-    Name Statement Handler
-        Parses assignments, augmented ops, attribute access, indexing and calls on names.
-    */
+    /* Name Parses assignments, augmented ops, attribute access, indexing and calls on names. */
 
     pub(super) fn name_stmt(&mut self, t: Token) -> bool {
         let name = self.lexeme(&t).to_string();
@@ -463,10 +446,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
     }
 
-    /*
-    Simple Assignment
-        Consumes = token, compiles RHS expression, stores into new SSA version.
-    */
+    /* Consumes = token, compiles RHS expression, stores into new SSA version. */
 
     pub(super) fn assign(&mut self, name: String) {
         self.advance();
