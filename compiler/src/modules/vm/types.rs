@@ -608,9 +608,8 @@ impl HeapPool {
                         }
                     }
                 }
-                Some(HeapObj::BoundMethod(recv, _)) => {
-                    if recv.is_heap() { worklist.push(recv.as_heap()); }
-                }
+                Some(HeapObj::BoundMethod(recv, _))
+                    if recv.is_heap() => { worklist.push(recv.as_heap()); }
                 _ => {}
             }
         }
