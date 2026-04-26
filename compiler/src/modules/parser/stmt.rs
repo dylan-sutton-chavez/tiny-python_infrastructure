@@ -123,7 +123,17 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                 false
             }
             Some(TokenType::Nonlocal) => {
-                self.emit_name_list(OpCode::Nonlocal);
+                self.advance();
+                loop {
+                    let t = self.advance();
+                    let name = self.lexeme(&t).to_string();
+                    let idx = self.chunk.push_name(&name);
+                    self.chunk.emit(OpCode::Nonlocal, idx);
+                    if !self.chunk.nonlocals.contains(&name) {
+                        self.chunk.nonlocals.push(name);
+                    }
+                    if !self.eat_if(TokenType::Comma) { break; }
+                }
                 false
             }
             Some(TokenType::Assert) => {

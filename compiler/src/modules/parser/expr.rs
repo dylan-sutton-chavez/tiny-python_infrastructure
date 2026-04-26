@@ -367,6 +367,14 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                         self.chunk.emit(OpCode::GetItem, 0);
                     } else {
                         self.eat(TokenType::Rsqb);
+                        // Chained subscript assignment: a[i][j] = v
+                        if !is_slice && matches!(self.peek(), Some(TokenType::Equal)) {
+                            self.advance();
+                            self.expr();
+                            self.chunk.emit(OpCode::StoreItem, 0);
+                            self.chunk.emit(OpCode::LoadNone, 0);
+                            return;
+                        }
                         self.chunk.emit(OpCode::GetItem, 0);
                     }
                 }

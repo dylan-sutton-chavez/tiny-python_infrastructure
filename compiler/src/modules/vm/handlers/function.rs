@@ -111,11 +111,29 @@ impl<'a> VM<'a> {
             HashMap::with_capacity_and_hasher(body.names.len(), Default::default());
         for (i, n) in body.names.iter().enumerate() { body_map.insert(n.as_str(), i); }
 
-        for (i, param) in params.iter().enumerate() {
-            if i >= positional.len() { break; }
-            let pname = format!("{}_0", param.trim_start_matches('*'));
-            if let Some(&s) = body_map.get(pname.as_str()) {
-                fn_slots[s] = Some(positional[i]);
+        let mut pos_idx = 0usize;
+        for param in params.iter() {
+            if let Some(star_name) = param.strip_prefix("**") {
+                // **kwargs: not yet supported, skip
+                let _ = star_name;
+            } else if let Some(var_name) = param.strip_prefix('*') {
+                // *args: collect all remaining positionals into a list
+                let rest: Vec<Val> = positional[pos_idx..].to_vec();
+                pos_idx = positional.len();
+                let list_val = self.heap.alloc(
+                    HeapObj::List(Rc::new(RefCell::new(rest)))
+                )?;
+                let pname = format!("{}_0", var_name);
+                if let Some(&s) = body_map.get(pname.as_str()) {
+                    fn_slots[s] = Some(list_val);
+                }
+            } else {
+                if pos_idx >= positional.len() { continue; }
+                let pname = format!("{}_0", param);
+                if let Some(&s) = body_map.get(pname.as_str()) {
+                    fn_slots[s] = Some(positional[pos_idx]);
+                }
+                pos_idx += 1;
             }
         }
 
@@ -183,12 +201,36 @@ impl<'a> VM<'a> {
         self.live_slots.extend(slots.iter().flatten().copied());
         self.observed_impure.push(false);
 
-        // Capturar el Result; cleanup corre incondicionalmente antes de propagar Err.
         let exec_result = self.exec(body, &mut fn_slots);
 
         let callee_impure = self.observed_impure.pop().unwrap_or(true);
         self.live_slots.truncate(snap);
         self.depth -= 1;
+
+        // Write back nonlocal variables to the caller's slots.
+        for base in &body.nonlocals {
+            // Find the highest-versioned value in the callee's slots.
+            let best = body.names.iter().enumerate()
+                .filter_map(|(i, n)| {
+                    let p = n.rfind('_')?;
+                    (n[..p] == **base).then_some(())?;
+                    let ver: u32 = n[p+1..].parse().ok()?;
+                    Some((ver, fn_slots[i]?))
+                })
+                .max_by_key(|(ver, _)| *ver)
+                .map(|(_, val)| val);
+
+            if let Some(val) = best {
+                // Update all versions of this name in the caller's slots.
+                for (si, sname) in chunk.names.iter().enumerate() {
+                    if let Some(p) = sname.rfind('_') {
+                        if &sname[..p] == base.as_str() && si < slots.len() {
+                            slots[si] = Some(val);
+                        }
+                    }
+                }
+            }
+        }
 
         let result = exec_result?;
         if callee_impure { self.mark_impure(); }

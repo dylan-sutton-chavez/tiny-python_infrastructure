@@ -276,12 +276,28 @@ impl<'a> VM<'a> {
         if let (Some(ba), Some(bb)) = (self.to_bigint(a), self.to_bigint(b)) {
             return self.bigint_to_val(ba.mul(&bb));
         }
-        let (str_val, count) = if a.is_heap() && b.is_int() { (a, b.as_int()) }
-                            else if a.is_int() && b.is_heap() { (b, a.as_int()) }
-                            else { return Err(VmErr::Type("unsupported operand type(s) for '*'")); };
-        if let HeapObj::Str(s) = self.heap.get(str_val) {
-            let r = s.repeat(count.max(0) as usize);
-            return self.heap.alloc(HeapObj::Str(r));
+        let (seq_val, count) = if a.is_heap() && b.is_int() { (a, b.as_int()) }
+                else if a.is_int() && b.is_heap() { (b, a.as_int()) }
+                else { return Err(VmErr::Type("unsupported operand type(s) for '*'")); };
+        let n = count.max(0) as usize;
+        match self.heap.get(seq_val) {
+            HeapObj::Str(s) => {
+                let r = s.repeat(n);
+                return self.heap.alloc(HeapObj::Str(r));
+            }
+            HeapObj::List(rc) => {
+                let src = rc.borrow().clone();
+                let mut out = Vec::with_capacity(src.len() * n);
+                for _ in 0..n { out.extend_from_slice(&src); }
+                return self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(out))));
+            }
+            HeapObj::Tuple(v) => {
+                let src = v.clone();
+                let mut out = Vec::with_capacity(src.len() * n);
+                for _ in 0..n { out.extend_from_slice(&src); }
+                return self.heap.alloc(HeapObj::Tuple(out));
+            }
+            _ => {}
         }
         Err(VmErr::Type("unsupported operand type(s) for '*'"))
     }

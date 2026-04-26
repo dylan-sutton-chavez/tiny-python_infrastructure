@@ -103,6 +103,7 @@ pub struct SSAChunk {
     pub overflow: bool,
     pub prev_slots: Vec<Option<u16>>,
     pub phi_map: Vec<usize>,
+    pub nonlocals: Vec<String>,
     pub(super) name_index: HashMap<String, u16>
 }
 
