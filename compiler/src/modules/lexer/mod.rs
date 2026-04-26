@@ -48,7 +48,7 @@ pub enum TokenType {
     Comment, Newline, Indent, Dedent, Nl, Endmarker,
 }
 
-// Produces a parser-ready iterator with indentation and soft keywords resolved.
+// Produces a parser ready iterator with indentation and soft keywords resolved.
 pub fn lexer(source: &str) -> impl Iterator<Item = Token> + '_ {
     let bytes = source.as_bytes();
     let len = source.len();

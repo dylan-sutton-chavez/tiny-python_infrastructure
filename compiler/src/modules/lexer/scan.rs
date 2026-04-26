@@ -11,11 +11,11 @@ use core::cmp::Ordering;
 const MAX_INDENT_DEPTH: usize = 100;
 const MAX_FSTRING_DEPTH: usize = 200;
 
-// Scanner state: source bytes, position, pending queue, indent stack, f-string context.
+// Scanner state; source bytes, position, pending queue, indent stack, f-string context.
 pub(super) struct Scanner<'a> {
     pub src: &'a [u8],
     pub pos: usize,
-    pub pending: Vec<(TokenType,usize,usize,usize)>, // Pending stack: Tokens to emit in LIFO order.
+    pub pending: Vec<(TokenType,usize,usize,usize)>, // Pending stack; Tokens to emit in LIFO order.
     pub indent_stack: Vec<usize>,
     pub nesting: u32,
     pub line: usize,
@@ -116,7 +116,7 @@ impl<'a> Scanner<'a> {
         } else { base }
     }
 
-    /* Handles single-quote, double-quote and triple-quoted strings with escape awareness. */
+    /* Handles single-quote, double-quote and triple quoted strings with escape awareness. */
 
     fn scan_string(&mut self, quote: u8) {
         if self.at(0) == Some(quote) && self.at(1) == Some(quote) {
@@ -376,7 +376,7 @@ impl<'a> Scanner<'a> {
             return self.pending.pop();
         }
 
-        // Multi-char operators: 3-char
+        // Multi-char operators: 3 characters
         if self.pos + 2 < self.src.len() {
             let kind = match &self.src[self.pos..self.pos + 3] {
                 b"**=" => Some(TokenType::DoubleStarEqual),
@@ -391,7 +391,7 @@ impl<'a> Scanner<'a> {
             }
         }
 
-        // Multi-char operators: 2-char
+        // Multi-char operators: 2 characters
         if self.pos + 1 < self.src.len() {
             let kind = match &self.src[self.pos..self.pos + 2] {
                 b"!=" => Some(TokenType::NotEqual), b"%=" => Some(TokenType::PercentEqual),
@@ -412,7 +412,7 @@ impl<'a> Scanner<'a> {
             }
         }
 
-        // Single-char: table dispatch
+        // Single character: table dispatch
         self.pos += 1;
         let idx = if b < 128 { SINGLE_TOK[b as usize] } else { 0 };
         let kind = SINGLE_MAP[idx as usize];
