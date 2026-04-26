@@ -1,7 +1,5 @@
 // src/modules/fx.rs
 
-//! Multiply-rotate hasher for small integer/string keys.
-
 use core::hash::{BuildHasher, Hasher};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
