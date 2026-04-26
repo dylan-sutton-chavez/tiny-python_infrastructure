@@ -106,6 +106,7 @@ cargo build --target wasm32-unknown-unknown --release --no-default-features --fe
 │   │       ├── collections.rs
 │   │       ├── handlers
 │   │       │   ├── arith.rs
+│   │       │   ├── attr.rs
 │   │       │   ├── data.rs
 │   │       │   ├── function.rs
 │   │       │   ├── mod.rs
@@ -117,13 +118,13 @@ cargo build --target wasm32-unknown-unknown --release --no-default-features --fe
 │   └── wasm.rs
 └── tests
     ├── cases
-    │   ├── lexer_cases.json
-    │   ├── parser_cases.json
-    │   └── vm_cases.json
-    ├── integration_test.rs
-    ├── lexer_test.rs
-    ├── parser_test.rs
-    └── vm_test.rs
+    │   ├── lexer.json
+    │   ├── parser.json
+    │   └── vm.json
+    ├── lexer.rs
+    ├── main.rs
+    ├── parser.rs
+    └── vm.rs
 ```
 
 ### Tests

@@ -23,7 +23,7 @@ mod test {
     #[test]
     fn test_cases() {
         let cases: Vec<Case> =
-            serde_json::from_str(include_str!("cases/parser_cases.json")).expect("invalid JSON");
+            serde_json::from_str(include_str!("cases/parser.json")).expect("invalid JSON");
 
         for case in cases {
             let (chunk, diagnostics) = Parser::new(&case.src, lexer(&case.src)).parse();

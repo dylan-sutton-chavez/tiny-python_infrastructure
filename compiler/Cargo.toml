@@ -18,8 +18,8 @@ name = "edge"
 path = "src/main.rs"
 
 [[test]]
-name = "integration_test"
-path = "tests/integration_test.rs"
+name = "tests"
+path = "tests/main.rs"
 
 [dependencies]
 hashbrown = { version = "0.15", default-features = false }

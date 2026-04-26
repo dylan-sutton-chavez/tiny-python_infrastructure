@@ -166,6 +166,8 @@ impl<'a> VM<'a> {
     }
 
     pub fn lt_vals(&self, a: Val, b: Val) -> Result<bool, VmErr> {
+        let a = if a.is_bool() { Val::int(a.as_bool() as i64) } else { a };
+        let b = if b.is_bool() { Val::int(b.as_bool() as i64) } else { b };
         if a.is_int() && b.is_int() { return Ok(a.as_int() < b.as_int()); }
         if let Some((af, bf)) = coerce_floats(a, b) { return Ok(af < bf); }
         if let (Some(ba), Some(bb)) = (self.to_bigint(a), self.to_bigint(b)) {

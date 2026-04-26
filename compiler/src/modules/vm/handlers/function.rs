@@ -93,7 +93,8 @@ impl<'a> VM<'a> {
             _ => return Err(VmErr::Type("object is not callable")),
         };
 
-        if num_kw == 0
+        let outer_impure = self.observed_impure.last().copied().unwrap_or(false);
+        if num_kw == 0 && !outer_impure
             && let Some(cached) = self.templates.lookup(fi, &positional, &self.heap) {
                 self.push(cached);
                 return Ok(());

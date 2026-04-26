@@ -529,7 +529,7 @@
     "src": "try:\n    x = 1\nexcept:\n    x = 2", 
     "constants": ["1", "2"], 
     "names": ["x_1", "x_2", "x_3"],
-    "instructions": [["SetupExcept",5], ["LoadConst",0], ["StoreName",0], ["PopExcept",0], ["Jump",7], ["LoadConst",1], ["StoreName",1], ["Phi",3], ["ReturnValue",0]], 
+    "instructions": [["SetupExcept", 5], ["LoadConst", 0], ["StoreName", 0], ["PopExcept", 0], ["Jump", 8], ["PopTop", 0], ["LoadConst", 1], ["StoreName", 1], ["Phi", 2], ["ReturnValue", 0]], 
     "annotations": {}
   },
   {
@@ -947,7 +947,7 @@
     "src": "try:\n    x = 1\nexcept:\n    x = 2\nelse:\n    x = 3", 
     "constants": ["1", "2", "3"], 
     "names": ["x_1", "x_2", "x_3", "x_4"],
-    "instructions": [["SetupExcept",5], ["LoadConst",0], ["StoreName",0], ["PopExcept",0], ["Jump",7], ["LoadConst",1], ["StoreName",1], ["LoadConst",2], ["StoreName",2], ["Phi",4], ["ReturnValue",0]], 
+    "instructions": [["SetupExcept", 5], ["LoadConst", 0], ["StoreName", 0], ["PopExcept", 0], ["Jump", 9], ["PopTop", 0], ["LoadConst", 1], ["StoreName", 1], ["Jump", 9], ["LoadConst", 2], ["StoreName", 2], ["Phi", 3], ["ReturnValue", 0]], 
     "annotations": {}
   },
   {

@@ -102,6 +102,32 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             }
 
             self.expr_bp(r_bp);
+
+            // Chained comparisons: `a < b < c` => `(a < b) and (b < c)` with b evaluated once.
+            // Store b in a temp SSA slot so it can be reused as LHS of the next comparison.
+            if matches!(op, OpCode::Eq | OpCode::NotEq | OpCode::Lt | OpCode::Gt
+                | OpCode::LtEq | OpCode::GtEq)
+            {
+                if let Some(next_tok) = self.peek() {
+                    if matches!(next_tok, TokenType::Less | TokenType::Greater
+                        | TokenType::LessEqual | TokenType::GreaterEqual
+                        | TokenType::EqEqual | TokenType::NotEqual)
+                    {
+                        let ver = self.increment_version("__cmp__");
+                        let tmp = self.push_ssa_name("__cmp__", ver);
+                        self.chunk.emit(OpCode::StoreName, tmp);  // save b
+                        self.chunk.emit(OpCode::LoadName, tmp);   // reload b for this comparison
+                        self.chunk.emit(op, 0);                   // emit a < b
+                        self.chunk.emit(OpCode::JumpIfFalseOrPop, 0);
+                        let jmp = self.chunk.instructions.len() - 1;
+                        self.chunk.emit(OpCode::LoadName, tmp);   // b becomes LHS for next
+                        self.infix_bp(min_bp);
+                        self.patch(jmp);
+                        return;
+                    }
+                }
+            }
+
             self.chunk.emit(op, 0);
         }
     }

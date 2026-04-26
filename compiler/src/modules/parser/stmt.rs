@@ -366,6 +366,11 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                     self.emit_load_ssa(name);
                     let idx = self.chunk.push_name(&self.source[attr_start..attr_end]);
                     self.chunk.emit(OpCode::LoadAttr, idx);
+                    if matches!(self.peek(), Some(TokenType::Lpar)) {
+                        let (pos, kw) = self.parse_args();
+                        let encoded = ((kw & 0xFF) << 8) | (pos & 0xFF);
+                        self.chunk.emit(OpCode::Call, encoded);
+                    }
                     self.expr_tails();
                     true
                 }
