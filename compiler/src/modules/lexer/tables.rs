@@ -160,3 +160,71 @@ pub fn utf8_char_len(first: u8) -> usize {
         _ => 4,
     }
 }
+
+// Reverse lookup mapping: Translates a `TokenType` enum variant into a static string slice. This is strictly used for zero-allocation error diagnostics and human-readable formatting.
+pub const fn token_to_str(kind: &TokenType) -> &'static str {
+    match kind {
+        // Keywords
+        TokenType::False => "'False'", TokenType::None => "'None'", TokenType::True => "'True'",
+        TokenType::And => "'and'", TokenType::As => "'as'", TokenType::Assert => "'assert'",
+        TokenType::Async => "'async'", TokenType::Await => "'await'", TokenType::Break => "'break'",
+        TokenType::Class => "'class'", TokenType::Continue => "'continue'", TokenType::Def => "'def'",
+        TokenType::Del => "'del'", TokenType::Elif => "'elif'", TokenType::Else => "'else'",
+        TokenType::Except => "'except'", TokenType::Finally => "'finally'", TokenType::For => "'for'",
+        TokenType::From => "'from'", TokenType::Global => "'global'", TokenType::If => "'if'",
+        TokenType::Import => "'import'", TokenType::In => "'in'", TokenType::Is => "'is'",
+        TokenType::Lambda => "'lambda'", TokenType::Nonlocal => "'nonlocal'", TokenType::Not => "'not'",
+        TokenType::Or => "'or'", TokenType::Pass => "'pass'", TokenType::Raise => "'raise'",
+        TokenType::Return => "'return'", TokenType::Try => "'try'", TokenType::While => "'while'",
+        TokenType::With => "'with'", TokenType::Yield => "'yield'",
+
+        // Soft keywords
+        TokenType::Case => "'case'", TokenType::Match => "'match'", 
+        TokenType::Type => "'type'", TokenType::Underscore => "'_'",
+
+        // Operators (3-char)
+        TokenType::DoubleStarEqual => "'**='", TokenType::DoubleSlashEqual => "'//='", 
+        TokenType::LeftShiftEqual => "'<<='", TokenType::RightShiftEqual => "'>>='",
+
+        // Operators (2-char)
+        TokenType::NotEqual => "'!='", TokenType::PercentEqual => "'%='", TokenType::AmperEqual => "'&='", 
+        TokenType::DoubleStar => "'**'", TokenType::StarEqual => "'*='", TokenType::PlusEqual => "'+='", 
+        TokenType::MinEqual => "'-='", TokenType::Rarrow => "'->'", TokenType::Ellipsis => "'...'", 
+        TokenType::DoubleSlash => "'//'", TokenType::SlashEqual => "'/='", TokenType::ColonEqual => "':='", 
+        TokenType::LeftShift => "'<<'", TokenType::LessEqual => "'<='", TokenType::EqEqual => "'=='", 
+        TokenType::GreaterEqual => "'>='", TokenType::RightShift => "'>>'", TokenType::AtEqual => "'@='", 
+        TokenType::CircumflexEqual => "'^='", TokenType::VbarEqual => "'|='",
+
+        // Operators (1-char)
+        TokenType::Exclamation => "'!'", TokenType::Percent => "'%'", TokenType::Amper => "'&'", 
+        TokenType::Star => "'*'", TokenType::Plus => "'+'", TokenType::Minus => "'-'", 
+        TokenType::Dot => "'.'", TokenType::Slash => "'/'", TokenType::Less => "'<'", 
+        TokenType::Equal => "'='", TokenType::Greater => "'>'", TokenType::At => "'@'", 
+        TokenType::Circumflex => "'^'", TokenType::Vbar => "'|'", TokenType::Tilde => "'~'", 
+        TokenType::Comma => "','", TokenType::Colon => "':'", TokenType::Semi => "';'",
+
+        // Delimiters
+        TokenType::Lpar => "'('", TokenType::Rpar => "')'", 
+        TokenType::Lsqb => "'['", TokenType::Rsqb => "']'", 
+        TokenType::Lbrace => "'{'", TokenType::Rbrace => "'}'",
+
+        // Literals
+        TokenType::Name => "identifier", 
+        TokenType::Complex => "complex number", 
+        TokenType::Float => "float",
+        TokenType::Int => "integer", 
+        TokenType::String => "string",
+
+        // F-string
+        TokenType::FstringStart => "f-string start", 
+        TokenType::FstringMiddle => "f-string content", 
+        TokenType::FstringEnd => "f-string end",
+
+        // Whitespace and structure
+        TokenType::Comment => "comment", 
+        TokenType::Newline | TokenType::Nl => "newline", 
+        TokenType::Indent => "indentation", 
+        TokenType::Dedent => "dedentation", 
+        TokenType::Endmarker => "EOF",
+    }
+}

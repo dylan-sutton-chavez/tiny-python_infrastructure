@@ -9,10 +9,11 @@ mod literals;
 
 pub use types::*;
 
+use crate::s;
 use crate::modules::lexer::{Token, TokenType};
 use crate::modules::fx::FxHashMap as HashMap;
 
-use alloc::{string::{String, ToString}, vec::Vec, format};
+use alloc::{string::{String, ToString}, vec::Vec};
 use core::iter::Peekable;
 
 /* Main parser state holding source, tokens, SSA chunk, versions and control stacks. */
@@ -211,7 +212,19 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         if matches!(self.peek(), Some(k) if k == kind) {
             self.advance();
         } else {
-            self.error(&format!("expected {:?}", kind)); // Debug formatting; s! has no Debug token
+            let (token_text, line) = match self.tokens.peek() {
+                Some(t) => (&self.source[t.start..t.end], t.line),
+                None => ("EOF", 0),
+            };
+
+            // Query the lexer's static lookup table for the expected token's name.
+            let label = kind.as_str();
+
+            self.error(&s!(
+                "expected ", str label, 
+                ", got '", str token_text, 
+                "' at line ", int line
+            ));
         }
     }
 

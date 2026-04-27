@@ -97,3 +97,10 @@ pub fn lexer(source: &str) -> impl Iterator<Item = Token> + '_ {
         Some(Token { kind, line, start, end })
     })
 }
+
+impl TokenType {
+    #[inline]
+    pub const fn as_str(&self) -> &'static str {
+        tables::token_to_str(self)
+    }
+}

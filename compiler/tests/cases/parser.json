@@ -1605,7 +1605,7 @@
     "names": [],
     "instructions": [["ReturnValue", 0]],
     "annotations": {},
-    "errors": ["expected Rpar"]
+    "errors": ["expected ')', got 'EOF' at line 0"]
   },
   {
     "src": "x = '\\x41'", 
