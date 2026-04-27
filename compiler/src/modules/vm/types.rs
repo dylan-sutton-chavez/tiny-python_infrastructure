@@ -425,7 +425,7 @@ impl BigInt {
                 let mut b = itoa::Buffer::new();
                 s.push_str(b.format(g));
             } else {
-                let n = { let mut b = itoa::Buffer::new(); b.format(g).to_string() };
+                let n = { let mut b = itoa::Buffer::new(); alloc::string::String::from(b.format(g)) };
                 for _ in 0..9usize.saturating_sub(n.len()) { s.push('0'); }
                 s.push_str(&n);
             }
