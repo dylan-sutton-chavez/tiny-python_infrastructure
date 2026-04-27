@@ -295,6 +295,7 @@ impl<'a> Scanner<'a> {
         if self.pos >= self.src.len() { return None; }
 
         let start = self.pos;
+        let line_at_start = self.line;
         let b = self.src[self.pos];
         let cl = BYTE_CLASS[b as usize];
 
@@ -310,7 +311,7 @@ impl<'a> Scanner<'a> {
             while self.pos < self.src.len() && self.src[self.pos] != b'\n' {
                 self.pos += 1;
             }
-            return Some((TokenType::Comment, self.line, start, self.pos));
+            return Some((TokenType::Comment, line_at_start, start, self.pos));
         }
 
         // Identifier / keyword / string-prefix / f-string-prefix
@@ -334,38 +335,38 @@ impl<'a> Scanner<'a> {
             {
                 self.pos += 1;
                 self.scan_string(q);
-                return Some((TokenType::String, self.line, start, self.pos));
+                return Some((TokenType::String, line_at_start, start, self.pos));
             }
 
             let kind = keyword(slice).unwrap_or(TokenType::Name);
-            return Some((kind, self.line, start, self.pos));
+            return Some((kind, line_at_start, start, self.pos));
         }
 
         // Number (digit start)
         if cl & DIGIT != 0 {
             self.pos += 1;
             let kind = self.scan_number(start);
-            return Some((kind, self.line, start, self.pos));
+            return Some((kind, line_at_start, start, self.pos));
         }
 
         // Ellipsis
         if b == b'.' && self.at(1) == Some(b'.') && self.at(2) == Some(b'.') {
             self.pos += 3;
-            return Some((TokenType::Ellipsis, self.line, start, self.pos));
+            return Some((TokenType::Ellipsis, line_at_start, start, self.pos));
         }
 
         // Dot-number (.123)
         if b == b'.' && self.at(1).is_some_and(|c| BYTE_CLASS[c as usize] & DIGIT != 0) {
             self.pos += 1;
             let kind = self.scan_dot_number();
-            return Some((kind, self.line, start, self.pos));
+            return Some((kind, line_at_start, start, self.pos));
         }
 
         // Bare string
         if b == b'"' || b == b'\'' {
             self.pos += 1;
             self.scan_string(b);
-            return Some((TokenType::String, self.line, start, self.pos));
+            return Some((TokenType::String, line_at_start, start, self.pos));
         }
 
         // Close brace (f-string aware)
@@ -385,7 +386,7 @@ impl<'a> Scanner<'a> {
             };
             if let Some(k) = kind {
                 self.pos += 3;
-                return Some((k, self.line, start, self.pos));
+                return Some((k, line_at_start, start, self.pos));
             }
         }
 
@@ -406,7 +407,7 @@ impl<'a> Scanner<'a> {
             };
             if let Some(k) = kind {
                 self.pos += 2;
-                return Some((k, self.line, start, self.pos));
+                return Some((k, line_at_start, start, self.pos));
             }
         }
 
@@ -424,6 +425,6 @@ impl<'a> Scanner<'a> {
             _ => {},
         }
 
-        Some((kind, self.line, start, self.pos))
+        Some((kind, line_at_start, start, self.pos))
     }
 }
