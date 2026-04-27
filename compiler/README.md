@@ -88,6 +88,7 @@ cargo build --target wasm32-unknown-unknown --release --no-default-features --fe
 │   ├── lib.rs
 │   ├── main.rs
 │   ├── modules
+│   │   ├── fstr.rs
 │   │   ├── fx.rs
 │   │   ├── lexer
 │   │   │   ├── mod.rs
