@@ -447,7 +447,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     pub(super) fn compile_body(&mut self, params: &[String]) -> SSAChunk {
         let mut body = self.with_fresh_chunk(|s| {
             for p in params { s.ssa_versions.insert(p.clone(), 0); }
-            s.compile_block();
+            s.compile_block_body();
         });
         body.is_pure = !body.instructions.iter().any(|i| matches!(
             i.opcode,

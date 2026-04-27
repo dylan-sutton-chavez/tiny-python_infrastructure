@@ -272,6 +272,28 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
     }
 
+    pub(super) fn compile_block_body(&mut self) {
+        let indented = self.eat_if(TokenType::Indent);
+        loop {
+            while self.eat_if(TokenType::Semi) {}
+            if self.at_end() { break; }
+            if matches!(self.peek(), Some(TokenType::Dedent)) {
+                self.advance();
+                break;
+            }
+            let produced_value = self.stmt();
+            if !self.at_end() && produced_value {
+                self.chunk.emit(OpCode::PopTop, 0);
+            }
+            if !indented {
+                let just_returned = self.chunk.instructions.last()
+                    .map(|i| i.opcode == OpCode::ReturnValue)
+                    .unwrap_or(false);
+                if just_returned || !matches!(self.peek(), Some(TokenType::Semi)) { break; }
+            }
+        }
+    }
+
     /* Name Parses assignments, augmented ops, attribute access, indexing and calls on names. */
 
     pub(super) fn name_stmt(&mut self, t: Token) -> bool {

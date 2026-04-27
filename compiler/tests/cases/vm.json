@@ -409,5 +409,6 @@
   {"src": "x = 5\nx **= 2\nprint(x)", "output": ["25"], "result": "None"},
   {"src": "print(10 % 3 == 1)", "output": ["True"], "result": "None"},
   {"src": "d = {'a': [1,2,3]}\nd['a'].append(4)\nprint(d['a'])", "output": ["[1, 2, 3, 4]"], "result": "None"},
-  {"src": "data = [{'x': i} for i in range(3)]\nprint(data[1]['x'])", "output": ["1"], "result": "None"}
+  {"src": "data = [{'x': i} for i in range(3)]\nprint(data[1]['x'])", "output": ["1"], "result": "None"},
+  {"src": "def main(x: int, y: float) -> float: return x * y; result: float = main(123, 2.718281); print(result)", "output": ["334.348563"], "result": "None"}
 ]
