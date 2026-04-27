@@ -214,19 +214,15 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         if matches!(self.peek(), Some(k) if k == kind) {
             self.advance();
         } else {
-            let (token_text, line) = match self.tokens.peek() {
-                Some(t) => (&self.source[t.start..t.end], t.line),
-                None => ("EOF", 0),
+            let token_text = match self.tokens.peek() {
+                Some(t) => &self.source[t.start..t.end],
+                None => "EOF",
             };
 
             // Query the lexer's static lookup table for the expected token's name.
             let label = kind.as_str();
 
-            self.error(&s!(
-                "expected ", str label, 
-                ", got '", str token_text, 
-                "' at line ", int line
-            ));
+            self.error(&s!("expected ", str label, ", got '", str token_text, "'"));
         }
     }
 
