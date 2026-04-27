@@ -167,20 +167,22 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     }
 
     pub(super) fn error(&mut self, msg: &str) {
-        let (line, col, end) = self
+        let (line, byte_offset, end) = self
             .tokens
             .peek()
             .map(|t| (t.line, t.start, t.end))
             .unwrap_or((self.last_line, 0, 0));
-        self.errors.push(Diagnostic { line, col, end, msg: msg.to_string() });
 
-        // Sync to next statement boundary to suppress cascading false positives.
+        // Look for the last '\n' before the token.
+        let col = self.source[..byte_offset]
+            .rfind('\n')
+            .map(|line_start| byte_offset - line_start - 1)
+            .unwrap_or(byte_offset);
+
+        self.errors.push(Diagnostic { line, col, end, msg: msg.to_string() });
         loop {
             match self.tokens.peek().map(|t| t.kind) {
-                None
-                | Some(TokenType::Newline)
-                | Some(TokenType::Dedent)
-                | Some(TokenType::Endmarker) => break,
+                None | Some(TokenType::Newline | TokenType::Dedent | TokenType::Endmarker) => break,
                 _ => { self.tokens.next(); }
             }
         }
