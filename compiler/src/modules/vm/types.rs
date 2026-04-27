@@ -4,10 +4,7 @@ use alloc::{string::{String}, vec::Vec, vec, rc::Rc};
 use core::{cell::RefCell};
 use crate::modules::fx::{FxHashMap as HashMap, FxHashSet as HashSet};
 
-/*
-Sandbox Limits
-    Configurable call depth, operation budget and heap quota per execution.
-*/
+/* Configurable call depth, operation budget and heap quota per execution. */
 
 pub struct Limits { pub calls: usize, pub ops: usize, pub heap: usize }
 
@@ -16,10 +13,7 @@ impl Limits {
     pub fn sandbox() -> Self { Self { calls: 256, ops: 100_000_000, heap: 100_000 } }
 }
 
-/*
-Val
-    NaN-boxed 8-byte value: int, float, bool, None or heap index inline.
-*/
+/* NaN-boxed 8-byte value: int, float, bool, None or heap index inline. */
 
 const QNAN: u64 = 0x7FFC_0000_0000_0000;
 const SIGN: u64 = 0x8000_0000_0000_0000;
@@ -84,10 +78,7 @@ impl Val {
     #[inline(always)] pub fn as_heap(&self) -> u32 { ((self.0 >> 4) & 0x0FFF_FFFF) as u32 }
 }
 
-/*
-BigInt Arbitrary Precision Integer
-    Implements signed arbitrary precision integers using base-2^32 little-endian limb storage.
-*/
+/* Implements signed arbitrary precision integers using base-2^32 little-endian limb storage. */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BigInt {
@@ -449,10 +440,7 @@ impl Ord for BigInt {
     }
 }
 
-/*
-Heap Objects
-    Str, List, Dict, Set, Tuple, Func, Range and Slice stored in arena.
-*/
+/* Str, List, Dict, Set, Tuple, Func, Range and Slice stored in arena. */
 
 #[derive(Clone, Debug)]
 pub enum HeapObj {
@@ -498,10 +486,7 @@ impl BuiltinMethodId {
 }
 
 
-/*
-DictMap
-    Insertion-ordered dict backed by Vec with HashMap index for O(1) lookup.
-*/
+/* Insertion-ordered dict backed by Vec with HashMap index for O(1) lookup. */
 
 #[derive(Clone, Debug)]
 pub struct DictMap {
@@ -575,10 +560,7 @@ impl DictMap {
     }
 }
 
-/*
-Heap Pool
-    Arena allocator with mark-sweep GC, string interning, and per-type tagging for inline cache.
-*/
+/* Arena allocator with mark-sweep GC, string interning, and per-type tagging for inline cache. */
 
 struct HeapSlot {
     obj: Option<HeapObj>,
@@ -733,10 +715,7 @@ impl HeapPool {
         }
     }
 
-/*
-Deep Value Equality
-    Content-based equality over the heap; canonical implementation used by both.
-*/
+/* Content-based equality over the heap; canonical implementation used by both. */
 
 pub(super) fn eq_seq(a: &[Val], b: &[Val], eq: impl Fn(Val,Val)->bool) -> bool {
     a.len() == b.len() && a.iter().zip(b).all(|(x,y)| eq(*x,*y))
@@ -774,10 +753,7 @@ fn bigint_of(v: Val, heap: &HeapPool) -> Option<&BigInt> {
     None
 }
 
-/*
-Runtime Errors
-    CallDepth, Heap, Budget, Name, Type, Value, ZeroDiv and Runtime variants.
-*/
+/* CallDepth, Heap, Budget, Name, Type, Value, ZeroDiv and Runtime variants. */
 
 pub enum VmErr {
     CallDepth, Heap, Budget, ZeroDiv,
@@ -792,16 +768,15 @@ impl VmErr {
     /// Mensaje estático — no requiere core::fmt::write
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::CallDepth    => "RecursionError: max depth",
-            Self::Heap         => "MemoryError: heap limit",
-            Self::Budget       => "RuntimeError: budget exceeded",
-            Self::ZeroDiv      => "ZeroDivisionError: division by zero",
-            Self::Type(s)      => s,
-            Self::Value(s)     => s,
-            Self::Runtime(s)   => s,
-            // Name y Raised son String → no pueden ser &'static str
-            Self::Name(_)      => "NameError",
-            Self::Raised(_)    => "Exception",
+            Self::CallDepth => "RecursionError: max depth",
+            Self::Heap => "MemoryError: heap limit",
+            Self::Budget => "RuntimeError: budget exceeded",
+            Self::ZeroDiv => "ZeroDivisionError: division by zero",
+            Self::Type(s) => s,
+            Self::Value(s) => s,
+            Self::Runtime(s) => s,
+            Self::Name(_) => "NameError",
+            Self::Raised(_) => "Exception",
         }
     }
 }
@@ -814,21 +789,18 @@ mod display_impls {
     impl fmt::Display for VmErr {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
-                Self::Type(s)    => { f.write_str("TypeError: ")?; f.write_str(s) }
-                Self::Value(s)   => { f.write_str("ValueError: ")?; f.write_str(s) }
+                Self::Type(s) => { f.write_str("TypeError: ")?; f.write_str(s) }
+                Self::Value(s) => { f.write_str("ValueError: ")?; f.write_str(s) }
                 Self::Runtime(s) => { f.write_str("RuntimeError: ")?; f.write_str(s) }
-                Self::Name(s)    => { f.write_str("NameError: '")?; f.write_str(s)?; f.write_str("'") }
-                Self::Raised(s)  => { f.write_str("Exception: ")?; f.write_str(s) }
-                other            => f.write_str(other.as_str()),
+                Self::Name(s) => { f.write_str("NameError: '")?; f.write_str(s)?; f.write_str("'") }
+                Self::Raised(s) => { f.write_str("Exception: ")?; f.write_str(s) }
+                other => f.write_str(other.as_str()),
             }
         }
     }
 }
 
-/*
-Iterator Frame
-    Seq or Range state consumed one item at a time by ForIter dispatch.
-*/
+/* Seq or Range state consumed one item at a time by ForIter dispatch. */
 
 pub enum IterFrame {
     Seq { items: Vec<Val>, idx: usize },
@@ -849,10 +821,7 @@ impl IterFrame {
     }
 }
 
-/*
-Math Helpers
-    Pure f64 implementations of powi, round, powf for no_std and WASM builds.
-*/
+/* Pure f64 implementations of powi, round, powf for no_std and WASM builds. */
 
 #[inline]
 pub fn fpowi(mut base: f64, exp: i32) -> f64 {
@@ -904,10 +873,7 @@ pub fn fpowf(base: f64, exp: f64) -> f64 {
     fexp(exp * fln(base))
 }
 
-/*
-Cold Error Constructors
-    Out-of-line error paths keep hot dispatch loop linear for instruction cache.
-*/
+/* Out-of-line error paths keep hot dispatch loop linear for instruction cache. */
 
 #[cold] #[inline(never)] pub fn cold_heap() -> VmErr { VmErr::Heap }
 #[cold] #[inline(never)] pub fn cold_budget() -> VmErr { VmErr::Budget }

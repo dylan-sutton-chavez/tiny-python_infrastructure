@@ -9,20 +9,24 @@ use core::cell::RefCell;
 
 // Coerces numeric pair to f64; None if neither is float.
 fn coerce_floats(a: Val, b: Val) -> Option<(f64, f64)> {
-    if !a.is_float() && !b.is_float() { return None; }
-    let af = if a.is_float() { a.as_float() }
-             else if a.is_int() { a.as_int() as f64 }
-             else { return None };
-    let bf = if b.is_float() { b.as_float() }
-             else if b.is_int() { b.as_int() as f64 }
-             else { return None };
-    Some((af, bf))
+    if !a.is_float() && !b.is_float() { 
+        return None; 
+    }
+
+    let extract_f64 = |v: &Val| -> Option<f64> {
+        if v.is_float() {
+            Some(v.as_float())
+        } else if v.is_int() {
+            Some(v.as_int() as f64)
+        } else {
+            None
+        }
+    };
+
+    Some((extract_f64(&a)?, extract_f64(&b)?))
 }
 
-/*
-Cache Binop Macro
-    Records heap type tags and promotes stable binary ops to fast path.
-*/
+/* Records heap type tags and promotes stable binary ops to fast path. */
 
 macro_rules! cached_binop {
     ($heap:expr, $rip:expr, $opcode:expr, $a:expr, $b:expr, $cache:expr) => {{
@@ -33,10 +37,7 @@ macro_rules! cached_binop {
 }
 pub(crate) use cached_binop;
 
-/*
-VM Value Helpers
-    All methods that need &self or &mut self access to HeapPool.
-*/
+/* All methods that need &self or &mut self access to HeapPool. */
 
 use super::VM;
 
@@ -123,8 +124,8 @@ impl<'a> VM<'a> {
         match self.heap.get(v) {
             HeapObj::Str(s) => s.clone(),
             HeapObj::BigInt(b) => b.to_decimal(),
-            HeapObj::Type(name)    => s!("<class '", str name, "'>"),
-            HeapObj::Func(i,_,_)   => s!("<function ", int *i),
+            HeapObj::Type(name) => s!("<class '", str name, "'>"),
+            HeapObj::Func(i,_,_) => s!("<function ", int *i),
             HeapObj::Slice(s,e,st) => s!("slice(", str &self.display(*s), ", ", str &self.display(*e), ", ", str &self.display(*st), ")"),
             HeapObj::Range(s,e,st) => if *st == 1 { s!("range(", int *s, ", ", int *e, ")") } else { s!("range(", int *s, ", ", int *e, ", ", int *st, ")") },
             HeapObj::List(l) => { let mut o = s!(cap: 32; "["); self.append_reprs(&mut o, l.borrow().iter()); o.push(']'); o },
@@ -195,7 +196,7 @@ impl<'a> VM<'a> {
             return match a.as_int().checked_add(b.as_int()) {
                 Some(r) if (Val::INT_MIN..=Val::INT_MAX).contains(&r) => Ok(Val::int(r)),
                 Some(r) => self.heap.alloc(HeapObj::BigInt(BigInt::from_i64(r))),
-                None    => self.i128_to_val(a.as_int() as i128 + b.as_int() as i128),
+                None => self.i128_to_val(a.as_int() as i128 + b.as_int() as i128),
             };
         }
         if let Some((af, bf)) = coerce_floats(a, b) { return Ok(Val::float(af + bf)); }
@@ -229,7 +230,7 @@ impl<'a> VM<'a> {
             return match a.as_int().checked_sub(b.as_int()) {
                 Some(r) if (Val::INT_MIN..=Val::INT_MAX).contains(&r) => Ok(Val::int(r)),
                 Some(r) => self.heap.alloc(HeapObj::BigInt(BigInt::from_i64(r))),
-                None    => self.i128_to_val(a.as_int() as i128 - b.as_int() as i128),
+                None => self.i128_to_val(a.as_int() as i128 - b.as_int() as i128),
             };
         }
         if let Some((af, bf)) = coerce_floats(a, b) { return Ok(Val::float(af - bf)); }
@@ -244,7 +245,7 @@ impl<'a> VM<'a> {
             return match a.as_int().checked_mul(b.as_int()) {
                 Some(r) if (Val::INT_MIN..=Val::INT_MAX).contains(&r) => Ok(Val::int(r)),
                 Some(r) => self.heap.alloc(HeapObj::BigInt(BigInt::from_i64(r))),
-                None    => self.i128_to_val(a.as_int() as i128 * b.as_int() as i128),
+                None => self.i128_to_val(a.as_int() as i128 * b.as_int() as i128),
             };
         }
         if let Some((af, bf)) = coerce_floats(a, b) { return Ok(Val::float(af * bf)); }

@@ -32,10 +32,7 @@ impl<'a> VM<'a> {
         self.heap.alloc(HeapObj::Set(Rc::new(RefCell::new(set))))
     }
 
-    /*
-    BuildSet
-        Pops N items, deduplicates preserving order, pushes HeapObj::Set.
-    */
+    /* Pops N items, deduplicates preserving order, pushes HeapObj::Set. */
     
     pub fn build_set(&mut self, op: u16) -> Result<(), VmErr> {
         let items = self.pop_n(op as usize)?;
@@ -43,10 +40,7 @@ impl<'a> VM<'a> {
         self.push(val); Ok(())
     }
 
-    /*
-    BuildSlice
-        Pops 2 or 3 items (start, stop, [step]), pushes HeapObj::Slice.
-    */
+    /* Pops 2 or 3 items (start, stop, [step]), pushes HeapObj::Slice. */
 
     pub fn build_slice(&mut self, op: u16) -> Result<(), VmErr> {
         let step = if op == 3 { self.pop()? } else { Val::none() };
@@ -56,11 +50,7 @@ impl<'a> VM<'a> {
         self.push(val); Ok(())
     }
 
-    /*
-    UnpackEx
-        Extended unpacking with star target: a, *b, c = iterable.
-        Operand encodes (before << 8) | after for positional counts.
-    */
+    /* Extended unpacking with star target: a, *b, c = iterable. Operand encodes (before << 8) | after for positional counts. */
 
     pub fn unpack_ex(&mut self, op: u16) -> Result<(), VmErr> {
         let obj = self.pop()?;
@@ -85,10 +75,7 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    /*
-    CallDict
-        Constructs dict from keyword args or empty; operand = pair count.
-    */
+    /* Constructs dict from keyword args or empty; operand = pair count. */
 
     pub fn call_dict(&mut self, op: u16) -> Result<(), VmErr> {
         if op == 0 {
@@ -104,10 +91,7 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    /*
-    CallSet
-        Constructs set from iterable arg or empty set.
-    */
+    /* Constructs set from iterable arg or empty set. */
 
     pub fn call_set(&mut self, op: u16) -> Result<(), VmErr> {
         if op == 0 {
@@ -119,7 +103,7 @@ impl<'a> VM<'a> {
                 match self.heap.get(o) {
                     HeapObj::List(v)  => v.borrow().clone(),
                     HeapObj::Tuple(v) => v.clone(),
-                    HeapObj::Set(v)   => v.borrow().iter().cloned().collect(),
+                    HeapObj::Set(v) => v.borrow().iter().cloned().collect(),
                     HeapObj::Str(s) => {
                         let s = s.clone();
                         self.str_to_char_vals(&s)?
@@ -135,10 +119,7 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    /*
-    GetItem Dispatch
-        Handles Str[int], Slice subscript, and delegates to getitem_val.
-    */
+    /* Handles Str[int], Slice subscript, and delegates to getitem_val. */
 
     pub fn get_item(&mut self) -> Result<bool, VmErr> {
         let idx = self.pop()?;
@@ -169,10 +150,7 @@ impl<'a> VM<'a> {
         Ok(false)
     }
 
-    /*
-    Slice Value
-        Single heap pass via SliceSource, extracts sub-sequence preserving type.
-    */
+    /* Single heap pass via SliceSource, extracts sub-sequence preserving type. */
 
     fn slice_val(&mut self, obj: Val, start: Val, stop: Val, step: Val) -> Result<Val, VmErr> {
         if !obj.is_heap() { return Err(VmErr::Type("slice requires a sequence")); }
@@ -195,8 +173,12 @@ impl<'a> VM<'a> {
             else if v.is_int() { let i = v.as_int(); if i < 0 { (len+i).max(0) } else { i.min(len) } }
             else { def }
         };
-        let (s, e) = if st > 0 { (clamp(start, 0), clamp(stop, len)) }
-                    else { (clamp(start, len-1), clamp(stop, -1)) };
+
+        let (s, e) = if st > 0 {
+            (clamp(start, 0), clamp(stop, len))
+        } else {
+            (clamp(start, len - 1), clamp(stop, -1))
+        };
 
         let mut indices = Vec::new();
         let mut cur = s;
@@ -217,10 +199,7 @@ impl<'a> VM<'a> {
         }
     }
 
-    /*
-    GetItem Value
-        Index dispatch for list[int], tuple[int], dict[key].
-    */
+    /* Index dispatch for list[int], tuple[int], dict[key]. */
 
     pub fn getitem_val(&self, obj: Val, idx: Val) -> Result<Val, VmErr> {
         if !obj.is_heap() { return Err(VmErr::Type("object is not subscriptable")); }
@@ -245,10 +224,7 @@ impl<'a> VM<'a> {
         }
     }
 
-    /*
-    StoreItem
-        Mutates list[int], dict[key], or rejects tuple assignment.
-    */
+    /* Mutates list[int], dict[key], or rejects tuple assignment. */
     
     pub fn store_item(&mut self) -> Result<(), VmErr> {
         let value = self.pop()?;

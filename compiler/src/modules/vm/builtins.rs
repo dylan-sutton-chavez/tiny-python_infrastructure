@@ -17,10 +17,7 @@ impl<'a> VM<'a> {
         }
     }
 
-    /*
-    Print Builtin
-        Pops N args, joins with space, appends to output buffer.
-    */
+    /* Pops N args, joins with space, appends to output buffer. */
 
     pub fn call_print(&mut self, op: u16) -> Result<(), VmErr> {
         let args = self.pop_n(op as usize)?;
@@ -33,10 +30,7 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    /*
-    Len Builtin
-        Returns element count for strings, lists, tuples, dicts, sets, ranges.
-    */
+    /* Returns element count for strings, lists, tuples, dicts, sets, ranges. */
 
     pub fn call_len(&mut self) -> Result<(), VmErr> {
         let o = self.pop()?;
@@ -52,10 +46,7 @@ impl<'a> VM<'a> {
         self.push(Val::int(n)); Ok(())
     }
 
-    /*
-    Abs Builtin
-        Returns absolute value for int and float operands.
-    */
+    /* Returns absolute value for int and float operands. */
     
     pub fn call_abs(&mut self) -> Result<(), VmErr> {
         let o = self.pop()?;
@@ -79,20 +70,14 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    /*
-    Str Builtin
-        Converts any value to its string representation via display.
-    */
+    /* Converts any value to its string representation via display. */
     
     pub fn call_str(&mut self) -> Result<(), VmErr> {
         let o = self.pop()?; let s = self.display(o);
         let v = self.heap.alloc(HeapObj::Str(s))?; self.push(v); Ok(())
     }
 
-    /*
-    Int Builtin
-        Converts float, bool, or parseable string to integer.
-    */
+    /* Converts float, bool, or parseable string to integer. */
     
     pub fn call_int(&mut self) -> Result<(), VmErr> {
         let o = self.pop()?;
@@ -115,10 +100,7 @@ impl<'a> VM<'a> {
         self.push(v); Ok(())
     }
 
-    /*
-    Float Builtin
-        Converts int or parseable string to floating point.
-    */
+    /* Converts int or parseable string to floating point. */
     
     pub fn call_float(&mut self) -> Result<(), VmErr> {
         let o = self.pop()?;
@@ -168,10 +150,7 @@ impl<'a> VM<'a> {
         Err(VmErr::Type("ord() requires string of length 1"))
     }
 
-    /*
-    Range Builtin
-        Creates lazy Range(start, end, step) with 1-3 int arguments.
-    */
+    /* Creates lazy Range(start, end, step) with 1-3 int arguments. */
     
     pub fn call_range(&mut self, op: u16) -> Result<(), VmErr> {
         let args = self.pop_n(op as usize)?;
@@ -189,10 +168,7 @@ impl<'a> VM<'a> {
         self.push(val); Ok(())
     }
 
-    /*
-    Round Builtin
-        Rounds float to nearest int or to N decimal places.
-    */
+    /* Rounds float to nearest int or to N decimal places. */
     
     pub fn call_round(&mut self, op: u16) -> Result<(), VmErr> {
         let args = self.pop_n(op as usize)?;
@@ -209,10 +185,7 @@ impl<'a> VM<'a> {
         self.push(v); Ok(())
     }
 
-    /*
-    Min/Max Builtins
-        Returns smallest or largest item from args or single iterable.
-    */
+    /* Returns smallest or largest item from args or single iterable. */
     
     pub fn call_min(&mut self, op: u16) -> Result<(), VmErr> {
         let args: Vec<Val> = self.pop_n(op as usize)?;
@@ -234,10 +207,7 @@ impl<'a> VM<'a> {
         self.push(m); Ok(())
     }
 
-    /*
-    Sum Builtin
-        Sums iterable elements with optional start value.
-    */
+    /* Sums iterable elements with optional start value. */
     
     pub fn call_sum(&mut self, op: u16) -> Result<(), VmErr> {
         let args = self.pop_n(op as usize)?;
@@ -249,10 +219,7 @@ impl<'a> VM<'a> {
         self.push(acc); Ok(())
     }
 
-    /*
-    Sorted Builtin
-        Returns new sorted list from iterable via comparison.
-    */
+    /* Returns new sorted list from iterable via comparison. */
 
     pub fn call_sorted(&mut self) -> Result<(), VmErr> {
         let o = self.pop()?;
@@ -275,14 +242,10 @@ impl<'a> VM<'a> {
         self.push(val); Ok(())
     }
 
-    /*
-    List/Tuple Builtins
-        Converts iterable to list or tuple, materializing lazy ranges.
-    */
+    /* Converts iterable to list or tuple, materializing lazy ranges. */
 
     pub fn call_list(&mut self) -> Result<(), VmErr> {
         let o = self.pop()?;
-        // Str needs char allocation — handle before extract_iterable_full.
         if o.is_heap()
             && let HeapObj::Str(s) = self.heap.get(o) {
                 let s = s.clone();
@@ -307,10 +270,7 @@ impl<'a> VM<'a> {
         self.push(val); Ok(())
     }
 
-    /*
-    Enumerate Builtin
-        Wraps iterable items as (index, value) tuple pairs.
-    */
+    /* Wraps iterable items as (index, value) tuple pairs. */
 
     pub fn call_enumerate(&mut self) -> Result<(), VmErr> {
         let o = self.pop()?;
@@ -324,10 +284,7 @@ impl<'a> VM<'a> {
         self.push(val); Ok(())
     }
 
-    /*
-    Zip Builtin
-        Pairs elements from N iterables into tuple list, truncating to shortest.
-    */
+    /* Pairs elements from N iterables into tuple list, truncating to shortest. */
 
     pub fn call_zip(&mut self, op: u16) -> Result<(), VmErr> {
         let mut iters: Vec<Vec<Val>> = Vec::with_capacity(op as usize);
@@ -346,18 +303,12 @@ impl<'a> VM<'a> {
         self.push(val); Ok(())
     }
 
-    /*
-    IsInstance Builtin
-        Compares type_name string for sandbox-level type checking.
-    */
+    /* Compares type_name string for sandbox-level type checking. */
 
     pub fn call_isinstance(&mut self) -> Result<(), VmErr> {
         let (arg2, obj) = (self.pop()?, self.pop()?);
         let obj_ty = self.type_name(obj);
 
-        // Exception handler pushes the exception as a Str (e.g. "ZeroDivisionError").
-        // Allow isinstance("ZeroDivisionError", ZeroDivisionError) to return true
-        // by also comparing the string content against the type name.
         let obj_as_str: Option<String> = if obj.is_heap() {
             match self.heap.get(obj) {
                 HeapObj::Str(s) => Some(s.clone()),
@@ -386,10 +337,7 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    /*
-    Input Builtin
-        Returns empty string in sandbox; no stdin access in WASM.
-    */
+    /* Returns empty string in sandbox; no stdin access in WASM. */
 
     pub fn call_input(&mut self) -> Result<(), VmErr> {
         let val = self.heap.alloc(HeapObj::Str(String::new()))?;
@@ -398,10 +346,7 @@ impl<'a> VM<'a> {
 
     // Shared helpers
 
-    /*
-    Iterable Unwrap
-        If single-arg is list/tuple/set, returns its items; otherwise returns args as-is.
-    */
+    /* If single-arg is list/tuple/set, returns its items; otherwise returns args as-is. */
     
     fn unwrap_single_iterable(&self, args: Vec<Val>) -> Result<Vec<Val>, VmErr> {
         if args.len() == 1 && args[0].is_heap() {
@@ -415,10 +360,7 @@ impl<'a> VM<'a> {
         Ok(args)
     }
 
-    /*
-    Extract Iterable
-        Extracts Vec<Val> from list, tuple, or set heap objects.
-    */
+    /* Extracts Vec<Val> from list, tuple, or set heap objects. */
 
     fn extract_iterable(&self, o: Val) -> Result<Vec<Val>, VmErr> {
         if !o.is_heap() { return Err(VmErr::Type("object is not iterable")); }
@@ -430,10 +372,7 @@ impl<'a> VM<'a> {
         })
     }
 
-    /*
-    Extract Iterable Full
-        Like extract_iterable but also materializes Range objects.
-    */
+    /* Like extract_iterable but also materializes Range objects. */
 
     fn extract_iterable_full(&self, o: Val) -> Result<Vec<Val>, VmErr> {
         if !o.is_heap() { return Err(VmErr::Type("list() argument must be iterable")); }
@@ -453,7 +392,7 @@ impl<'a> VM<'a> {
                 drop(s);
                 let s = match self.heap.get(o) { HeapObj::Str(s) => s.clone(), _ => unreachable!() };
                 s.chars().map(|c| {
-                    // Can't alloc here — caller must handle
+                    // Can't alloc here (caller must handle).
                     Val::int(c as i64)
                 }).collect()
             }

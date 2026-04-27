@@ -2,14 +2,13 @@
 
 use super::types::{Val, eq_vals_with_heap};
 use super::super_ops::{self, SuperOp};
+
 use crate::modules::parser::{OpCode, SSAChunk};
-use alloc::{vec, vec::Vec};
 use crate::modules::fx::FxHashMap as HashMap;
 
-/*
-FastOp Variants
-    Specialized operation types for inline cache type-stable binary dispatch.
-*/
+use alloc::{vec, vec::Vec};
+
+/* Specialized operation types for inline cache type-stable binary dispatch. */
 
 #[derive(Debug, Clone, Copy)]
 pub enum FastOp {
@@ -22,10 +21,7 @@ pub enum FastOp {
     NotEqInt
 }
 
-/*
-Opcode Cache
-    Per-frame slot combining inline-cache type recording with adaptive hot-path rewriting. Collocates both tiers per instruction to avoid split cache lines.
-*/
+/* Per-frame slot combining inline-cache type recording with adaptive hot-path rewriting. Collocates both tiers per instruction to avoid split cache lines. */
 
 const CACHE_THRESH: u8 = 3;
 const HOT_THRESH: u32 = 517;
@@ -93,10 +89,7 @@ impl OpcodeCache {
     }
 }
 
-/*
-Template Memoization
-    Caches pure function results by deep-equal argument matching after four repeated calls.
-*/
+/* Caches pure function results by deep-equal argument matching after four repeated calls. */
 
 fn args_match(e: &TplEntry, args: &[Val], h: u64, heap: &super::types::HeapPool) -> bool {
     e.hash == h

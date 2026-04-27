@@ -19,10 +19,7 @@ use cache::{OpcodeCache, FastOp, Templates};
 use handlers::unsupported::unsupported;
 use alloc::{string::{String, ToString}, vec::Vec, vec};
 
-/*
-VM State
-    Stack, heap, iterators, yield buffer, templates and sandbox counters.
-*/
+/* Stack, heap, iterators, yield buffer, templates and sandbox counters. */
 
 pub(crate) struct ExceptionFrame {
     pub handler_ip: usize,

@@ -1,18 +1,12 @@
 // vm/super_ops.rs
 
-//! Tier-2 dispatch: superinstruction patterns and closed-form loop fusion.
-//!
-//! - Small supers (`Inc`, `Lt`, `LoopGuard`) collapse 3-8 ops into one
-//!   `extern "C"` call. Inner pieces are `#[inline(always)]`; the boundary
-//!   keeps super bodies out of the hot dispatch loop's I-cache.
-//! - `RangeIncFused` recognises `for _ in range(N): counter += k` and
-//!   evaluates the entire loop in O(1) via `final = initial + delta * N`.
-
 use super::types::{Val, IterFrame};
+
 use crate::modules::parser::{OpCode, SSAChunk, Value};
+
 use alloc::{vec, vec::Vec};
 
-/* ─── inline pieces (zero-cost, fully inlined into super bodies) ─── */
+/* inline pieces (zero-cost, fully inlined into super bodies) */
 
 #[inline(always)]
 fn p_load(slots: &[Option<Val>], s: u16) -> Option<Val> {
@@ -38,8 +32,7 @@ fn p_gt_int(a: Val, b: Val) -> Option<bool> {
     if a.is_int() && b.is_int() { Some(a.as_int() > b.as_int()) } else { None }
 }
 
-/// Mirrors `handle_store`: writes `v` to slot `s` and back-propagates through
-/// the SSA `prev_slots` chain so the Phi at the join sees the new value.
+/// Mirrors `handle_store`: writes `v` to slot `s` and back-propagates through the SSA `prev_slots` chain so the Phi at the join sees the new value.
 #[inline(always)]
 pub(crate) fn p_store_ssa(slots: &mut [Option<Val>], prev: &[Option<u16>], s: u16, v: Val) {
     let mut cur = s as usize;
@@ -57,7 +50,7 @@ pub(crate) fn p_store_ssa(slots: &mut [Option<Val>], prev: &[Option<u16>], s: u1
     }
 }
 
-/* ─── def_super! macro ─── */
+/* def_super! macro */
 
 #[macro_export]
 macro_rules! def_super {
@@ -72,14 +65,11 @@ macro_rules! def_super {
     };
 }
 
-/* ─── small supers ─── */
+/* small supers */
 
 def_super! {
-    /// `load -> +const -> store` (e.g. `i = i + 1` across two SSA versions).
-    pub fn super_inc(
-        slots: &mut [Option<Val>], prev: &[Option<u16>],
-        load: u16, store: u16, delta: Val,
-    ) -> bool {
+    // `load -> +const -> store` (e.g. `i = i + 1` across two SSA versions).
+    pub fn super_inc(slots: &mut [Option<Val>], prev: &[Option<u16>], load: u16, store: u16, delta: Val) -> bool {
         let Some(v) = p_load(slots, load) else { return false };
         let Some(r) = p_add_int(v, delta) else { return false };
         p_store_ssa(slots, prev, store, r);
@@ -88,7 +78,7 @@ def_super! {
 }
 
 def_super! {
-    /// `load(a) load(b) lt`. Returns 1=true, 0=false, -1=deopt.
+    // `load(a) load(b) lt`. Returns 1=true, 0=false, -1=deopt.
     pub fn super_lt(slots: &[Option<Val>], a: u16, b: u16) -> i8 {
         let (Some(av), Some(bv)) = (p_load(slots, a), p_load(slots, b)) else { return -1 };
         match p_lt_int(av, bv) { Some(true) => 1, Some(false) => 0, None => -1 }
@@ -96,11 +86,8 @@ def_super! {
 }
 
 def_super! {
-    /// `i += k; i < n` while-header fusion. Returns 1=continue, 0=exit, -1=deopt.
-    pub fn super_loop_guard(
-        slots: &mut [Option<Val>], prev: &[Option<u16>],
-        load: u16, store: u16, delta: Val, limit: u16,
-    ) -> i8 {
+    // `i += k; i < n` while-header fusion. Returns 1=continue, 0=exit, -1=deopt.
+    pub fn super_loop_guard(slots: &mut [Option<Val>], prev: &[Option<u16>], load: u16, store: u16, delta: Val, limit: u16,) -> i8 {
         let Some(cur)  = p_load(slots, load)  else { return -1 };
         let Some(next) = p_add_int(cur, delta) else { return -1 };
         p_store_ssa(slots, prev, store, next);
@@ -110,25 +97,20 @@ def_super! {
 }
 
 def_super! {
-    pub fn super_loop_guard_down(
-        slots: &mut [Option<Val>], prev: &[Option<u16>],
-        load: u16, store: u16, delta: Val, limit: u16,
-    ) -> i8 {
+    pub fn super_loop_guard_down(slots: &mut [Option<Val>], prev: &[Option<u16>], load: u16, store: u16, delta: Val, limit: u16) -> i8 {
         let Some(cur)  = p_load(slots, load)  else { return -1 };
-        let Some(next) = p_add_int(cur, delta) else { return -1 }; // delta ya viene negativo
+        let Some(next) = p_add_int(cur, delta) else { return -1 };
         p_store_ssa(slots, prev, store, next);
         let Some(lim)  = p_load(slots, limit) else { return -1 };
         match p_gt_int(next, lim) { Some(true) => 1, Some(false) => 0, None => -1 }
     }
 }
 
-/* ─── closed-form loop fusion ─── */
+/* closed-form loop fusion */
 
 pub enum FusedOutcome { Done, Deopt }
 
-/// Closed-form executor for `RangeIncFused`. Evaluates the entire loop as
-/// `final = initial + delta * N` in O(1). Charges 2*N to the budget so
-/// sandbox accounting matches per-iteration bytecode dispatch.
+// Closed-form executor for `RangeIncFused`. Evaluates the entire loop as `final = initial + delta * N` in O(1). Charges 2*N to the budget so sandbox accounting matches per-iteration bytecode dispatch.
 #[derive(Clone, Copy)]
 pub struct RangeIncOps {
     pub drop:  u16,
@@ -138,13 +120,7 @@ pub struct RangeIncOps {
 }
 
 #[inline]
-pub fn run_range_inc_fused(
-    slots: &mut [Option<Val>],
-    prev: &[Option<u16>],
-    iter: &IterFrame,
-    budget: &mut usize,
-    ops: RangeIncOps,
-) -> FusedOutcome {
+pub fn run_range_inc_fused( slots: &mut [Option<Val>], prev: &[Option<u16>], iter: &IterFrame, budget: &mut usize, ops: RangeIncOps,) -> FusedOutcome {
     let (cur, end, step) = match *iter {
         IterFrame::Range { cur, end, step } => (cur, end, step),
         _ => return FusedOutcome::Deopt,
@@ -184,27 +160,24 @@ pub fn run_range_inc_fused(
     FusedOutcome::Done
 }
 
-/* ─── pattern catalog ─── */
+/* pattern catalog */
 
 #[derive(Debug, Clone, Copy)]
 pub enum SuperOp {
-    Inc       { load: u16, store: u16, delta: Val, len: u16 },
-    Lt        { a: u16, b: u16, len: u16 },
+    Inc { load: u16, store: u16, delta: Val, len: u16 },
+    Lt { a: u16, b: u16, len: u16 },
     LoopGuard { load: u16, store: u16, delta: Val, limit: u16, jump_target: u16, len: u16 },
     LoopGuardDown { load: u16, store: u16, delta: Val, limit: u16, jump_target: u16, len: u16 },
-    /// Triggers at ForIter; iter on top of stack must be Range.
-    /// 7-op pattern: ForIter <end>, StoreName _drop, LoadName c, LoadConst k,
-    ///               Add, StoreName c', Jump <self>
     RangeIncFused {
-        drop_slot:     u16,
+        drop_slot: u16,
         counter_load:  u16,
         counter_store: u16,
-        delta:         Val,
-        end_ip:        u16,
+        delta: Val,
+        end_ip: u16,
     },
 }
 
-/* ─── detection (one-shot scan at chunk finalization) ─── */
+/* detection (one-shot scan at chunk finalization) */
 
 pub fn detect(chunk: &SSAChunk) -> Vec<Option<SuperOp>> {
     let ins = &chunk.instructions;
@@ -226,7 +199,7 @@ pub fn detect(chunk: &SSAChunk) -> Vec<Option<SuperOp>> {
 
     let mut i = 0;
     while i < n {
-        // ── 7-op RangeIncFused (most aggressive; check first) ───────────
+        // 7-op RangeIncFused (most aggressive; check first
         if i + 7 <= n
             && ins[i  ].opcode == OpCode::ForIter
             && ins[i+1].opcode == OpCode::StoreName
@@ -249,7 +222,7 @@ pub fn detect(chunk: &SSAChunk) -> Vec<Option<SuperOp>> {
             i += 7; continue;
         }
 
-        // ── 8-op LoopGuard (Incremento) ─────────────────────────────────
+        // 8-op LoopGuard (Incremento)
         if i + 8 <= n
             && ins[i  ].opcode == OpCode::LoadName
             && ins[i+1].opcode == OpCode::LoadConst
@@ -270,7 +243,7 @@ pub fn detect(chunk: &SSAChunk) -> Vec<Option<SuperOp>> {
             i += 8; continue;
         }
 
-        // ── GAP 2: 8-op LoopGuardDown (Decremento: i -= 1; i > 0) ────────
+        // GAP 2: 8-op LoopGuardDown (Decremento: i -= 1; i > 0)
         if i + 8 <= n
             && ins[i  ].opcode == OpCode::LoadName
             && ins[i+1].opcode == OpCode::LoadConst
@@ -292,7 +265,7 @@ pub fn detect(chunk: &SSAChunk) -> Vec<Option<SuperOp>> {
             i += 8; continue;
         }
 
-        // ── 4-op Inc (i + 1) ────────────────────────────────────────────
+        // 4-op Inc (i + 1)
         if i + 4 <= n
             && ins[i  ].opcode == OpCode::LoadName
             && ins[i+1].opcode == OpCode::LoadConst
@@ -307,7 +280,7 @@ pub fn detect(chunk: &SSAChunk) -> Vec<Option<SuperOp>> {
             i += 4; continue;
         }
 
-        // ── GAP 3: 4-op IncRight (1 + i) ────────────────────────────────
+        // GAP 3: 4-op IncRight (1 + i)
         if i + 4 <= n
             && ins[i  ].opcode == OpCode::LoadConst
             && ins[i+1].opcode == OpCode::LoadName
@@ -316,13 +289,13 @@ pub fn detect(chunk: &SSAChunk) -> Vec<Option<SuperOp>> {
             && same_var(ins[i+1].operand, ins[i+3].operand)
             && let Some(delta) = int_const(ins[i].operand)
         {
-            out[i] = Some(SuperOp::Inc {                 // Reutiliza SuperOp::Inc
+            out[i] = Some(SuperOp::Inc {
                 load: ins[i+1].operand, store: ins[i+3].operand, delta, len: 4,
             });
             i += 4; continue;
         }
 
-        // ── 3-op Lt ─────────────────────────────────────────────────────
+        // 3-op Lt
         if i + 3 <= n
             && ins[i  ].opcode == OpCode::LoadName
             && ins[i+1].opcode == OpCode::LoadName
