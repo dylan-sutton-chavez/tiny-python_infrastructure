@@ -61,10 +61,13 @@ jobs:
             -tnh \
             -o /tmp/wasm_stage1.wasm "$INPUT"
 
-          wasm-opt --flatten --rereloop -Oz -Oz \
+          wasm-opt -Oz \
             --enable-bulk-memory-opt \
             --enable-nontrapping-float-to-int \
-            --enable-sign-ext \
+            --dce \
+            --remove-unused-names \
+            --merge-blocks \
+            --optimize-instructions \
             -o "$INPUT" /tmp/wasm_stage1.wasm
 
           rm /tmp/wasm_stage1.wasm
