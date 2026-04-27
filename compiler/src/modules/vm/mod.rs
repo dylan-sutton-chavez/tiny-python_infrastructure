@@ -299,9 +299,12 @@ impl<'a> VM<'a> {
     fn exec_fast(&mut self, fast: FastOp) -> Result<bool, VmErr> {
         let len = self.stack.len();
         if len < 2 { return Ok(false); }
+        
         let a = self.stack[len - 2];
         let b = self.stack[len - 1];
+        
         let result = match fast {
+            // Arithmetics
             FastOp::AddFloat if a.is_float() && b.is_float() => Val::float(a.as_float() + b.as_float()),
             FastOp::AddInt if a.is_int() && b.is_int() => {
                 let r = a.as_int() as i128 + b.as_int() as i128;
@@ -316,9 +319,17 @@ impl<'a> VM<'a> {
                 if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 { Val::int(r as i64) } else { return Ok(false); }
             }
             FastOp::MulFloat if a.is_float() && b.is_float() => Val::float(a.as_float() * b.as_float()),
+
+            // Comparisons (Symm Comparisons)
             FastOp::LtInt if a.is_int() && b.is_int() => Val::bool(a.as_int() < b.as_int()),
             FastOp::LtFloat if a.is_float() && b.is_float() => Val::bool(a.as_float() < b.as_float()),
-            FastOp::EqInt if a.is_int() && b.is_int() => Val::bool(a.as_int() == b.as_int()),
+            FastOp::EqInt if a.is_int() && b.is_int() => Val::bool(a.as_int() == b.as_int()),            
+            FastOp::GtInt if a.is_int() && b.is_int() => Val::bool(a.as_int() > b.as_int()),
+            FastOp::LtEqInt if a.is_int() && b.is_int() => Val::bool(a.as_int() <= b.as_int()),
+            FastOp::GtEqInt if a.is_int() && b.is_int() => Val::bool(a.as_int() >= b.as_int()),
+            FastOp::NotEqInt if a.is_int() && b.is_int() => Val::bool(a.as_int() != b.as_int()),
+
+            // String Operations
             FastOp::AddStr | FastOp::EqStr if a.is_heap() && b.is_heap() => {
                 let (sa, sb) = match (self.heap.get(a), self.heap.get(b)) {
                     (HeapObj::Str(x), HeapObj::Str(y)) => (x.clone(), y.clone()),
@@ -330,12 +341,13 @@ impl<'a> VM<'a> {
                         r.push_str(&sa); r.push_str(&sb);
                         self.heap.alloc(HeapObj::Str(r))?
                     }
-                    _ => Val::bool(sa == sb),
+                    _ => Val::bool(sa == sb), // FastOp::EqStr
                 }
             }
+            
             _ => return Ok(false),
         };
-        // Replace both operands with computed result.
+
         self.stack.truncate(len - 2);
         self.push(result);
         Ok(true)
@@ -388,6 +400,19 @@ impl<'a> VM<'a> {
                                 if jump_target as usize > n {
                                     return Err(VmErr::Runtime("jump target out of bounds"));
                                 }
+                                ip = jump_target as usize;
+                            }
+                            continue;
+                        }
+                    }
+                    SuperOp::LoopGuardDown { load, store, delta, limit, jump_target, len } => {
+                        let r = super_ops::super_loop_guard_down(slots, prev_slots, load, store, delta, limit);
+                        if r != -1 {
+                            if r == 1 { 
+                                ip += len as usize; 
+                            } else {
+                                if self.budget == 0 { return Err(VmErr::Runtime("Out of budget")); }
+                                self.budget -= 1;
                                 ip = jump_target as usize;
                             }
                             continue;

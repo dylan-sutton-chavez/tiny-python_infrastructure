@@ -33,6 +33,11 @@ fn p_lt_int(a: Val, b: Val) -> Option<bool> {
     if a.is_int() && b.is_int() { Some(a.as_int() < b.as_int()) } else { None }
 }
 
+#[inline(always)]
+fn p_gt_int(a: Val, b: Val) -> Option<bool> {
+    if a.is_int() && b.is_int() { Some(a.as_int() > b.as_int()) } else { None }
+}
+
 /// Mirrors `handle_store`: writes `v` to slot `s` and back-propagates through
 /// the SSA `prev_slots` chain so the Phi at the join sees the new value.
 #[inline(always)]
@@ -101,6 +106,19 @@ def_super! {
         p_store_ssa(slots, prev, store, next);
         let Some(lim)  = p_load(slots, limit) else { return -1 };
         match p_lt_int(next, lim) { Some(true) => 1, Some(false) => 0, None => -1 }
+    }
+}
+
+def_super! {
+    pub fn super_loop_guard_down(
+        slots: &mut [Option<Val>], prev: &[Option<u16>],
+        load: u16, store: u16, delta: Val, limit: u16,
+    ) -> i8 {
+        let Some(cur)  = p_load(slots, load)  else { return -1 };
+        let Some(next) = p_add_int(cur, delta) else { return -1 }; // delta ya viene negativo
+        p_store_ssa(slots, prev, store, next);
+        let Some(lim)  = p_load(slots, limit) else { return -1 };
+        match p_gt_int(next, lim) { Some(true) => 1, Some(false) => 0, None => -1 }
     }
 }
 
@@ -173,6 +191,7 @@ pub enum SuperOp {
     Inc       { load: u16, store: u16, delta: Val, len: u16 },
     Lt        { a: u16, b: u16, len: u16 },
     LoopGuard { load: u16, store: u16, delta: Val, limit: u16, jump_target: u16, len: u16 },
+    LoopGuardDown { load: u16, store: u16, delta: Val, limit: u16, jump_target: u16, len: u16 },
     /// Triggers at ForIter; iter on top of stack must be Range.
     /// 7-op pattern: ForIter <end>, StoreName _drop, LoadName c, LoadConst k,
     ///               Add, StoreName c', Jump <self>
@@ -200,8 +219,6 @@ pub fn detect(chunk: &SSAChunk) -> Vec<Option<SuperOp>> {
         }
     };
 
-    // SSA-aware: `store` is the immediate successor version of `load`
-    // (or, in non-SSA edge cases, the same slot).
     let same_var = |load_op: u16, store_op: u16| -> bool {
         load_op == store_op
         || prev.get(store_op as usize).and_then(|p| *p) == Some(load_op)
@@ -232,7 +249,7 @@ pub fn detect(chunk: &SSAChunk) -> Vec<Option<SuperOp>> {
             i += 7; continue;
         }
 
-        // ── 8-op LoopGuard ──────────────────────────────────────────────
+        // ── 8-op LoopGuard (Incremento) ─────────────────────────────────
         if i + 8 <= n
             && ins[i  ].opcode == OpCode::LoadName
             && ins[i+1].opcode == OpCode::LoadConst
@@ -253,7 +270,29 @@ pub fn detect(chunk: &SSAChunk) -> Vec<Option<SuperOp>> {
             i += 8; continue;
         }
 
-        // ── 4-op Inc ────────────────────────────────────────────────────
+        // ── GAP 2: 8-op LoopGuardDown (Decremento: i -= 1; i > 0) ────────
+        if i + 8 <= n
+            && ins[i  ].opcode == OpCode::LoadName
+            && ins[i+1].opcode == OpCode::LoadConst
+            && ins[i+2].opcode == OpCode::Sub
+            && ins[i+3].opcode == OpCode::StoreName
+            && ins[i+4].opcode == OpCode::LoadName
+            && ins[i+5].opcode == OpCode::LoadName
+            && ins[i+6].opcode == OpCode::Gt
+            && ins[i+7].opcode == OpCode::JumpIfFalse
+            && same_var(ins[i].operand, ins[i+3].operand)
+            && ins[i+3].operand == ins[i+4].operand
+            && let Some(delta) = int_const(ins[i+1].operand)
+        {
+            out[i] = Some(SuperOp::LoopGuardDown {
+                load: ins[i].operand, store: ins[i+3].operand,
+                delta: Val::int(-delta.as_int()),
+                limit: ins[i+5].operand, jump_target: ins[i+7].operand, len: 8,
+            });
+            i += 8; continue;
+        }
+
+        // ── 4-op Inc (i + 1) ────────────────────────────────────────────
         if i + 4 <= n
             && ins[i  ].opcode == OpCode::LoadName
             && ins[i+1].opcode == OpCode::LoadConst
@@ -268,6 +307,21 @@ pub fn detect(chunk: &SSAChunk) -> Vec<Option<SuperOp>> {
             i += 4; continue;
         }
 
+        // ── GAP 3: 4-op IncRight (1 + i) ────────────────────────────────
+        if i + 4 <= n
+            && ins[i  ].opcode == OpCode::LoadConst
+            && ins[i+1].opcode == OpCode::LoadName
+            && ins[i+2].opcode == OpCode::Add
+            && ins[i+3].opcode == OpCode::StoreName
+            && same_var(ins[i+1].operand, ins[i+3].operand)
+            && let Some(delta) = int_const(ins[i].operand)
+        {
+            out[i] = Some(SuperOp::Inc {                 // Reutiliza SuperOp::Inc
+                load: ins[i+1].operand, store: ins[i+3].operand, delta, len: 4,
+            });
+            i += 4; continue;
+        }
+
         // ── 3-op Lt ─────────────────────────────────────────────────────
         if i + 3 <= n
             && ins[i  ].opcode == OpCode::LoadName
@@ -277,6 +331,7 @@ pub fn detect(chunk: &SSAChunk) -> Vec<Option<SuperOp>> {
             out[i] = Some(SuperOp::Lt { a: ins[i].operand, b: ins[i+1].operand, len: 3 });
             i += 3; continue;
         }
+
         i += 1;
     }
     out

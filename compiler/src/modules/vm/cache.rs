@@ -16,8 +16,10 @@ pub enum FastOp {
     AddInt, AddFloat, AddStr,
     SubInt, SubFloat,
     MulInt, MulFloat,
-    LtInt, LtFloat,
+    LtInt, LtFloat, 
+    GtInt, LtEqInt, GtEqInt,
     EqInt, EqStr,
+    NotEqInt
 }
 
 /*
@@ -25,7 +27,7 @@ Opcode Cache
     Per-frame slot combining inline-cache type recording with adaptive hot-path rewriting. Collocates both tiers per instruction to avoid split cache lines.
 */
 
-const CACHE_THRESH: u8 = 8;
+const CACHE_THRESH: u8 = 3;
 const HOT_THRESH: u32 = 517;
 
 #[derive(Clone, Default)]
@@ -84,7 +86,9 @@ impl OpcodeCache {
             (OpCode::Sub, 2, 2) => Some(FastOp::SubFloat), (OpCode::Mul, 1, 1) => Some(FastOp::MulInt),
             (OpCode::Mul, 2, 2) => Some(FastOp::MulFloat), (OpCode::Lt, 1, 1) => Some(FastOp::LtInt),
             (OpCode::Lt, 2, 2) => Some(FastOp::LtFloat), (OpCode::Eq, 1, 1) => Some(FastOp::EqInt),
-            (OpCode::Eq, 5, 5) => Some(FastOp::EqStr), _ => None,
+            (OpCode::Eq, 5, 5) => Some(FastOp::EqStr), (OpCode::Gt, 1, 1) => Some(FastOp::GtInt),
+            (OpCode::LtEq, 1, 1) => Some(FastOp::LtEqInt), (OpCode::GtEq, 1, 1) => Some(FastOp::GtEqInt),
+            (OpCode::NotEq, 1, 1) => Some(FastOp::NotEqInt), _ => None,
         }
     }
 }
@@ -100,7 +104,7 @@ fn args_match(e: &TplEntry, args: &[Val], h: u64, heap: &super::types::HeapPool)
     && e.args.iter().zip(args).all(|(a, b)| eq_vals_with_heap(*a, *b, heap))
 }
 
-const TPL_THRESH: u32 = 4;
+const TPL_THRESH: u32 = 2; // `is_pure` eliminate risk using two for threshold, making memoization safe for production.
 
 struct TplEntry { args: Vec<Val>, result: Val, hits: u32, hash: u64 }
 
