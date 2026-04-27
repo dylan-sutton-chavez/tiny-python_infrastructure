@@ -1,4 +1,7 @@
+// vm/handlers/attr.rs
+
 use super::*;
+
 use crate::modules::vm::types::BuiltinMethodId;
 
 type AttrRow = (&'static str, &'static str, BuiltinMethodId);
@@ -58,8 +61,7 @@ impl<'a> VM<'a> {
         let obj = self.pop()?;
         let ty = self.type_name(obj);
 
-        // Binary search using O(log n)
-        let method_id = lookup_attr(ty, name.as_str()).ok_or_else(|| attr_not_found(ty, name.as_str()))?;
+        let method_id = lookup_attr(ty, name.as_str()).ok_or_else(|| attr_not_found(ty, name.as_str()))?; // Binary search using O(log n)
 
         let bound = self.heap.alloc(HeapObj::BoundMethod(obj, method_id))?;
         self.push(bound);

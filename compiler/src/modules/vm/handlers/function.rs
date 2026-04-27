@@ -5,7 +5,7 @@ use crate::alloc::string::ToString;
 
 use super::*;
 
-/// String method with no arguments: recv_str → transform → alloc Str → push
+/// String method with no arguments; recv_str -> transform -> alloc Str -> push
 macro_rules! str_no_args {
     ($self:ident, $recv:ident, $positional:ident, $method:literal, $transform:expr) => {{
         expect_args!($positional, 0, $method);
@@ -28,7 +28,7 @@ macro_rules! expect_args {
     };
 }
 
-/// String method with 1 string argument → produces a value (like bool or int)
+/// String method with 1 string argument -> produces a value (like bool or int)
 macro_rules! str_one_str_arg {
     ($self:ident, $recv:ident, $positional:ident, $name:literal, $body:expr) => {{
         expect_args!($positional, 1, $name);
@@ -74,7 +74,7 @@ impl<'a> VM<'a> {
             OpCode::CallDict => self.call_dict(operand),
             OpCode::CallSet => self.call_set(operand),
 
-            // ── Impure built-ins ──────────────────────────────────────────
+            // ── Impure built-ins
             OpCode::CallPrint => { self.mark_impure(); self.call_print(operand) }
             OpCode::CallInput => { self.mark_impure(); self.call_input() }
 
@@ -132,9 +132,7 @@ impl<'a> VM<'a> {
         let callee = self.pop()?;
         if !callee.is_heap() { return Err(VmErr::Type("object is not callable")); }
 
-        // Bound methods short-circuit the user-function machinery.
-        // No SSA frame, no template cache, no recursion budget — they
-        // mutate the receiver directly and push the result.
+        // Bound methods short-circuit the user-function machinery. No SSA frame, no template cache, no recursion budget they mutate the receiver directly and push the result.
         if let HeapObj::BoundMethod(recv, id) = self.heap.get(callee) {
             let recv = *recv;
             let id = *id;
@@ -220,9 +218,6 @@ impl<'a> VM<'a> {
             }
         }
 
-        // Apply captured environment from function-creation time (closures).
-        // Skip nonlocal variables — they must always come from the live enclosing
-        // scope (handled below) so that mutations between calls are visible.
         let nonlocal_body_slots: alloc::collections::BTreeSet<usize> = body.nonlocals.iter()
             .flat_map(|base| {
                 body.names.iter().enumerate().filter_map(|(i, n)| {
@@ -240,8 +235,6 @@ impl<'a> VM<'a> {
             }
         }
 
-        // Captura del enclosing scope: nombres del frame que llama (`chunk`),
-        // valores de sus slots. `.get()` defensivo si las longitudes divergen.
         for (si, sv) in slots.iter().enumerate() {
             if let Some(v) = sv
                 && let Some(name) = chunk.names.get(si)
@@ -252,7 +245,6 @@ impl<'a> VM<'a> {
             }
         }
 
-        // Self-reference: `name_idx` referencia el chunk del CALLER, no el módulo.
         if name_idx != u16::MAX
             && let Some(raw_name) = chunk.names.get(name_idx as usize)
         {
@@ -279,9 +271,7 @@ impl<'a> VM<'a> {
         self.live_slots.truncate(snap);
         self.depth -= 1;
 
-        // Write back nonlocal variables to the caller's slots.
         for base in &body.nonlocals {
-            // Find the highest-versioned value in the callee's slots.
             let best = body.names.iter().enumerate()
                 .filter_map(|(i, n)| {
                     let p = n.rfind('_')?;
@@ -293,7 +283,6 @@ impl<'a> VM<'a> {
                 .map(|(_, val)| val);
 
             if let Some(val) = best {
-                // Update all versions of this name in the caller's slots.
                 for (si, sname) in chunk.names.iter().enumerate() {
                     if let Some(p) = sname.rfind('_')
                         && &sname[..p] == base.as_str() && si < slots.len() {
@@ -319,8 +308,7 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    /// Bound-method dispatcher. Pure builtins go here; mutation marks
-    /// the caller's frame impure so memoization deopts correctly.
+    /// Bound-method dispatcher. Pure builtins go here; mutation marks the caller's frame impure so memoization deopts correctly.
     fn exec_bound_method(
         &mut self,
         recv: Val,
@@ -335,7 +323,7 @@ impl<'a> VM<'a> {
         }
 
         match id {
-            // ─── List Methods ─────────────────────────────────────────────
+            // List Methods
             ListAppend => {
                 expect_args!(positional, 1, "list.append");
                 let item = positional[0];
@@ -518,7 +506,7 @@ impl<'a> VM<'a> {
                 self.push(val); Ok(())
             }
 
-            // ─── Dictionary Methods ───────────────────────────────────────
+            // Dictionary Methods
             DictKeys => {
                 expect_args!(positional, 0, "keys");
                 let keys: Vec<Val> = match self.heap.get(recv) {
@@ -629,7 +617,7 @@ impl<'a> VM<'a> {
                 Ok(())
             }
 
-            // ─── String Methods (using macros) ────────────────────────────
+            // String Methods (using macros)
             StrUpper => str_no_args!(self, recv, positional, "upper", |s: String| s.to_uppercase()),
             StrLower => str_no_args!(self, recv, positional, "lower", |s: String| s.to_lowercase()),
             StrStrip => str_no_args!(self, recv, positional, "strip", |s: String| s.trim().to_string()),
@@ -656,7 +644,7 @@ impl<'a> VM<'a> {
                 Val::int(s.matches(sub.as_str()).count() as i64)
             }),
 
-            // ─── String Methods (mixed arguments) ─────────────────────────
+            // String Methods (mixed arguments)
             StrJoin => {
                 expect_args!(positional, 1, "join");
                 let sep = self.recv_str(recv)?;

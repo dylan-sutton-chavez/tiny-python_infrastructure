@@ -4,10 +4,7 @@ use super::*;
 
 impl<'a> VM<'a> {
 
-    /*
-    Store
-        StoreName con back-propagación SSA a versiones previas.
-    */
+    /* StoreName con back-propagación SSA a versiones previas. */
     
     pub(crate) fn handle_store(&mut self, operand: u16, slots: &mut [Option<Val>], prev_slots: &[Option<u16>]) -> Result<(), VmErr> {
         let v = self.pop()?;
@@ -15,10 +12,7 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    /*
-    Build
-        Constructores de containers: list/tuple/dict/set/slice/string.
-    */
+    /* Container constructors: list/tuple/dict/set/slice/string. */
 
     pub(crate) fn handle_build(&mut self, op: OpCode, operand: u16) -> Result<(), VmErr> {
         match op {
@@ -51,10 +45,7 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    /*
-    Container
-        Acceso/asignación indexada, unpacking y formato de valores.
-    */
+    /* Indexed access/allocation, unpacking, and value formatting. */
 
     pub(crate) fn handle_container(&mut self, op: OpCode, operand: u16) -> Result<(), VmErr> {
         match op {
@@ -77,10 +68,7 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    /*
-    Comprehension
-        Append/add a acumuladores en el tope de stack durante comprensiones.
-    */
+    /* Append/add to accumulators at the top of the stack during comprehensions. */
 
     pub(crate) fn handle_comprehension(&mut self, op: OpCode) -> Result<(), VmErr> {
         match op {
@@ -120,10 +108,7 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    /*
-    Yield
-        Acumula valor en el buffer del generador y empuja None como placeholder.
-    */
+    /* Accumulates value in the generator buffer and pushes None as a placeholder. */
 
     pub(crate) fn handle_yield(&mut self) -> Result<(), VmErr> {
         let v = self.pop()?;
@@ -132,10 +117,8 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    /*
-    Side
-        Side-effects e impurezas: assert, del, global/nonlocal, import, type aliases, exception handling stubs y await/yield-from.
-    */
+    /* Side-effects and impurities: assert, del, global/nonlocal, import, type aliases, exception handling stubs and await/yield-from. */
+    
     pub(crate) fn handle_side(&mut self, op: OpCode, operand: u16, slots: &mut [Option<Val>]) -> Result<(), VmErr> {
         match op {
             OpCode::Assert => {

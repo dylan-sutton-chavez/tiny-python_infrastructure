@@ -1,14 +1,13 @@
 // vm/handlers/arith.rs
 
 use super::*;
+
 use cache::OpcodeCache;
 use ops::cached_binop;
 
 impl<'a> VM<'a> {
-    /*
-    Arithmetic
-        Add/Sub/Mul/Div con cache, Mod/Pow/FloorDiv con BigInt, Minus unario.
-    */
+
+    /* Add/Sub/Mul/Div con cache, Mod/Pow/FloorDiv con BigInt, Minus unario. */
 
     pub(crate) fn handle_arith(&mut self, op: OpCode, rip: usize, cache: &mut OpcodeCache) -> Result<(), VmErr> {
         if op == OpCode::Minus {
@@ -16,10 +15,7 @@ impl<'a> VM<'a> {
         }
 
         let (a, b) = self.pop2()?;
-        // Register-based FastOps (add/sub/mul) are cached; the rest not.
-        if matches!(op, OpCode::Add | OpCode::Sub | OpCode::Mul) {
-            cached_binop!(self.heap, rip, &op, a, b, cache);
-        }
+        if matches!(op, OpCode::Add | OpCode::Sub | OpCode::Mul) { cached_binop!(self.heap, rip, &op, a, b, cache); } // Register-based FastOps (add/sub/mul) are cached; the rest not.
 
         let result = match op {
             OpCode::Add => self.add_vals(a, b)?,
@@ -86,16 +82,12 @@ impl<'a> VM<'a> {
         Ok(Val::float(fpowf(to_f(a)?, to_f(b)?)))
     }
 
-    /*
-    Bitwise
-        AND/OR/XOR vía closure, NOT unario, SHL/SHR con BigInt.
-    */
+    /* AND/OR/XOR vía closure, NOT unario, SHL/SHR con BigInt. */
 
     pub(crate) fn handle_bitwise(&mut self, op: OpCode) -> Result<(), VmErr> {
         if op == OpCode::BitNot {
             let v = self.pop()?;
             let b = self.to_bigint(v).ok_or(VmErr::Type("~ requires an integer"))?;
-            // ~x == -(x+1) en complemento a dos
             let one = BigInt::from_i64(1);
             let result = b.add(&one).neg();
             let out = self.bigint_to_val(result)?;
@@ -137,10 +129,7 @@ impl<'a> VM<'a> {
         self.bigint_to_val(ba.shr_u32(shift.min(1024) as u32))
     }
 
-    /*
-    Comparison
-        Solo Eq y Lt registran en cache (las únicas con FastOp).
-    */
+    /* Solo Eq y Lt registran en cache (las únicas con FastOp). */
 
     pub(crate) fn handle_compare(&mut self, op: OpCode, rip: usize, cache: &mut OpcodeCache) -> Result<(), VmErr> {
         let (a, b) = self.pop2()?;
@@ -160,10 +149,7 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    /*
-    Logic
-        Short-circuit a nivel de valores ya evaluados: el parser garantiza la semántica.
-    */
+    /* Short-circuit a nivel de valores ya evaluados: el parser garantiza la semántica. */
 
     pub(crate) fn handle_logic(&mut self, op: OpCode) -> Result<(), VmErr> {
         match op {
@@ -176,10 +162,7 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    /*
-    Identity & Membership
-        `is`/`is not` comparan tag inline; `in`/`not in` delegan en contains().
-    */
+    /* `is`/`is not` comparan tag inline; `in`/`not in` delegan en contains(). */
 
     pub(crate) fn handle_identity(&mut self, op: OpCode) -> Result<(), VmErr> {
         let (a, b) = self.pop2()?;
