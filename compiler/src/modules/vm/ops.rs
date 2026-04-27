@@ -1,7 +1,10 @@
 // vm/ops.rs
 
+use crate::s;
+
 use super::types::*;
-use alloc::{string::String, vec::Vec, rc::Rc, format};
+
+use alloc::{string::String, vec::Vec, rc::Rc};
 use core::cell::RefCell;
 
 // Coerces numeric pair to f64; None if neither is float.
@@ -91,8 +94,9 @@ impl<'a> VM<'a> {
         }}
     }
 
-    fn join_reprs<'b>(&self, it: impl Iterator<Item = &'b Val>) -> String {
-        it.map(|x| self.repr(*x)).collect::<Vec<_>>().join(", ")
+    fn append_reprs<'b>(&self, out: &mut String, it: impl Iterator<Item = &'b Val>) {
+        let mut first = true;
+        for v in it { if !first { out.push_str(", "); } out.push_str(&self.repr(*v)); first = false; }
     }
 
     pub fn display(&self, v: Val) -> String {
@@ -119,22 +123,14 @@ impl<'a> VM<'a> {
         match self.heap.get(v) {
             HeapObj::Str(s) => s.clone(),
             HeapObj::BigInt(b) => b.to_decimal(),
-            HeapObj::Type(name) => format!("<class '{}'>", name),
-            HeapObj::Func(i, _, _) => format!("<function {}>", i),
-            HeapObj::Slice(s, e, st) => format!("slice({}, {}, {})", self.display(*s), self.display(*e), self.display(*st)),
-            HeapObj::Range(s, e, st) => if *st == 1 {
-                format!("range({}, {})", s, e)
-            } else {
-                format!("range({}, {}, {})", s, e, st)
-            },
-            HeapObj::List(l) => format!("[{}]", self.join_reprs(l.borrow().iter())),
-            HeapObj::Tuple(t) => if t.len() == 1 {
-                format!("({},)", self.repr(t[0]))
-            } else {
-                format!("({})", self.join_reprs(t.iter()))
-            },
-            HeapObj::Dict(d) => format!("{{{}}}", d.borrow().iter().map(|(k, v)| format!("{}: {}", self.repr(k), self.repr(v))).collect::<Vec<_>>().join(", ")),
-            HeapObj::BoundMethod(_, id) => format!("<built-in method {}>", id.name()),
+            HeapObj::Type(name)    => s!("<class '", str name, "'>"),
+            HeapObj::Func(i,_,_)   => s!("<function ", int *i),
+            HeapObj::Slice(s,e,st) => s!("slice(", str &self.display(*s), ", ", str &self.display(*e), ", ", str &self.display(*st), ")"),
+            HeapObj::Range(s,e,st) => if *st == 1 { s!("range(", int *s, ", ", int *e, ")") } else { s!("range(", int *s, ", ", int *e, ", ", int *st, ")") },
+            HeapObj::List(l) => { let mut o = s!(cap: 32; "["); self.append_reprs(&mut o, l.borrow().iter()); o.push(']'); o },
+            HeapObj::Tuple(t) => if t.len() == 1 { s!("(", str &self.repr(t[0]), ",)") } else { let mut o = s!(cap: 32; "("); self.append_reprs(&mut o, t.iter()); o.push(')'); o },
+            HeapObj::Dict(d) => { let mut o = s!(cap: 32; "{"); for (i,(k,v)) in d.borrow().iter().enumerate() { if i>0 { o.push_str(", "); } o.push_str(&self.repr(k)); o.push_str(": "); o.push_str(&self.repr(v)); } o.push('}'); o },
+            HeapObj::BoundMethod(_, id) => s!("<built-in method ", str id.name(), ">"),
             HeapObj::Set(s) => {
                 let mut items: Vec<Val> = s.borrow().iter().cloned().collect();
                 if items.is_empty() { return "set()".into(); }
@@ -150,13 +146,17 @@ impl<'a> VM<'a> {
                         (false, false) => self.repr(*a).cmp(&self.repr(*b)),
                     }
                 });
-                format!("{{{}}}", self.join_reprs(items.iter()))
+                let mut out = String::new();
+                out.push('{');
+                self.append_reprs(&mut out, items.iter());
+                out.push('}');
+                out
             }
         }
     }
 
     pub fn repr(&self, v: Val) -> String {
-        if v.is_heap() && let HeapObj::Str(s) = self.heap.get(v) { return format!("'{}'", s); }
+        if v.is_heap() && let HeapObj::Str(s) = self.heap.get(v) { return s!("'", str s, "'"); }
         self.display(v)
     }
 
@@ -205,7 +205,10 @@ impl<'a> VM<'a> {
         if a.is_heap() && b.is_heap() {
             match (self.heap.get(a), self.heap.get(b)) {
                 (HeapObj::Str(sa), HeapObj::Str(sb)) => {
-                    return self.heap.alloc(HeapObj::Str(format!("{}{}", sa, sb)));
+                    let mut r = String::with_capacity(sa.len() + sb.len());
+                    r.push_str(sa);
+                    r.push_str(sb);
+                    return self.heap.alloc(HeapObj::Str(r));
                 }
                 (HeapObj::List(va), HeapObj::List(vb)) => {
                     let mut lst = va.borrow().clone(); lst.extend_from_slice(&vb.borrow());

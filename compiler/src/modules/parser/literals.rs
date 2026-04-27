@@ -1,5 +1,7 @@
 // parser/literals.rs
 
+use crate::s;
+
 use super::Parser;
 use super::types::builtin;
 use super::types::{OpCode, Value, SSAChunk, Instruction};
@@ -7,7 +9,7 @@ use super::types::{OpCode, Value, SSAChunk, Instruction};
 use crate::modules::lexer::{Token, TokenType, utf8_char_len};
 use crate::modules::fx::FxHashMap as HashMap;
 
-use alloc::{string::{String, ToString}, vec::Vec, format};
+use alloc::{string::{String, ToString}, vec::Vec};
 
 impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
@@ -142,8 +144,9 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             let old_ver = versions_before.get(var).copied().unwrap_or(0);
             let new_ver = self.current_version(var);
             if old_ver == new_ver { continue; }
-            let old_name = format!("{}_{}", var, old_ver);
-            let Some(&old_slot) = self.chunk.name_index.get(old_name.as_str()) else { continue };
+            let mut ob = [0u8; 128];
+            let old_name = Self::ssa_name(var, old_ver, &mut ob);
+            let Some(&old_slot) = self.chunk.name_index.get(old_name) else { continue };
             let mut nb = [0u8; 128];
             let new_slot = self.chunk.push_name(Self::ssa_name(var, new_ver, &mut nb));
             var_map.insert(old_slot, new_slot);
@@ -399,11 +402,11 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             }
             if self.eat_if(TokenType::Star) {
                 let p = self.advance();
-                params.push(format!("*{}", self.lexeme(&p)));
+                params.push(s!("*", str self.lexeme(&p)));
                 self.drain_annotation();
             } else if self.eat_if(TokenType::DoubleStar) {
                 let p = self.advance();
-                params.push(format!("**{}", self.lexeme(&p)));
+                params.push(s!("**", str self.lexeme(&p)));
                 self.drain_annotation();
             } else {
                 let p = self.advance();

@@ -421,8 +421,14 @@ impl BigInt {
         let mut s = alloc::string::String::new();
         if self.neg { s.push('-'); }
         for (i, &g) in groups.iter().rev().enumerate() {
-            if i == 0 { s.push_str(&alloc::format!("{}", g)); }
-            else { s.push_str(&alloc::format!("{:09}", g)); }
+            if i == 0 {
+                let mut b = itoa::Buffer::new();
+                s.push_str(b.format(g));
+            } else {
+                let n = { let mut b = itoa::Buffer::new(); b.format(g).to_string() };
+                for _ in 0..9usize.saturating_sub(n.len()) { s.push('0'); }
+                s.push_str(&n);
+            }
         }
         s
     }

@@ -14,7 +14,7 @@ mod test {
         let cases: Vec<Case> = serde_json::from_str(include_str!("cases/lexer.json")).expect("invalid JSON");
 
         for case in cases {
-            let got: Vec<String> = lexer(&case.src).map(|t| format!("{:?}", t.kind)).collect();
+            let got: Vec<String> = lexer(&case.src).map(|t| format!("{:?}", t.kind)).collect(); // test-only; Debug formatting unavailable in s!
             assert_eq!(got, case.tokens, "failed on: {:?}", case.src);
         }
     }

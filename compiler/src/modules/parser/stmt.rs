@@ -1,11 +1,13 @@
 // parser/stmt.rs
 
+use crate::s;
+
 use super::Parser;
 use super::types::OpCode;
 
 use crate::modules::lexer::{Token, TokenType};
 
-use alloc::{string::{String, ToString}, vec, format};
+use alloc::{string::{String, ToString}, vec};
 
 impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
@@ -189,7 +191,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             Some(TokenType::Star) => {
                 self.advance();
                 let t = self.advance();
-                let mut targets = vec![format!("*{}", self.lexeme(&t))];
+                let mut targets = vec![s!("*", str self.lexeme(&t))];
                 while self.eat_if(TokenType::Comma) {
                     if !matches!(self.peek(), Some(TokenType::Name)) { break; }
                     let t = self.advance();
@@ -375,7 +377,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                     if self.eat_if(TokenType::Star) {
                         star_pos = Some(targets.len());
                         let t = self.advance();
-                        targets.push(format!("*{}", self.lexeme(&t)));
+                        targets.push(s!("*", str self.lexeme(&t)));
                     } else if matches!(self.peek(), Some(TokenType::Name)) {
                         let t = self.advance();
                         targets.push(self.lexeme(&t).to_string());

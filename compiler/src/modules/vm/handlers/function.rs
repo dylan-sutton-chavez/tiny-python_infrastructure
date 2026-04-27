@@ -1,7 +1,9 @@
 // vm/handlers/function.rs
 
-use super::*;
+use crate::s;
 use crate::alloc::string::ToString;
+
+use super::*;
 
 /// String method with no arguments: recv_str → transform → alloc Str → push
 macro_rules! str_no_args {
@@ -96,9 +98,7 @@ impl<'a> VM<'a> {
 
         // Capture free variables from the enclosing frame at function-creation time.
         let (params, body, _, _) = self.functions[global];
-        let param_names: alloc::collections::BTreeSet<String> = params.iter()
-            .map(|p| format!("{}_0", p.trim_start_matches('*')))
-            .collect();
+        let param_names: alloc::collections::BTreeSet<String> = params.iter().map(|p| s!(str p.trim_start_matches('*'), "_0")).collect();
         let mut captures: Vec<(usize, Val)> = Vec::new();
         for (bi, bname) in body.names.iter().enumerate() {
             if param_names.contains(bname.as_str()) { continue; }
@@ -175,13 +175,13 @@ impl<'a> VM<'a> {
                 let list_val = self.heap.alloc(
                     HeapObj::List(Rc::new(RefCell::new(rest)))
                 )?;
-                let pname = format!("{}_0", var_name);
+                let pname = s!(str var_name, "_0");
                 if let Some(&s) = body_map.get(pname.as_str()) {
                     fn_slots[s] = Some(list_val);
                 }
             } else {
                 if pos_idx >= positional.len() { continue; }
-                let pname = format!("{}_0", param);
+                let pname = s!(str param, "_0");
                 if let Some(&s) = body_map.get(pname.as_str()) {
                     fn_slots[s] = Some(positional[pos_idx]);
                 }
@@ -197,7 +197,7 @@ impl<'a> VM<'a> {
                 _ => return Err(VmErr::Runtime("malformed kwarg on stack")),
             };
             if params.iter().any(|p| p.trim_start_matches('*') == key.as_str()) {
-                let pname = format!("{}_0", key);
+                let pname = s!(str &key, "_0");
                 if let Some(&s) = body_map.get(pname.as_str()) {
                     fn_slots[s] = Some(value);
                 }
@@ -210,7 +210,7 @@ impl<'a> VM<'a> {
             let offset = n_params.saturating_sub(n_defaults);
             for (di, &dv) in captured_defaults.iter().enumerate() {
                 if let Some(param) = params.get(offset + di) {
-                    let pname = format!("{}_0", param.trim_start_matches('*'));
+                    let pname = s!(str param.trim_start_matches('*'), "_0");
                     if let Some(&s) = body_map.get(pname.as_str())
                         && fn_slots[s].is_none()
                     {
@@ -260,7 +260,7 @@ impl<'a> VM<'a> {
                 .filter(|&p| raw_name[p+1..].parse::<u32>().is_ok())
                 .map(|p| &raw_name[..p])
                 .unwrap_or(raw_name.as_str());
-            let versioned = format!("{}_0", base);
+            let versioned = s!(str base, "_0");
             if let Some(&slot) = body_map.get(versioned.as_str())
                 && fn_slots[slot].is_none()
             {

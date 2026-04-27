@@ -8,15 +8,16 @@ mod collections;
 mod handlers;
 mod super_ops;
 
+use crate::s;
+use crate::modules::parser::{OpCode, SSAChunk, Value, BUILTIN_TYPES};
+use crate::modules::fx::FxHashMap as HashMap;
+
 pub use types::{Val, HeapObj, HeapPool, VmErr, Limits};
 
 use types::*;
 use cache::{OpcodeCache, FastOp, Templates};
 use handlers::unsupported::unsupported;
-
-use crate::modules::parser::{OpCode, SSAChunk, Value, BUILTIN_TYPES};
-use alloc::{string::{String, ToString}, vec::Vec, vec, format};
-use crate::modules::fx::FxHashMap as HashMap;
+use alloc::{string::{String, ToString}, vec::Vec, vec};
 
 /*
 VM State
@@ -218,7 +219,7 @@ impl<'a> VM<'a> {
         for &name in BUILTIN_TYPES {
             if let Ok(type_obj) = vm.heap.alloc(HeapObj::Type(name.to_string())) {
                 vm.globals.insert(name.to_string(), type_obj);
-                vm.globals.insert(format!("{}_0", name), type_obj);
+                vm.globals.insert(s!(str name, "_0"), type_obj);
             }
         }
         vm
@@ -324,7 +325,11 @@ impl<'a> VM<'a> {
                     _ => return Ok(false),
                 };
                 match fast {
-                    FastOp::AddStr => self.heap.alloc(HeapObj::Str(format!("{}{}", sa, sb)))?,
+                    FastOp::AddStr => {
+                        let mut r = String::with_capacity(sa.len() + sb.len());
+                        r.push_str(&sa); r.push_str(&sb);
+                        self.heap.alloc(HeapObj::Str(r))?
+                    }
                     _ => Val::bool(sa == sb),
                 }
             }

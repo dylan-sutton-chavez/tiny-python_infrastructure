@@ -1,11 +1,14 @@
 // parser/control.rs
 
+
+use crate::s;
+
 use super::Parser;
 use super::types::OpCode;
 
 use crate::modules::lexer::{Token, TokenType};
 
-use alloc::{string::{String, ToString}, vec, vec::Vec, format};
+use alloc::{string::{String, ToString}, vec, vec::Vec};
 
 impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
@@ -59,7 +62,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         self.expr();
 
         let ver = self.increment_version("__match__");
-        let subj = self.chunk.push_name(&format!("__match__{}", ver));
+        let subj = self.chunk.push_name(&s!("__match__", int ver));
         self.chunk.emit(OpCode::StoreName, subj);
 
         self.eat(TokenType::Colon);

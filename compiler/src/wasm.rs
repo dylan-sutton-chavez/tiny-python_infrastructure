@@ -32,7 +32,7 @@ mod runtime {
         }) {
             Ok(s) => s,
             Err(e) => return unsafe {
-                write_out(&alloc::format!("input rejected: invalid utf-8 at byte {}", e.valid_up_to()))
+                write_out(&s!("input rejected: invalid utf-8 at byte ", int e.valid_up_to()))
             },
         };
 
@@ -42,29 +42,20 @@ mod runtime {
             let mut s = String::new();
             for (i, e) in errs.iter().enumerate() {
                 if i > 0 { s.push('\n'); }
-                s.push_str("syntax error at line ");
-                s.push_str(itoa::Buffer::new().format(e.line + 1));
-                s.push(':');
-                s.push_str(itoa::Buffer::new().format(e.col));
-                s.push_str(": ");
-                s.push_str(&e.msg);
+                s.push_str(&s!("syntax error at line ", int e.line + 1, ":", int e.col, ": ", str &e.msg));
             }
             s
         } else {
             let mut vm = VM::with_limits(&chunk, Limits::sandbox());
             match vm.run() {
-                Ok(_)  => vm.output.join("\n"),
-                Err(e) => {
-                    let mut s = String::new();
-                    match &e {
-                        VmErr::Type(m)    => { s.push_str("TypeError: "); s.push_str(m); }
-                        VmErr::Value(m)   => { s.push_str("ValueError: "); s.push_str(m); }
-                        VmErr::Runtime(m) => { s.push_str("RuntimeError: "); s.push_str(m); }
-                        VmErr::Name(n)    => { s.push_str("NameError: '"); s.push_str(n); s.push('\''); }
-                        VmErr::Raised(r)  => { s.push_str("Exception: "); s.push_str(r); }
-                        other             => s.push_str(other.as_str()),
-                    }
-                    s
+                Ok(_) => vm.output.join("\n"),
+                Err(e) => match &e {
+                    VmErr::Type(m) => s!("TypeError: ", str m),
+                    VmErr::Value(m) => s!("ValueError: ", str m),
+                    VmErr::Runtime(m) => s!("RuntimeError: ", str m),
+                    VmErr::Name(n) => s!("NameError: '", str n, "'"),
+                    VmErr::Raised(r) => s!("Exception: ", str r),
+                    other => other.as_str().into(),
                 }
             }
         };

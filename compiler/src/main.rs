@@ -38,7 +38,7 @@ fn parse_args() -> (String, usize, bool, bool) {
 
 fn run(path: &str, sandbox: bool) -> Result<(), String> {
     let src = if path.ends_with(".py") {
-        fs::read_to_string(path).map_err(|e| format!("io: cannot access '{}': {}", path, e))?
+        fs::read_to_string(path).map_err(|e| format!("io: cannot access '{}': {}", path, e))? // std binary; fmt allowed outside no_std boundary.
     } else {
         path.to_string()
     };

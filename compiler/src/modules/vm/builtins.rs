@@ -1,10 +1,12 @@
 // vm/builtins.rs
 
+use crate::s;
+
 use super::VM;
 use super::types::*;
 
 use core::cell::RefCell;
-use alloc::{string::{String, ToString}, vec::Vec, vec, rc::Rc, format};
+use alloc::{string::String, vec::Vec, vec, rc::Rc};
 
 impl<'a> VM<'a> {
 
@@ -22,8 +24,12 @@ impl<'a> VM<'a> {
 
     pub fn call_print(&mut self, op: u16) -> Result<(), VmErr> {
         let args = self.pop_n(op as usize)?;
-        let s = args.iter().map(|v| self.display(*v)).collect::<Vec<_>>().join(" ");
-        self.output.push(s);
+        let mut out = String::new();
+        for (i, v) in args.iter().enumerate() {
+            if i > 0 { out.push(' '); }
+            out.push_str(&self.display(*v));
+        }
+        self.output.push(out);
         Ok(())
     }
 
@@ -135,7 +141,7 @@ impl<'a> VM<'a> {
     pub fn call_type(&mut self) -> Result<(), VmErr> {
         let o = self.pop()?;
         let s = self.type_name(o);
-        let full = format!("<class '{}'>", s);
+        let full = s!("<class '", str s, "'>");
         let v = self.heap.alloc(HeapObj::Str(full))?;
         self.push(v);
         Ok(())
@@ -145,7 +151,9 @@ impl<'a> VM<'a> {
         let o = self.pop()?;
         if !o.is_int() { return Err(VmErr::Type("chr() requires an integer")); }
         let c = char::from_u32(o.as_int() as u32).ok_or(VmErr::Value("chr() arg out of range"))?;
-        let v = self.heap.alloc(HeapObj::Str(c.to_string()))?; self.push(v); Ok(())
+        let mut s = String::with_capacity(4); // max UTF-8 char size
+        s.push(c);
+        let v = self.heap.alloc(HeapObj::Str(s))?; self.push(v); Ok(())
     }
 
     pub fn call_ord(&mut self) -> Result<(), VmErr> {

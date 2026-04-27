@@ -1,12 +1,14 @@
 // parser/expr.rs
 
+use crate::s;
+
 use super::Parser;
 use super::types::{OpCode, Value, MAX_EXPR_DEPTH, Instruction};
 
 use super::types::parse_string;
 use crate::modules::lexer::{Token, TokenType};
 
-use alloc::{string::ToString, vec::Vec, vec, format, string::String};
+use alloc::{string::ToString, vec::Vec, vec, string::String};
 
 impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
@@ -300,8 +302,14 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
         let mut out = String::new();
         for (i, &l) in limbs.iter().rev().enumerate() {
-            if i == 0 { out.push_str(&format!("{}", l)); }
-            else { out.push_str(&format!("{:09}", l)); }
+            if i == 0 { 
+                let mut b = itoa::Buffer::new(); 
+                out.push_str(b.format(l)); 
+            } else {
+                let s = {let mut b = itoa::Buffer::new(); b.format(l).to_string()};
+                for _ in 0..9usize.saturating_sub(s.len()) { out.push('0'); }
+                out.push_str(&s);
+            }
         }
         if out.is_empty() { out.push('0'); }
         out
@@ -396,7 +404,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
             s.chunk.emit(OpCode::ReturnValue, 0);
         });
 
-        let param_slots: alloc::collections::BTreeSet<String> = params.iter().map(|p| format!("{}_0", p.trim_start_matches('*'))).collect();
+        let param_slots: alloc::collections::BTreeSet<String> = params.iter().map(|p| s!(str p.trim_start_matches('*'), "_0")).collect();
         for name in &body.names {
             if !param_slots.contains(name.as_str()) {
                 self.chunk.push_name(name);

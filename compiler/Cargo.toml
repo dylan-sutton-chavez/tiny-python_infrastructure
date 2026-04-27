@@ -40,7 +40,7 @@ serde_json = "1"
 hashbrown = { version = "0.17", default-features = false, features = ["serde"] }
 
 [features]
-wasm = ["lol_alloc"]
+wasm = ["dep:lol_alloc"]
 wasm-tests = []
 
 [profile.release]

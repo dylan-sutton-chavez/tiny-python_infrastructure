@@ -1,8 +1,9 @@
 // parser/types.rs
 
-use alloc::{string::{String, ToString}, vec, vec::Vec, format};
-
+use crate::s;
 use crate::modules::fx::FxHashMap as HashMap;
+
+use alloc::{string::{String, ToString}, vec, vec::Vec};
 
 pub(crate) const MAX_EXPR_DEPTH: usize = 200;
 pub(crate) const MAX_INSTRUCTIONS: usize = 65_535;
@@ -128,7 +129,7 @@ impl SSAChunk {
             if let Some(pos) = name.rfind('_')
                 && let Ok(ver) = name[pos+1..].parse::<u32>()
                 && ver > 0 {
-                    let prev = format!("{}_{}", &name[..pos], ver - 1);
+                    let prev = s!(str &name[..pos], "_", int ver - 1);
                     if let Some(&j) = self.name_index.get(&prev) {
                         ps[i] = Some(j);
                     }

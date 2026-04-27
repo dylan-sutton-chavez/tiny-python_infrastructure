@@ -211,7 +211,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         if matches!(self.peek(), Some(k) if k == kind) {
             self.advance();
         } else {
-            self.error(&format!("expected {:?}", kind));
+            self.error(&format!("expected {:?}", kind)); // Debug formatting; s! has no Debug token
         }
     }
 
