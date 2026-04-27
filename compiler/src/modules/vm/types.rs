@@ -806,6 +806,7 @@ impl VmErr {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl fmt::Display for VmErr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -813,7 +814,7 @@ impl fmt::Display for VmErr {
             Self::Value(s)   => { f.write_str("ValueError: ")?; f.write_str(s) }
             Self::Runtime(s) => { f.write_str("RuntimeError: ")?; f.write_str(s) }
             Self::Name(s)    => { f.write_str("NameError: '")?; f.write_str(s)?; f.write_str("'") }
-            Self::Raised(s)  => { f.write_str("Exception: ")?;  f.write_str(s) }
+            Self::Raised(s)  => { f.write_str("Exception: ")?; f.write_str(s) }
             other            => f.write_str(other.as_str()),
         }
     }

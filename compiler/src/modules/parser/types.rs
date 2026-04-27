@@ -1,6 +1,7 @@
 // parser/types.rs
 
 use crate::s;
+use core::fmt;
 use crate::modules::fx::FxHashMap as HashMap;
 
 use alloc::{string::{String, ToString}, vec, vec::Vec};
@@ -168,8 +169,9 @@ pub struct Diagnostic {
     pub msg: String,
 }
 
-impl core::fmt::Display for Diagnostic {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+#[cfg(not(target_arch = "wasm32"))]
+impl fmt::Display for Diagnostic {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "line {}:{}: {}", self.line + 1, self.col, self.msg)
     }
 }
