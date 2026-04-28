@@ -224,9 +224,8 @@ impl<'a> VM<'a> {
     }
 
     pub fn run(&mut self) -> Result<Val, VmErr> {
-        let mut chunk = self.chunk.clone();
-        let mut slots = self.fill_builtins(&chunk.names);
-        self.exec(&mut chunk, &mut slots)
+        let mut slots = self.fill_builtins(&self.chunk.names);
+        self.exec(self.chunk, &mut slots)
     }
 
     // Marks all reachable values from stack, globals, iterators and slots, then sweeps.

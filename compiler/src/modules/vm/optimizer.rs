@@ -9,13 +9,22 @@ pub fn constant_fold(chunk: &mut SSAChunk) {
     let mut known: Vec<Option<Val>> = vec![None; chunk.names.len()];
     let mut dead = vec![false; n];
 
-    // Slots con sucesor SSA (alguien los reasigna): no son foldables.
     let has_successor: Vec<bool> = {
         let mut v = vec![false; chunk.names.len()];
         for p in &chunk.prev_slots {
             if let Some(prev) = p {
                 let i = *prev as usize;
                 if i < v.len() { v[i] = true; }
+            }
+        }
+        // Any slot whose base name is declared `nonlocal` in a child function can be mutated at runtime via back-propagation. Treat as volatile.
+        for (_, body, _, _) in &chunk.functions {
+            for base in &body.nonlocals {
+                for (i, name) in chunk.names.iter().enumerate() {
+                    if name.rfind('_').is_some_and(|p| &name[..p] == base.as_str()) && i < v.len() {
+                        v[i] = true;
+                    }
+                }
             }
         }
         v
