@@ -1,6 +1,6 @@
 # Edge Python
 
-**Edge Python** is a high-performance, single-pass SSA compiler and virtual machine based on the CPython 3.13 specification. It features a hand-written lexer, a Pratt-precedence parser with direct SSA-to-bytecode emission, and a three-tier adaptive VM designed for deterministic execution and extreme safety in sandboxed environments.
+A high-performance, single-pass SSA compiler and virtual machine based on the CPython 3.13 specification. It features a hand-written lexer, a Pratt-precedence parser with direct SSA-to-bytecode emission, and a three-tier adaptive VM designed for deterministic execution and extreme safety in sandboxed environments.
 
 * **Demo:** [demo.edgepython.com](https://demo.edgepython.com/)
 * **Docs:** [edgepython.com](https://edgepython.com/)
@@ -9,7 +9,7 @@
 
 ## 1. Architecture Overview
 
-Edge Python prioritizes a "Correct by Construction" approach using Static Single Assignment (SSA) even at the bytecode level, allowing for aggressive compile-time and runtime optimizations that typically require a full JIT.
+The apporach for using Static Single Assignment (SSA) even at the bytecode level, allowing a compile-time and runtime optimizations that typically require a full JIT.
 
 * **Lexer**: Hand-written, LUT-based scanner implementing the CPython 3.13 token specification.
 * **Parser**: Single-pass SSA engine using Pratt precedence climbing. It bypasses intermediate ASTs to emit bytecode directly with $\phi$-node resolution.
@@ -21,9 +21,9 @@ Edge Python prioritizes a "Correct by Construction" approach using Static Single
 
 ---
 
-## 2. Design Philosophy: The SSA Convention
+## 2. Design Approach
 
-Unlike standard stack-based VMs, Edge Python maintains an **SSA store convention**. Every local variable mutation is treated as a new versioning of a slot. This architectural choice is the "secret sauce" that enables Tier-2 fusion:
+Edge Python maintains an **SSA store convention**. Every local variable mutation is treated as a new versioning of a slot. Where:
 
 1.  **Phi-Resolution**: Control flow merges use explicit $\phi$-nodes to resolve variable versions.
 2.  **Soundness**: By enforcing SSA invariants in the bytecode, we avoid the "hidden state" bugs common in register-based VMs.
@@ -31,36 +31,33 @@ Unlike standard stack-based VMs, Edge Python maintains an **SSA store convention
 
 ---
 
-## 3. Optimization Strategy
+## 3. Optimization
 
-### The Three-Tier Execution Model
-
-We implement a graduated execution model that balances warm-up time with execution peak performance:
-
-| Tier | Name | Mechanism | Speed vs Tier-0 |
-| :--- | :--- | :--- | :--- |
-| **0** | **Base Dispatch** | Standard fetch-decode-execute loop. | 1x |
-| **1** | **Adaptive IC** | Specializes `LOAD_ATTR` and `BINARY_ADD` based on observed types. | 1.3x - 1.5x |
-| **2** | **Fusion (SIF)** | Aggregates multiple opcodes into monolithic units like `RangeIncFused`. | 10x - 100x+ |
-
-### Why we do not implement Trace/Method JITs
+### Why don't implement Trace/Method JITs
 
 While CPython 3.13 explores copy-and-patch Tier-2 JITs, Edge Python intentionally stops at Superinstruction Fusion for the following reasons:
 
 #### I. Soundness Pitfalls & SSA Integrity
+
 Trace executors often bypass the SSA store convention to gain speed (writing directly to slots without back-propagation). In our architecture, this silently corrupts $\phi$ resolution after deoptimizations (deopts). Maintaining the SSA invariant in a trace JIT requires inlining `p_store_ssa`, which negates the performance gains of removing the dispatch overhead.
 
 #### II. Diminishing Returns
+
 Our benchmark `for _ in range(10_000_000): counter += 1` already runs in **10 ms** via `RangeIncFused`. This superinstruction collapses the entire loop into a single 128-bit multiplication. A trace JIT cannot improve upon $O(1)$ closed-form evaluation.
 
 #### III. Maintenance and Portability
+
 Edge Python is a ~70 KB educational and embedded interpreter. 
+
 * **Method JITs** require platform-specific assembly stencils.
 * **Trace JITs** introduce a second execution model that must stay synchronized with the bytecode contract, GC, and built-ins.
+
 Staying "Pure Rust" ensures identical behavior across `x86_64`, `aarch64`, and `wasm32`.
 
 ### Future Revisit Triggers
+
 We will only reconsider JIT compilation if:
+
 * Interpreter footprint exceeds 150 KB.
 * Numerical kernels with mixed operations show $>5\text{x}$ slowdown vs CPython.
 * `perf` analysis shows the dispatch loop consuming $>60\%$ of CPU cycles on non-fused code.
@@ -70,6 +67,7 @@ We will only reconsider JIT compilation if:
 ## 4. Benchmarks
 
 Testing Ten Million Iterations ($10^7$):
+
 ```python
 counter: int = 0
 for _ in range(10_000_000): counter += 1
@@ -77,7 +75,7 @@ print(counter)
 ```
 
 | Runtime | Real Time | Logic |
-| :--- | :--- | :--- |
+|---------|-----------|-------|
 | **CPython 3.13** | 1.180s | Standard Bytecode Loop |
 | **Edge Python** | **0.010s** | `RangeIncFused` Super-op |
 
@@ -86,14 +84,18 @@ print(counter)
 ## 5. Technical Implementation
 
 ### Value Representation
+
 We utilize **NaN-boxing** (64-bit).
+
 * **Integers**: 48-bit signed ($\pm 2^{47}$) stored inline.
 * **BigInt**: Fallback for values $> 48$-bit; uses a base-$2^{32}$ limb array.
 * **Floats**: Standard IEEE 754.
 * **Heap**: 28-bit index ($2^{28}$ max objects).
 
 ### Garbage Collection
+
 A **Mark-and-Sweep** collector handles heap management:
+
 * **String Interning**: Applied to all strings $\leq 64$ bytes.
 * **Thresholds**: Configurable memory pressure triggers.
 * **Sandbox**: Hard limits on recursion depth, total operations, and heap size.
