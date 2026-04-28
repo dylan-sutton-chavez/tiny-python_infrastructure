@@ -10,8 +10,8 @@ options:
   -c <code>    run inline code
   -d           debug output (verbosity level 1)
   -dd          debug output (verbosity level 2)
-  -q           suppress info logs (errors still shown)
-  --sandbox    enable limits (512 calls, 1e8 ops, 1e5 heap)
+  -q           suppress info logs
+  --sandbox    enable limits
   -h           show this help
 ";
 
@@ -48,9 +48,9 @@ fn parse_args() -> (String, usize, bool, bool) {
     (p, v, q, sandbox)
 }
 
-fn run(path: &str, sandbox: bool) -> Result<(), String> {
+fn run(path: &str, sandbox: bool, verbosity: usize, quiet: bool) -> Result<(), String> {
     let src = if path.ends_with(".py") {
-        fs::read_to_string(path).map_err(|e| format!("io: cannot access '{}': {}", path, e))? // std binary; fmt allowed outside no_std boundary.
+        fs::read_to_string(path).map_err(|_| s!("io: cannot access '", str path, "'"))?
     } else {
         path.to_string()
     };
@@ -58,13 +58,14 @@ fn run(path: &str, sandbox: bool) -> Result<(), String> {
     let (chunk, errs) = Parser::new(&src, lexer(&src)).parse();
     if !errs.is_empty() {
         for e in &errs {
-            error!("syntax: {}", e.render_with_path(path));
+            eprint_msg(&s!("syntax: ", str &e.render_with_path(path)));
         }
         exit(1);
     }
 
     if !quiet {
-        print_msg("info", &s!("emit: snapshot created [ops=", int chunk.instructions.len()," consts=", int chunk.constants.len(), "]"));
+        print_msg("info", &s!(
+            "emit: snapshot created [ops=", int chunk.instructions.len(), " consts=", int chunk.constants.len(), "]"));
     }
 
     let limits = if sandbox { Limits::sandbox() } else { Limits::none() };
@@ -77,9 +78,10 @@ fn run(path: &str, sandbox: bool) -> Result<(), String> {
         return Err(e.render());
     }
 
-    let (sp, tot) = vm.cache_stats();
     if verbosity >= 1 {
-        print_msg("debug", &s!("vm: specialization_ratio=", int sp, "/", int tot," [heap_footprint=", int vm.heap_usage(), "b]"));
+        let (sp, tot) = vm.cache_stats();
+        print_msg("debug", &s!(
+            "vm: specialization_ratio=", int sp, "/", int tot, " [heap_footprint=", int vm.heap_usage(), "b]"));
     }
 
     Ok(())

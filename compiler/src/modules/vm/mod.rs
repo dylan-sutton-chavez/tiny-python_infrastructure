@@ -44,7 +44,7 @@ pub struct VM<'a> {
     pub(crate) exception_stack: Vec<ExceptionFrame>,
     pub(crate) functions: Vec<&'a (Vec<String>, SSAChunk, u16, u16)>,
     pub(crate) fn_index: HashMap<*const SSAChunk, Vec<u32>>,
-    pub(crate) super_ops_cache: HashMap<*const SSAChunk, alloc::rc::Rc<Vec<Option<super_ops::SuperOp>>>>,    
+    pub(crate) opcode_caches: HashMap<*const SSAChunk, OpcodeCache>, 
     pub output: Vec<String>,
 }
 
@@ -206,7 +206,7 @@ impl<'a> VM<'a> {
             exception_stack: Vec::new(),
             functions: Vec::new(),
             fn_index: HashMap::default(),
-            super_ops_cache: HashMap::default(),
+            opcode_caches: HashMap::default(),
         };
         vm.build_function_table(chunk);
         for &name in BUILTIN_TYPES {
@@ -357,156 +357,165 @@ impl<'a> VM<'a> {
 
         let slots_base = self.live_slots.len();
         let exc_base   = self.exception_stack.len();
+        let key        = chunk as *const _;
 
-        // Resolver super_ops cacheados; calcular solo en el primer encuentro
-        // con este chunk. Subsiguientes llamadas (recursión, loops) clonan un Rc.
-        let key = chunk as *const _;
-        let super_ops = match self.super_ops_cache.get(&key) {
-            Some(rc) => rc.clone(),
+        // 1. SACAMOS el caché de la VM (Take)
+        let mut cache = match self.opcode_caches.remove(&key) {
+            Some(c) => c,
             None => {
-                let computed = alloc::rc::Rc::new(super_ops::detect(chunk));
-                self.super_ops_cache.insert(key, computed.clone());
-                computed
+                let super_ops = alloc::rc::Rc::new(super_ops::detect(chunk));
+                OpcodeCache::new(chunk, super_ops)
             }
         };
 
-        let mut cache  = OpcodeCache::new(chunk, super_ops);
-        let n          = chunk.instructions.len();
-        let mut ip     = 0usize;
-        let prev_slots = chunk.prev_slots.as_slice();
+        // 2. EJECUTAMOS el bucle dentro de un closure
+        // Esto captura cualquier 'return' o '?' y nos permite seguir después.
+        let result: Result<Val, VmErr> = (|| {
+            let n          = chunk.instructions.len();
+            let mut ip     = 0usize;
+            let prev_slots = chunk.prev_slots.as_slice();
 
-        loop {
-            if ip >= n {
-                self.exception_stack.truncate(exc_base);
-                return Ok(Val::none());
-            }
+            loop {
+                if ip >= n {
+                    self.exception_stack.truncate(exc_base);
+                    return Ok(Val::none());
+                }
 
-            // ── Tier-2: superinstruction dispatch ─────────────────────────
-            if let Some(sop) = cache.get_super(ip) {
-                match sop {
-                    SuperOp::Inc { load, store, delta, len } => {
-                        if super_ops::super_inc(slots, prev_slots, load, store, delta) {
-                            ip += len as usize; continue;
-                        }
-                    }
-                    SuperOp::Lt { a, b, len } => {
-                        let r = super_ops::super_lt(slots, a, b);
-                        if r != -1 {
-                            self.push(Val::bool(r == 1));
-                            ip += len as usize; continue;
-                        }
-                    }
-                    SuperOp::LoopGuard { load, store, delta, limit, jump_target, len } => {
-                        let r = super_ops::super_loop_guard(slots, prev_slots, load, store, delta, limit);
-                        if r != -1 {
-                            if r == 1 { ip += len as usize; }
-                            else {
-                                if self.budget == 0 { return Err(cold_budget()); }
-                                self.budget -= 1;
-                                if jump_target as usize > n {
-                                    return Err(VmErr::Runtime("jump target out of bounds"));
-                                }
-                                ip = jump_target as usize;
+                // ── Tier-2: superinstruction dispatch ─────────────────────────
+                if let Some(sop) = cache.get_super(ip) {
+                    match sop {
+                        SuperOp::Inc { load, store, delta, len } => {
+                            if super_ops::super_inc(slots, prev_slots, load, store, delta) {
+                                ip += len as usize; continue;
                             }
-                            continue;
                         }
-                    }
-                    SuperOp::LoopGuardDown { load, store, delta, limit, jump_target, len } => {
-                        let r = super_ops::super_loop_guard_down(slots, prev_slots, load, store, delta, limit);
-                        if r != -1 {
-                            if r == 1 { 
-                                ip += len as usize; 
-                            } else {
-                                if self.budget == 0 { return Err(VmErr::Runtime("Out of budget")); }
-                                self.budget -= 1;
-                                ip = jump_target as usize;
+                        SuperOp::Lt { a, b, len } => {
+                            let r = super_ops::super_lt(slots, a, b);
+                            if r != -1 {
+                                self.push(Val::bool(r == 1));
+                                ip += len as usize; continue;
                             }
-                            continue;
                         }
-                    }
-                    SuperOp::RangeIncFused { drop_slot, counter_load, counter_store, delta, end_ip } => {
-                        if let Some(iter) = self.iter_stack.last() {
-                            let outcome = super_ops::run_range_inc_fused(
-                                slots, prev_slots, iter, &mut self.budget,
-                                super_ops::RangeIncOps {
-                                    drop:  drop_slot,
-                                    load:  counter_load,
-                                    store: counter_store,
-                                    delta,
-                                },
-                            );
-                            if let FusedOutcome::Done = outcome {
-                                self.iter_stack.pop();
-                                if end_ip as usize > n {
-                                    return Err(VmErr::Runtime("jump target out of bounds"));
+                        SuperOp::LoopGuard { load, store, delta, limit, jump_target, len } => {
+                            let r = super_ops::super_loop_guard(slots, prev_slots, load, store, delta, limit);
+                            if r != -1 {
+                                if r == 1 { ip += len as usize; }
+                                else {
+                                    if self.budget == 0 { return Err(cold_budget()); }
+                                    self.budget -= 1;
+                                    if jump_target as usize > n {
+                                        return Err(VmErr::Runtime("jump target out of bounds"));
+                                    }
+                                    ip = jump_target as usize;
                                 }
-                                ip = end_ip as usize;
                                 continue;
                             }
                         }
-                    }
-                    SuperOp::RegBinop { op, dst, a, b, len } => {
-                        if super_ops::exec_reg_binop(slots, prev_slots, op, dst, a, b) {
-                            ip += len as usize; continue;
+                        SuperOp::LoopGuardDown { load, store, delta, limit, jump_target, len } => {
+                            let r = super_ops::super_loop_guard_down(slots, prev_slots, load, store, delta, limit);
+                            if r != -1 {
+                                if r == 1 { 
+                                    ip += len as usize; 
+                                } else {
+                                    if self.budget == 0 { return Err(VmErr::Runtime("Out of budget")); }
+                                    self.budget -= 1;
+                                    ip = jump_target as usize;
+                                }
+                                continue;
+                            }
                         }
-                    }
-                    SuperOp::RegBinopConst { op, dst, a, k, len } => {
-                        if super_ops::exec_reg_binop_const(slots, prev_slots, op, dst, a, k) {
-                            ip += len as usize; continue;
+                        SuperOp::RangeIncFused { drop_slot, counter_load, counter_store, delta, end_ip } => {
+                            if let Some(iter) = self.iter_stack.last() {
+                                let outcome = super_ops::run_range_inc_fused(
+                                    slots, prev_slots, iter, &mut self.budget,
+                                    super_ops::RangeIncOps {
+                                        drop:  drop_slot,
+                                        load:  counter_load,
+                                        store: counter_store,
+                                        delta,
+                                    },
+                                );
+                                if let FusedOutcome::Done = outcome {
+                                    self.iter_stack.pop();
+                                    if end_ip as usize > n {
+                                        return Err(VmErr::Runtime("jump target out of bounds"));
+                                    }
+                                    ip = end_ip as usize;
+                                    continue;
+                                }
+                            }
                         }
-                    }
-                    SuperOp::RegBinopConstLeft { op, dst, b, k, len } => {
-                        if super_ops::exec_reg_binop_const_left(slots, prev_slots, op, dst, k, b) {
-                            ip += len as usize; continue;
+                        SuperOp::RegBinop { op, dst, a, b, len } => {
+                            if super_ops::exec_reg_binop(slots, prev_slots, op, dst, a, b) {
+                                ip += len as usize; continue;
+                            }
+                        }
+                        SuperOp::RegBinopConst { op, dst, a, k, len } => {
+                            if super_ops::exec_reg_binop_const(slots, prev_slots, op, dst, a, k) {
+                                ip += len as usize; continue;
+                            }
+                        }
+                        SuperOp::RegBinopConstLeft { op, dst, b, k, len } => {
+                            if super_ops::exec_reg_binop_const_left(slots, prev_slots, op, dst, k, b) {
+                                ip += len as usize; continue;
+                            }
                         }
                     }
                 }
-            }
 
-            // ── Tier-1: IC fast path ──────────────────────────────────────
-            if let Some(fast) = cache.get_fast(ip) {
-                ip += 1;
-                if self.exec_fast(fast)? { continue; }
-                cache.invalidate(ip - 1);
-                ip -= 1;
-            }
-
-            // ── Tier-0 dispatch wrapped for exception capture ─────────────
-            match self.dispatch_flat(chunk, slots, &mut cache, &mut ip, n, prev_slots) {
-                Ok(None) => {}
-                Ok(Some(v)) => {
-                    self.live_slots.truncate(slots_base);
-                    self.exception_stack.truncate(exc_base);
-                    return Ok(v);
+                // ── Tier-1: IC fast path ──────────────────────────────────────
+                if let Some(fast) = cache.get_fast(ip) {
+                    ip += 1;
+                    // Aquí el '?' ahora retorna del closure, no de la función principal.
+                    if self.exec_fast(fast)? { continue; }
+                    cache.invalidate(ip - 1);
+                    ip -= 1;
                 }
-                Err(e) => {
-                    if self.exception_stack.len() > exc_base {
-                        let frame = self.exception_stack.pop().unwrap();
-                        self.stack.truncate(frame.stack_depth);
-                        self.iter_stack.truncate(frame.iter_depth);
-                        // Empuja la exception real como string. El handler hace isinstance
-                        // contra el tipo esperado (o lo descarta si es bare except).
-                        let msg = match &e {
-                            VmErr::ZeroDiv      => "ZeroDivisionError",
-                            VmErr::Type(_)      => "TypeError",
-                            VmErr::Value(_)     => "ValueError",
-                            VmErr::Name(_)      => "NameError",
-                            VmErr::CallDepth    => "RecursionError",
-                            VmErr::Heap         => "MemoryError",
-                            VmErr::Budget       => "RuntimeError",
-                            VmErr::Runtime(_)   => "RuntimeError",
-                            VmErr::Raised(_)    => "Exception",
-                        };
-                        let exc = self.heap.alloc(HeapObj::Str(msg.to_string()))?;
-                        self.push(exc);
-                        ip = frame.handler_ip;
-                    } else {
+
+                // ── Tier-0 dispatch wrapped for exception capture ─────────────
+                match self.dispatch_flat(chunk, slots, &mut cache, &mut ip, n, prev_slots) {
+                    Ok(None) => {}
+                    Ok(Some(v)) => {
+                        self.live_slots.truncate(slots_base);
                         self.exception_stack.truncate(exc_base);
-                        return Err(e);
+                        return Ok(v);
+                    }
+                    Err(e) => {
+                        if self.exception_stack.len() > exc_base {
+                            let frame = self.exception_stack.pop().unwrap();
+                            self.stack.truncate(frame.stack_depth);
+                            self.iter_stack.truncate(frame.iter_depth);
+                            
+                            let msg = match &e {
+                                VmErr::ZeroDiv      => "ZeroDivisionError",
+                                VmErr::Type(_)      => "TypeError",
+                                VmErr::Value(_)     => "ValueError",
+                                VmErr::Name(_)      => "NameError",
+                                VmErr::CallDepth    => "RecursionError",
+                                VmErr::Heap         => "MemoryError",
+                                VmErr::Budget       => "RuntimeError",
+                                VmErr::Runtime(_)   => "RuntimeError",
+                                VmErr::Raised(_)    => "Exception",
+                            };
+                            let exc = self.heap.alloc(HeapObj::Str(msg.to_string()))?;
+                            self.push(exc);
+                            ip = frame.handler_ip;
+                        } else {
+                            // Importante: No retornamos directamente de exec, 
+                            // sino del closure.
+                            return Err(e);
+                        }
                     }
                 }
             }
-        }
+        })(); // Fin del closure
+
+        // 3. VOLVEMOS A METER el caché (Put-back)
+        // Se ejecuta SIEMPRE, lo que garantiza que el IC se mantenga "caliente".
+        self.opcode_caches.insert(key, cache);
+
+        // 4. Retornamos el resultado final
+        result
     }
 
     #[inline]

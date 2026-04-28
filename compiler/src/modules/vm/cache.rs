@@ -1,13 +1,12 @@
 // vm/cache.rs
 
-use super::types::{Val, eq_vals_with_heap};
-use super::super_ops::{self, SuperOp};
-use super::optimizer;
+use super::types::eq_vals_with_heap;
+use super::super_ops::SuperOp;
 
-use crate::modules::parser::{OpCode, SSAChunk, Instruction};
+use crate::modules::parser::{OpCode, SSAChunk};
 use crate::modules::fx::FxHashMap as HashMap;
 
-use alloc::{vec, vec::Vec};
+use alloc::{vec, vec::Vec, rc::Rc};
 
 /* Specialized operation types for inline cache type-stable binary dispatch. */
 

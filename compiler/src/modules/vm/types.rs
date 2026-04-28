@@ -781,16 +781,10 @@ impl VmErr {
     }
 }
 
-impl VmErr {
-    pub fn render(&self) -> alloc::string::String {
-        match self {
-            Self::Type(s)    => crate::s!("TypeError: ", str s),
-            Self::Value(s)   => crate::s!("ValueError: ", str s),
-            Self::Runtime(s) => crate::s!("RuntimeError: ", str s),
-            Self::Name(s)    => crate::s!("NameError: '", str s, "'"),
-            Self::Raised(s)  => crate::s!("Exception: ", str s),
-            other            => alloc::string::String::from(other.as_str()),
-        }
+#[cfg(not(target_arch = "wasm32"))]
+impl core::fmt::Display for VmErr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(&self.render())
     }
 }
 
