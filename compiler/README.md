@@ -1,86 +1,108 @@
-## Edge Python
+# Edge Python
 
-Single-pass SSA compiler based on CPython 3.13: hand-written lexer, token-to-bytecode parser, three-tier adaptive virtual machine with NaN-boxed values, inline caching, superinstruction fusion, template memoization, mark-sweep garbage collector, and configurable sandbox limits. Native and WASM targets.
+**Edge Python** is a high-performance, single-pass SSA compiler and virtual machine based on the CPython 3.13 specification. It features a hand-written lexer, a Pratt-precedence parser with direct SSA-to-bytecode emission, and a three-tier adaptive VM designed for deterministic execution and extreme safety in sandboxed environments.
 
-* **Demo:** *[demo.edgepython.com](https://demo.edgepython.com/)*
-* **Docs:** *[edgepython.com](https://demo.edgepython.com/)*
+* **Demo:** [demo.edgepython.com](https://demo.edgepython.com/)
+* **Docs:** [edgepython.com](https://edgepython.com/)
 
 ---
 
-### Architecture
+## 1. Architecture Overview
 
-* **Lexer**: Hand-written scanner, LUT-based, CPython 3.13 tokens
-* **Parser**: Single-pass SSA (static single assignment with $\phi$-nodes), Pratt precedence climbing, direct bytecode emission
-* **VM**: Three-tier adaptive interpreter
-  * **Tier-0**: flat opcode dispatch (LLVM jump table, single indirect branch per instruction)
-  * **Tier-1**: inline caching with type recording, promoted to specialized ops after $8$ stable hits
-  * **Tier-2**: superinstruction fusion at chunk creation; pattern catalog includes `Inc`, `Lt`, `LoopGuard`, and `RangeIncFused` (closed-form $O(1)$ evaluation of `for _ in range(N): x += k`)
-* **Sandbox**: Configurable recursion, operation, and heap limits
-* **Garbage Collector**: Mark-and-sweep with string interning ($\leq 64$ bytes), free-list reuse, threshold-based triggering
+Edge Python prioritizes a "Correct by Construction" approach using Static Single Assignment (SSA) even at the bytecode level, allowing for aggressive compile-time and runtime optimizations that typically require a full JIT.
 
-### Quick Start
+* **Lexer**: Hand-written, LUT-based scanner implementing the CPython 3.13 token specification.
+* **Parser**: Single-pass SSA engine using Pratt precedence climbing. It bypasses intermediate ASTs to emit bytecode directly with $\phi$-node resolution.
+* **VM (Three-Tier Adaptive)**:
+    * **Tier-0**: Flat opcode dispatch via LLVM jump tables (single indirect branch).
+    * **Tier-1**: Inline Caching (IC) with type recording, promoting to specialized ops after $8$ stable hits.
+    * **Tier-2**: Superinstruction fusion at chunk creation (e.g., `RangeIncFused`).
+* **Memory**: NaN-boxed 64-bit values with an arbitrary-precision `BigInt` fallback and a mark-and-sweep GC.
 
-Build and Install:
+---
 
-```bash
-cd compiler/
+## 2. Design Philosophy: The SSA Convention
 
-cargo build --release
-./target/release/edge -c 'print("Hello, world!")'
-```
+Unlike standard stack-based VMs, Edge Python maintains an **SSA store convention**. Every local variable mutation is treated as a new versioning of a slot. This architectural choice is the "secret sauce" that enables Tier-2 fusion:
 
-Add to `$PATH`:
+1.  **Phi-Resolution**: Control flow merges use explicit $\phi$-nodes to resolve variable versions.
+2.  **Soundness**: By enforcing SSA invariants in the bytecode, we avoid the "hidden state" bugs common in register-based VMs.
+3.  **Optimization Trigger**: The compiler performs a single constant-folding pass at parse time. If a loop matches a known induction pattern (like `for i in range(N)`), the SSA graph allows the compiler to collapse the logic into a $O(1)$ superinstruction.
 
-```bash
-realpath target/release/edge
+---
 
-echo 'export PATH="/path/to/compiler/target/release:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-```
+## 3. Optimization Strategy
 
-### Benchmarks
+### The Three-Tier Execution Model
 
-Ten Million Iterations ($10^7$):
+We implement a graduated execution model that balances warm-up time with execution peak performance:
 
+| Tier | Name | Mechanism | Speed vs Tier-0 |
+| :--- | :--- | :--- | :--- |
+| **0** | **Base Dispatch** | Standard fetch-decode-execute loop. | 1x |
+| **1** | **Adaptive IC** | Specializes `LOAD_ATTR` and `BINARY_ADD` based on observed types. | 1.3x - 1.5x |
+| **2** | **Fusion (SIF)** | Aggregates multiple opcodes into monolithic units like `RangeIncFused`. | 10x - 100x+ |
+
+### Why we do not implement Trace/Method JITs
+
+While CPython 3.13 explores copy-and-patch Tier-2 JITs, Edge Python intentionally stops at Superinstruction Fusion for the following reasons:
+
+#### I. Soundness Pitfalls & SSA Integrity
+Trace executors often bypass the SSA store convention to gain speed (writing directly to slots without back-propagation). In our architecture, this silently corrupts $\phi$ resolution after deoptimizations (deopts). Maintaining the SSA invariant in a trace JIT requires inlining `p_store_ssa`, which negates the performance gains of removing the dispatch overhead.
+
+#### II. Diminishing Returns
+Our benchmark `for _ in range(10_000_000): counter += 1` already runs in **10 ms** via `RangeIncFused`. This superinstruction collapses the entire loop into a single 128-bit multiplication. A trace JIT cannot improve upon $O(1)$ closed-form evaluation.
+
+#### III. Maintenance and Portability
+Edge Python is a ~70 KB educational and embedded interpreter. 
+* **Method JITs** require platform-specific assembly stencils.
+* **Trace JITs** introduce a second execution model that must stay synchronized with the bytecode contract, GC, and built-ins.
+Staying "Pure Rust" ensures identical behavior across `x86_64`, `aarch64`, and `wasm32`.
+
+### Future Revisit Triggers
+We will only reconsider JIT compilation if:
+* Interpreter footprint exceeds 150 KB.
+* Numerical kernels with mixed operations show $>5\text{x}$ slowdown vs CPython.
+* `perf` analysis shows the dispatch loop consuming $>60\%$ of CPU cycles on non-fused code.
+
+---
+
+## 4. Benchmarks
+
+Testing Ten Million Iterations ($10^7$):
 ```python
 counter: int = 0
 for _ in range(10_000_000): counter += 1
 print(counter)
 ```
 
-| Runtime          | real     | user     | sys      |
-|------------------|----------|----------|----------|
-| CPython 3.13     | 0m1.180s | 0m1.150s | 0m0.020s |
-| Edge Python      | 0m0.010s | 0m0.000s | 0m0.003s |
+| Runtime | Real Time | Logic |
+| :--- | :--- | :--- |
+| **CPython 3.13** | 1.180s | Standard Bytecode Loop |
+| **Edge Python** | **0.010s** | `RangeIncFused` Super-op |
 
-The fused `RangeIncFused` superinstruction collapses the loop to a single i128 multiplication. Programs that don't match a fused pattern fall back to tier-1 IC (typically $30$-$50$% faster than the baseline).
+---
 
-### Usage
-
-| Command                         | Description                                             |
-|---------------------------------|---------------------------------------------------------|
-| `edge script.py`                | Run with no limits                                      |
-| `edge --sandbox script.py`      | Run with sandbox ($512$ calls, $10^8$ ops, $10^5$ heap) |
-| `edge -d --sandbox script.py`   | Debug output (verbosity level 1)                        |
-| `edge -dd --sandbox script.py`  | Debug output (verbosity level 2)                        |
-| `edge -q script.py`             | Quiet mode (suppresses compiler diagnostics)            |
+## 5. Technical Implementation
 
 ### Value Representation
+We utilize **NaN-boxing** (64-bit).
+* **Integers**: 48-bit signed ($\pm 2^{47}$) stored inline.
+* **BigInt**: Fallback for values $> 48$-bit; uses a base-$2^{32}$ limb array.
+* **Floats**: Standard IEEE 754.
+* **Heap**: 28-bit index ($2^{28}$ max objects).
 
-NaN-boxed 64-bit: integers are 48-bit signed ($\pm 2^{47}$) for inline storage; values outside this range are heap-allocated as arbitrary-precision `BigInt` (base-$2^{32}$ limb array, sign-magnitude), matching Python's unbounded `int` semantics. True division (`/`) always yields `float`. Heap index is 28-bit ($2^{28}$ objects max, returns `MemoryError` beyond).
+### Garbage Collection
+A **Mark-and-Sweep** collector handles heap management:
+* **String Interning**: Applied to all strings $\leq 64$ bytes.
+* **Thresholds**: Configurable memory pressure triggers.
+* **Sandbox**: Hard limits on recursion depth, total operations, and heap size.
 
-### Building for WebAssembly
+---
 
-```bash
-rustup target add wasm32-unknown-unknown
-cargo build --target wasm32-unknown-unknown --release --no-default-features --features wasm
-```
+## 6. Project Structure
 
-*Exported functions: `src_ptr()`, `out_ptr()`, `run(len: usize)` $\rightarrow$ `usize`*
-
-### Project Structure
-
-```bash
+```text
 ├── Cargo.lock
 ├── Cargo.toml
 ├── README.md
@@ -114,6 +136,7 @@ cargo build --target wasm32-unknown-unknown --release --no-default-features --fe
 │   │       │   └── unsupported.rs
 │   │       ├── mod.rs
 │   │       ├── ops.rs
+│   │       ├── optimizer.rs
 │   │       ├── super_ops.rs
 │   │       └── types.rs
 │   └── wasm.rs
@@ -128,32 +151,35 @@ cargo build --target wasm32-unknown-unknown --release --no-default-features --fe
     └── vm.rs
 ```
 
-### Tests
+## 7. Quick Start
 
 ```bash
-cargo test
-cargo test -- --ignored
-cargo test --features wasm-tests
+# Build the native binary
+cargo build --release
+
+# Run a simple script
+./target/release/edge -c 'print("Edge Python Online")'
+
+# Run in Sandbox Mode
+./target/release/edge --sandbox script.py
 ```
 
-### References
+---
 
-1. Aho, Sethi & Ullman, *Compilers: Principles, Techniques and Tools* (1986). LUT-based lexer.
-2. Pratt, *Top Down Operator Precedence* (POPL 1973). Precedence climbing parser.
-3. Cytron, Ferrante, Rosen, Wegman & Zadeck, *Efficiently Computing Static Single Assignment Form* (TOPLAS 1991). SSA, $\phi$-nodes.
-4. Gudeman, *Representing Type Information in Dynamically Typed Languages* (1993). NaN-boxing.
-5. Deutsch & Schiffman, *Efficient Implementation of the Smalltalk-80 System* (POPL 1984). Inline caching.
-6. Ertl & Gregg, *The Structure and Performance of Efficient Interpreters* (JILP 2003). Bytecode dispatch, indirect branch prediction.
-7. Hölzle & Ungar, *Optimizing Dynamically-Dispatched Calls with Run-Time Type Feedback* (PLDI 1994). Adaptive rewriting.
-8. Brunthaler, *Inline Caching Meets Quickening* (ECOOP 2010). Per-bytecode specialization with trivial deopt.
-9. Casey, Gregg, Ertl & Nisbet, *Towards Superinstructions for Java Interpreters* (SCOPES 2003). Superinstruction fusion.
-10. Michie, *Memo Functions and Machine Learning* (Nature 1968). Memoization.
-11. McCarthy, *Recursive Functions of Symbolic Expressions* (CACM 1960). Mark-sweep garbage collector.
-12. Knuth, *The Art of Computer Programming, Vol. 2: Seminumerical Algorithms* (1981). Arbitrary-precision arithmetic, §4.3.
-13. Shannon, PEP 659: *Specializing Adaptive Interpreter* (2021). Tiered specialization, CPython 3.11+.
-14. O'Connor, PEP 709: *Inlined Comprehensions* (2023). Drain-and-reinject compilation.
-15. Xu & Kjolstad, *Copy-and-Patch Compilation* (OOPSLA 2021). Stencil-based fast JIT, basis for CPython 3.13's tier-2.
+## 8. References
 
-### License
-
-MIT OR Apache-2.0
+1.  **Aho, Sethi & Ullman**, *Compilers: Principles, Techniques and Tools* (1986). LUT-based lexer.
+2.  **Pratt**, *Top Down Operator Precedence* (POPL 1973). Precedence climbing parser.
+3.  **Cytron et al.**, *Efficiently Computing Static Single Assignment Form* (TOPLAS 1991). SSA, $\phi$-nodes.
+4.  **Gudeman**, *Representing Type Information in Dynamically Typed Languages* (1993). NaN-boxing.
+5.  **Deutsch & Schiffman**, *Efficient Implementation of the Smalltalk-80 System* (POPL 1984). Inline caching.
+6.  **Ertl & Gregg**, *The Structure and Performance of Efficient Interpreters* (JILP 2003). Bytecode dispatch.
+7.  **Hölzle & Ungar**, *Optimizing Dynamically-Dispatched Calls with Run-Time Type Feedback* (PLDI 1994).
+8.  **Brunthaler**, *Inline Caching Meets Quickening* (ECOOP 2010). Per-bytecode specialization.
+9.  **Casey et al.**, *Towards Superinstructions for Java Interpreters* (SCOPES 2003). Superinstruction fusion.
+10. **Michie**, *Memo Functions and Machine Learning* (Nature 1968). Template memoization.
+11. **McCarthy**, *Recursive Functions of Symbolic Expressions* (CACM 1960). Mark-sweep GC.
+12. **Knuth**, *The Art of Computer Programming, Vol. 2* (1981). Arbitrary-precision arithmetic.
+13. **Shannon**, *PEP 659: Specializing Adaptive Interpreter* (2021). Tiered specialization (CPython 3.11+).
+14. **O'Connor**, *PEP 709: Inlined Comprehensions* (2023). Drain-and-reinject compilation.
+15. **Xu & Kjolstad**, *Copy-and-Patch Compilation* (OOPSLA 2021). Basis for CPython 3.13's Tier-2 JIT.
