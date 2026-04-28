@@ -57,7 +57,7 @@ pub(super) fn builtin(name: &str) -> Option<(OpCode, bool)> {
 
 /* Represents constant literals stored in the bytecode constants pool. */
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Str(String),
     Int(i64),
@@ -69,7 +69,7 @@ pub enum Value {
 
 /* Single bytecode instruction containing an opcode and 16-bit operand. */
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Instruction {
     pub opcode: OpCode,
     pub operand: u16,
@@ -77,7 +77,7 @@ pub struct Instruction {
 
 /* Container for generated instructions, constants, names, PHI sources and metadata. */
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct SSAChunk {
     pub instructions: Vec<Instruction>,
     pub constants: Vec<Value>,

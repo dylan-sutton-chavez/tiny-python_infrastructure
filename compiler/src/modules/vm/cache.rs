@@ -2,8 +2,9 @@
 
 use super::types::{Val, eq_vals_with_heap};
 use super::super_ops::{self, SuperOp};
+use super::optimizer;
 
-use crate::modules::parser::{OpCode, SSAChunk};
+use crate::modules::parser::{OpCode, SSAChunk, Instruction};
 use crate::modules::fx::FxHashMap as HashMap;
 
 use alloc::{vec, vec::Vec};
@@ -23,27 +24,31 @@ pub enum FastOp {
 
 /* Per-frame slot combining inline-cache type recording with adaptive hot-path rewriting. Collocates both tiers per instruction to avoid split cache lines. */
 
-const CACHE_THRESH: u8 = 3;
-const HOT_THRESH: u32 = 517;
+const QUICK_THRESH: u8 = 4;
 
 #[derive(Clone, Default)]
 struct CacheSlot {
-    ic_hits: u8, ta: u8, tb: u8,
-    ic_fast: Option<FastOp>,
-    hot_count: u32,
-    hot_fast: Option<FastOp>,
+    type_key: u8,
+    hits: u8,
+    fast: Option<FastOp>,
 }
 
 pub struct OpcodeCache {
     slots: Vec<CacheSlot>,
     super_ops: Vec<Option<SuperOp>>,
+    pub(super) instructions: Vec<Instruction>,
+    pub(super) constants: Vec<crate::modules::parser::Value>,
 }
 
 impl OpcodeCache {
     pub fn new(chunk: &SSAChunk) -> Self {
+        let mut folded = chunk.clone();
+        optimizer::constant_fold(&mut folded);
         Self {
-            slots: vec![CacheSlot::default(); chunk.instructions.len()],
-            super_ops: super_ops::detect(chunk),
+            slots:        vec![CacheSlot::default(); folded.instructions.len()],
+            super_ops:    super_ops::detect(&folded),
+            instructions: folded.instructions,
+            constants:    folded.constants,
         }
     }
 
@@ -53,22 +58,20 @@ impl OpcodeCache {
 
     pub fn record(&mut self, ip: usize, opcode: &OpCode, ta: u8, tb: u8) {
         let Some(s) = self.slots.get_mut(ip) else { return };
-        if s.ta == ta && s.tb == tb {
-            s.ic_hits = s.ic_hits.saturating_add(1);
-            if s.ic_hits >= CACHE_THRESH && s.ic_fast.is_none() {
-                s.ic_fast = Self::specialize(opcode, ta, tb);
-            }
-            if s.ic_fast.is_some() {
-                s.hot_count += 1;
-                if s.hot_count == HOT_THRESH { s.hot_fast = s.ic_fast; }
+        let key = (ta << 4) | (tb & 0xF);
+        if s.type_key == key {
+            s.hits = s.hits.saturating_add(1);
+            if s.hits >= QUICK_THRESH && s.fast.is_none() {
+                s.fast = Self::specialize(opcode, ta, tb);
             }
         } else {
-            *s = CacheSlot { ta, tb, ic_hits: 1, ..CacheSlot::default() };
+            *s = CacheSlot { type_key: key, hits: 1, fast: None };
         }
     }
 
-    #[inline] pub fn get_fast(&self, ip: usize) -> Option<FastOp> {
-        self.slots.get(ip).and_then(|s| s.hot_fast.or(s.ic_fast))
+    #[inline]
+    pub fn get_fast(&self, ip: usize) -> Option<FastOp> {
+        self.slots.get(ip).and_then(|s| s.fast)
     }
 
     pub fn invalidate(&mut self, ip: usize) {

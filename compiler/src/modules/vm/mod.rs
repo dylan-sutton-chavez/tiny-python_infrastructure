@@ -7,6 +7,7 @@ mod builtins;
 mod collections;
 mod handlers;
 mod super_ops;
+mod optimizer;
 
 use crate::s;
 use crate::modules::parser::{OpCode, SSAChunk, Value, BUILTIN_TYPES};
@@ -223,8 +224,9 @@ impl<'a> VM<'a> {
     }
 
     pub fn run(&mut self) -> Result<Val, VmErr> {
-        let mut slots = self.fill_builtins(&self.chunk.names);
-        self.exec(self.chunk, &mut slots)
+        let mut chunk = self.chunk.clone();
+        let mut slots = self.fill_builtins(&chunk.names);
+        self.exec(&mut chunk, &mut slots)
     }
 
     // Marks all reachable values from stack, globals, iterators and slots, then sweeps.
@@ -361,8 +363,8 @@ impl<'a> VM<'a> {
 
         let slots_base  = self.live_slots.len();
         let exc_base    = self.exception_stack.len();
-        let n           = chunk.instructions.len();
         let mut cache   = OpcodeCache::new(chunk);
+        let n = cache.instructions.len();
         let mut ip      = 0usize;
         let prev_slots  = chunk.prev_slots.as_slice();
 
@@ -436,6 +438,21 @@ impl<'a> VM<'a> {
                             }
                         }
                     }
+                    SuperOp::RegBinop { op, dst, a, b, len } => {
+                        if super_ops::exec_reg_binop(slots, prev_slots, op, dst, a, b) {
+                            ip += len as usize; continue;
+                        }
+                    }
+                    SuperOp::RegBinopConst { op, dst, a, k, len } => {
+                        if super_ops::exec_reg_binop_const(slots, prev_slots, op, dst, a, k) {
+                            ip += len as usize; continue;
+                        }
+                    }
+                    SuperOp::RegBinopConstLeft { op, dst, b, k, len } => {
+                        if super_ops::exec_reg_binop_const_left(slots, prev_slots, op, dst, k, b) {
+                            ip += len as usize; continue;
+                        }
+                    }
                 }
             }
 
@@ -493,7 +510,7 @@ impl<'a> VM<'a> {
     ) -> Result<Option<Val>, VmErr> {
         if *ip >= n { return Err(VmErr::Runtime("instruction pointer out of bounds")); }
 
-        let ins = unsafe { chunk.instructions.get_unchecked(*ip) };
+        let ins = unsafe { cache.instructions.get_unchecked(*ip) };
         let op  = ins.operand;
         let rip = *ip;
         *ip += 1;
@@ -533,7 +550,9 @@ impl<'a> VM<'a> {
                 if self.heap.needs_gc() { self.collect(slots); }
             }
             OpCode::LoadConst => {
-                let v = self.val_from(&chunk.constants[op as usize])?;
+                let v = cache.constants.get(op as usize)
+                    .ok_or(VmErr::Runtime("constant index out of bounds"))
+                    .and_then(|c| self.val_from(c))?;
                 self.push(v);
             }
             OpCode::Add | OpCode::Sub | OpCode::Mul | OpCode::Div

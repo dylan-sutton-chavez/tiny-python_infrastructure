@@ -88,20 +88,20 @@ def_super! {
 def_super! {
     // `i += k; i < n` while-header fusion. Returns 1=continue, 0=exit, -1=deopt.
     pub fn super_loop_guard(slots: &mut [Option<Val>], prev: &[Option<u16>], load: u16, store: u16, delta: Val, limit: u16,) -> i8 {
-        let Some(cur)  = p_load(slots, load)  else { return -1 };
+        let Some(cur) = p_load(slots, load) else { return -1 };
         let Some(next) = p_add_int(cur, delta) else { return -1 };
         p_store_ssa(slots, prev, store, next);
-        let Some(lim)  = p_load(slots, limit) else { return -1 };
+        let Some(lim) = p_load(slots, limit) else { return -1 };
         match p_lt_int(next, lim) { Some(true) => 1, Some(false) => 0, None => -1 }
     }
 }
 
 def_super! {
     pub fn super_loop_guard_down(slots: &mut [Option<Val>], prev: &[Option<u16>], load: u16, store: u16, delta: Val, limit: u16) -> i8 {
-        let Some(cur)  = p_load(slots, load)  else { return -1 };
+        let Some(cur) = p_load(slots, load) else { return -1 };
         let Some(next) = p_add_int(cur, delta) else { return -1 };
         p_store_ssa(slots, prev, store, next);
-        let Some(lim)  = p_load(slots, limit) else { return -1 };
+        let Some(lim) = p_load(slots, limit) else { return -1 };
         match p_gt_int(next, lim) { Some(true) => 1, Some(false) => 0, None => -1 }
     }
 }
@@ -113,8 +113,8 @@ pub enum FusedOutcome { Done, Deopt }
 // Closed-form executor for `RangeIncFused`. Evaluates the entire loop as `final = initial + delta * N` in O(1). Charges 2*N to the budget so sandbox accounting matches per-iteration bytecode dispatch.
 #[derive(Clone, Copy)]
 pub struct RangeIncOps {
-    pub drop:  u16,
-    pub load:  u16,
+    pub drop: u16,
+    pub load: u16,
     pub store: u16,
     pub delta: Val,
 }
@@ -170,11 +170,96 @@ pub enum SuperOp {
     LoopGuardDown { load: u16, store: u16, delta: Val, limit: u16, jump_target: u16, len: u16 },
     RangeIncFused {
         drop_slot: u16,
-        counter_load:  u16,
+        counter_load: u16,
         counter_store: u16,
         delta: Val,
         end_ip: u16,
     },
+    RegBinop { op: RegOp,dst: u16,a: u16,b: u16,len: u16 },
+    RegBinopConst { op: RegOp, dst: u16, a: u16, k: Val, len: u16 },
+    RegBinopConstLeft { op: RegOp, dst: u16, b: u16, k: Val, len: u16 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegOp {
+    Add, Sub, Mul, Div, Mod,
+    Eq, NotEq, Lt, Gt, LtEq, GtEq,
+}
+
+#[inline]
+pub fn exec_reg_binop(
+    slots: &mut [Option<Val>], prev: &[Option<u16>],
+    op: RegOp, dst: u16, a: u16, b: u16,
+) -> bool {
+    let (Some(av), Some(bv)) = (p_load(slots, a), p_load(slots, b)) else { return false };
+    let Some(result) = apply_reg_op(op, av, bv) else { return false };
+    p_store_ssa(slots, prev, dst, result);
+    true
+}
+
+#[inline]
+pub fn exec_reg_binop_const(
+    slots: &mut [Option<Val>], prev: &[Option<u16>],
+    op: RegOp, dst: u16, a: u16, k: Val,
+) -> bool {
+    let Some(av) = p_load(slots, a) else { return false };
+    let Some(result) = apply_reg_op(op, av, k) else { return false };
+    p_store_ssa(slots, prev, dst, result);
+    true
+}
+
+#[inline]
+pub fn exec_reg_binop_const_left(
+    slots: &mut [Option<Val>], prev: &[Option<u16>],
+    op: RegOp, dst: u16, k: Val, b: u16,
+) -> bool {
+    let Some(bv) = p_load(slots, b) else { return false };
+    let Some(result) = apply_reg_op(op, k, bv) else { return false };
+    p_store_ssa(slots, prev, dst, result);
+    true
+}
+
+#[inline(always)]
+fn apply_reg_op(op: RegOp, a: Val, b: Val) -> Option<Val> {
+    match op {
+        RegOp::Add => {
+            if a.is_int() && b.is_int() {
+                let r = (a.as_int() as i128) + (b.as_int() as i128);
+                if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 {
+                    return Some(Val::int(r as i64));
+                }
+                return None;
+            }
+            if a.is_float() || b.is_float() {
+                let af = if a.is_int() { a.as_int() as f64 } else if a.is_float() { a.as_float() } else { return None };
+                let bf = if b.is_int() { b.as_int() as f64 } else if b.is_float() { b.as_float() } else { return None };
+                return Some(Val::float(af + bf));
+            }
+            None
+        }
+        RegOp::Sub => {
+            if a.is_int() && b.is_int() {
+                let r = (a.as_int() as i128) - (b.as_int() as i128);
+                return if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 { Some(Val::int(r as i64)) } else { None };
+            }
+            None
+        }
+        RegOp::Mul => {
+            if a.is_int() && b.is_int() {
+                let r = (a.as_int() as i128) * (b.as_int() as i128);
+                return if r >= Val::INT_MIN as i128 && r <= Val::INT_MAX as i128 { Some(Val::int(r as i64)) } else { None };
+            }
+            None
+        }
+        RegOp::Lt => if a.is_int() && b.is_int() { Some(Val::bool(a.as_int() < b.as_int())) } else { None }
+        RegOp::Gt => if a.is_int() && b.is_int() { Some(Val::bool(a.as_int() > b.as_int())) } else { None }
+        RegOp::LtEq => if a.is_int() && b.is_int() { Some(Val::bool(a.as_int() <= b.as_int())) } else { None }
+        RegOp::GtEq => if a.is_int() && b.is_int() { Some(Val::bool(a.as_int() >= b.as_int())) } else { None }
+        RegOp::Eq => if (a.is_int() && b.is_int()) || (a.is_float() && b.is_float()) { Some(Val::bool(a.0 == b.0)) } else { None }
+        RegOp::NotEq => if (a.is_int() && b.is_int()) || (a.is_float() && b.is_float()) { Some(Val::bool(a.0 != b.0)) } else { None }
+        RegOp::Div => None,
+        RegOp::Mod => None,
+    }
 }
 
 /* detection (one-shot scan at chunk finalization) */
@@ -201,7 +286,7 @@ pub fn detect(chunk: &SSAChunk) -> Vec<Option<SuperOp>> {
     while i < n {
         // 7-op RangeIncFused (most aggressive; check first
         if i + 7 <= n
-            && ins[i  ].opcode == OpCode::ForIter
+            && ins[i].opcode == OpCode::ForIter
             && ins[i+1].opcode == OpCode::StoreName
             && ins[i+2].opcode == OpCode::LoadName
             && ins[i+3].opcode == OpCode::LoadConst
@@ -213,18 +298,18 @@ pub fn detect(chunk: &SSAChunk) -> Vec<Option<SuperOp>> {
             && let Some(delta) = int_const(ins[i+3].operand)
         {
             out[i] = Some(SuperOp::RangeIncFused {
-                drop_slot:     ins[i+1].operand,
-                counter_load:  ins[i+2].operand,
+                drop_slot: ins[i+1].operand,
+                counter_load: ins[i+2].operand,
                 counter_store: ins[i+5].operand,
                 delta,
-                end_ip:        ins[i].operand,
+                end_ip: ins[i].operand,
             });
             i += 7; continue;
         }
 
         // 8-op LoopGuard (Incremento)
         if i + 8 <= n
-            && ins[i  ].opcode == OpCode::LoadName
+            && ins[i].opcode == OpCode::LoadName
             && ins[i+1].opcode == OpCode::LoadConst
             && ins[i+2].opcode == OpCode::Add
             && ins[i+3].opcode == OpCode::StoreName
@@ -245,7 +330,7 @@ pub fn detect(chunk: &SSAChunk) -> Vec<Option<SuperOp>> {
 
         // GAP 2: 8-op LoopGuardDown (Decremento: i -= 1; i > 0)
         if i + 8 <= n
-            && ins[i  ].opcode == OpCode::LoadName
+            && ins[i].opcode == OpCode::LoadName
             && ins[i+1].opcode == OpCode::LoadConst
             && ins[i+2].opcode == OpCode::Sub
             && ins[i+3].opcode == OpCode::StoreName
@@ -267,7 +352,7 @@ pub fn detect(chunk: &SSAChunk) -> Vec<Option<SuperOp>> {
 
         // 4-op Inc (i + 1)
         if i + 4 <= n
-            && ins[i  ].opcode == OpCode::LoadName
+            && ins[i].opcode == OpCode::LoadName
             && ins[i+1].opcode == OpCode::LoadConst
             && ins[i+2].opcode == OpCode::Add
             && ins[i+3].opcode == OpCode::StoreName
@@ -282,7 +367,7 @@ pub fn detect(chunk: &SSAChunk) -> Vec<Option<SuperOp>> {
 
         // GAP 3: 4-op IncRight (1 + i)
         if i + 4 <= n
-            && ins[i  ].opcode == OpCode::LoadConst
+            && ins[i].opcode == OpCode::LoadConst
             && ins[i+1].opcode == OpCode::LoadName
             && ins[i+2].opcode == OpCode::Add
             && ins[i+3].opcode == OpCode::StoreName
@@ -297,12 +382,71 @@ pub fn detect(chunk: &SSAChunk) -> Vec<Option<SuperOp>> {
 
         // 3-op Lt
         if i + 3 <= n
-            && ins[i  ].opcode == OpCode::LoadName
+            && ins[i].opcode == OpCode::LoadName
             && ins[i+1].opcode == OpCode::LoadName
             && ins[i+2].opcode == OpCode::Lt
         {
             out[i] = Some(SuperOp::Lt { a: ins[i].operand, b: ins[i+1].operand, len: 3 });
             i += 3; continue;
+        }
+
+        let binop_of = |opc: &OpCode| -> Option<RegOp> {
+            match opc {
+                OpCode::Add => Some(RegOp::Add), OpCode::Sub => Some(RegOp::Sub),
+                OpCode::Mul => Some(RegOp::Mul), OpCode::Div => Some(RegOp::Div),
+                OpCode::Mod => Some(RegOp::Mod), OpCode::Eq => Some(RegOp::Eq),
+                OpCode::NotEq => Some(RegOp::NotEq), OpCode::Lt => Some(RegOp::Lt),
+                OpCode::Gt => Some(RegOp::Gt), OpCode::LtEq=> Some(RegOp::LtEq),
+                OpCode::GtEq => Some(RegOp::GtEq), _ => None,
+            }
+        };
+        let any_const = |idx: u16| -> Option<Val> {
+            match chunk.constants.get(idx as usize)? {
+                Value::Int(i) if (Val::INT_MIN..=Val::INT_MAX).contains(i) => Some(Val::int(*i)),
+                Value::Float(f) => Some(Val::float(*f)),
+                _ => None,
+            }
+        };
+
+        // 4-op RegBinop: LoadName(a) LoadName(b) BinOp StoreName(dst)
+        if i + 4 <= n
+            && ins[i].opcode == OpCode::LoadName
+            && ins[i+1].opcode == OpCode::LoadName
+            && ins[i+3].opcode == OpCode::StoreName
+            && let Some(op) = binop_of(&ins[i+2].opcode)
+        {
+            out[i] = Some(SuperOp::RegBinop {
+                op, dst: ins[i+3].operand, a: ins[i].operand, b: ins[i+1].operand, len: 4,
+            });
+            i += 4; continue;
+        }
+
+        // 4-op RegBinopConst: LoadName(a) LoadConst(k) BinOp StoreName(dst)
+        if i + 4 <= n
+            && ins[i].opcode == OpCode::LoadName
+            && ins[i+1].opcode == OpCode::LoadConst
+            && ins[i+3].opcode == OpCode::StoreName
+            && let Some(op) = binop_of(&ins[i+2].opcode)
+            && let Some(k) = any_const(ins[i+1].operand)
+        {
+            out[i] = Some(SuperOp::RegBinopConst {
+                op, dst: ins[i+3].operand, a: ins[i].operand, k, len: 4,
+            });
+            i += 4; continue;
+        }
+
+        // 4-op RegBinopConstLeft: LoadConst(k) LoadName(b) BinOp StoreName(dst)
+        if i + 4 <= n
+            && ins[i].opcode == OpCode::LoadConst
+            && ins[i+1].opcode == OpCode::LoadName
+            && ins[i+3].opcode == OpCode::StoreName
+            && let Some(op) = binop_of(&ins[i+2].opcode)
+            && let Some(k) = any_const(ins[i].operand)
+        {
+            out[i] = Some(SuperOp::RegBinopConstLeft {
+                op, dst: ins[i+3].operand, b: ins[i+1].operand, k, len: 4,
+            });
+            i += 4; continue;
         }
 
         i += 1;
