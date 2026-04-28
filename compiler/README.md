@@ -9,7 +9,7 @@ A high-performance, single-pass SSA compiler and virtual machine based on the CP
 
 ## 1. Architecture Overview
 
-The apporach for using Static Single Assignment (SSA) even at the bytecode level, allowing a compile-time and runtime optimizations that typically require a full JIT.
+The apporach for using Static Single Assignment (SSA) even at the bytecode level, allowing a compile-time and runtime optimizations that typically require a full JIT maintaining a syntax parsing with linear time complexity.
 
 * **Lexer**: Hand-written, LUT-based scanner implementing the CPython 3.13 token specification.
 * **Parser**: Single-pass SSA engine using Pratt precedence climbing. It bypasses intermediate ASTs to emit bytecode directly with $\phi$-node resolution.
@@ -17,46 +17,42 @@ The apporach for using Static Single Assignment (SSA) even at the bytecode level
     * **Tier-0**: Flat opcode dispatch via LLVM jump tables (single indirect branch).
     * **Tier-1**: Inline Caching (IC) with type recording, promoting to specialized ops after $8$ stable hits.
     * **Tier-2**: Superinstruction fusion at chunk creation (e.g., `RangeIncFused`).
-* **Memory**: NaN-boxed 64-bit values with an arbitrary-precision `BigInt` fallback and a mark-and-sweep GC.
+* **Memory**: NaN-boxed 64-bit values with an arbitrary-precision `BigInt` fallback and a mark-and-sweep garbage collector.
 
 ---
 
-## 2. Design Approach
+## 2. Compiler Design
 
-Edge Python maintains an **SSA store convention**. Every local variable mutation is treated as a new versioning of a slot. Where:
+Maintaining a **SSA store convention**. Every local variable mutation is treated as a new versioning of a slot. Where:
 
-1.  **Phi-Resolution**: Control flow merges use explicit $\phi$-nodes to resolve variable versions.
-2.  **Soundness**: By enforcing SSA invariants in the bytecode, we avoid the "hidden state" bugs common in register-based VMs.
-3.  **Optimization Trigger**: The compiler performs a single constant-folding pass at parse time. If a loop matches a known induction pattern (like `for i in range(N)`), the SSA graph allows the compiler to collapse the logic into a $O(1)$ superinstruction.
+1. **Phi-Resolution**: Control flow merges use explicit $\phi$-nodes to resolve variable versions (eg., `x` -> `x_1`, `x_2`).
+2. **Soundness**: By enforcing SSA invariants in the bytecode, we avoid the "hidden state" bugs common in register-based VMs.
+3. **Optimization Trigger**: The compiler performs a single constant-folding pass at parse time. If a loop matches a known induction pattern (like `for i in range(N)`), the SSA graph allows the compiler to collapse the logic into a $O(1)$ superinstruction.
 
 ---
 
 ## 3. Optimization
 
-### Why don't implement Trace/Method JITs
+**Why don't implement Trace/Method JITs**
 
 While CPython 3.13 explores copy-and-patch Tier-2 JITs, Edge Python intentionally stops at Superinstruction Fusion for the following reasons:
 
-#### I. Soundness Pitfalls & SSA Integrity
+**Soundness Pitfalls and SSA Integrity** Trace executors often bypass the SSA store convention to gain speed (writing directly to slots without back-propagation). In the architecture, this silently corrupts $\phi$ resolution after deoptimizations (deopts). Maintaining the SSA invariant in a trace JIT requires inlining `p_store_ssa`, which negates the performance gains of removing the dispatch overhead.
 
-Trace executors often bypass the SSA store convention to gain speed (writing directly to slots without back-propagation). In our architecture, this silently corrupts $\phi$ resolution after deoptimizations (deopts). Maintaining the SSA invariant in a trace JIT requires inlining `p_store_ssa`, which negates the performance gains of removing the dispatch overhead.
+**Diminishing Returns** Actual benchmarks, like; `for _ in range(10_000_000): counter += 1` already runs in **10 ms** via `RangeIncFused`. This superinstruction collapses the entire loop into a single 128-bit multiplication. A trace JIT cannot improve upon $O(1)$ closed-form evaluation.
 
-#### II. Diminishing Returns
-
-Our benchmark `for _ in range(10_000_000): counter += 1` already runs in **10 ms** via `RangeIncFused`. This superinstruction collapses the entire loop into a single 128-bit multiplication. A trace JIT cannot improve upon $O(1)$ closed-form evaluation.
-
-#### III. Maintenance and Portability
+**Maintenance and Portability** 
 
 Edge Python is a $\pm 70$ KB embedded interpreter. 
 
 * **Method JITs** require platform-specific assembly stencils.
-* **Trace JITs** introduce a second execution model that must stay synchronized with the bytecode contract, GC, and built-ins.
+* **Trace JITs** introduce a second execution model that must stay synchronized with the bytecode contract, garbage collector, and built-ins.
 
-Staying "Pure Rust" ensures identical behavior across `x86_64`, `aarch64`, and `wasm32`.
+*Staying "using just Rust" ensures identical behavior across `x86_64`, `aarch64`, and `wasm32`.*
 
 ---
 
-## 4. Benchmarks
+## 4. Benchmark
 
 Testing Ten Million Iterations ($10^7$):
 
@@ -66,10 +62,10 @@ for _ in range(10_000_000): counter += 1
 print(counter)
 ```
 
-| Runtime | Real Time | Logic |
-|---------|-----------|-------|
-| **CPython 3.13** | 1.180s | Standard Bytecode Loop |
-| **Edge Python** | **0.010s** | `RangeIncFused` Super-op |
+| Runtime          | Real Time  | Logic                    |
+|------------------|------------|--------------------------|
+| **CPython 3.13** | 1.180s     | Standard Bytecode Loop   |
+| **Edge Python**  | **0.010s** | `RangeIncFused` Super-op |
 
 ---
 
@@ -77,7 +73,7 @@ print(counter)
 
 ### Value Representation
 
-We utilize **NaN-boxing** (64-bit).
+Utilize **NaN-boxing** (64-bit).
 
 * **Integers**: 48-bit signed ($\pm 2^{47}$) stored inline.
 * **BigInt**: Fallback for values $> 48$-bit; uses a base-$2^{32}$ limb array.
