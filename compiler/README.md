@@ -47,7 +47,7 @@ Our benchmark `for _ in range(10_000_000): counter += 1` already runs in **10 ms
 
 #### III. Maintenance and Portability
 
-Edge Python is a ~70 KB educational and embedded interpreter. 
+Edge Python is a $\pm 70$ KB embedded interpreter. 
 
 * **Method JITs** require platform-specific assembly stencils.
 * **Trace JITs** introduce a second execution model that must stay synchronized with the bytecode contract, GC, and built-ins.
