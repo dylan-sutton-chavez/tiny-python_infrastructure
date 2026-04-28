@@ -54,14 +54,6 @@ Edge Python is a $\pm 70$ KB embedded interpreter.
 
 Staying "Pure Rust" ensures identical behavior across `x86_64`, `aarch64`, and `wasm32`.
 
-### Future Revisit Triggers
-
-We will only reconsider JIT compilation if:
-
-* Interpreter footprint exceeds 150 KB.
-* Numerical kernels with mixed operations show $>5\text{x}$ slowdown vs CPython.
-* `perf` analysis shows the dispatch loop consuming $>60\%$ of CPU cycles on non-fused code.
-
 ---
 
 ## 4. Benchmarks
