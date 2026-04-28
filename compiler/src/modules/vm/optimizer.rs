@@ -1,4 +1,18 @@
 // vm/optimizer.rs
+//
+// Constant folding pass over SSA bytecode chunks.
+//
+// Folds:
+//   LoadConst a, LoadConst b, BinOp     -> LoadConst (a OP b)
+//   LoadConst v, Not                    -> LoadTrue / LoadFalse
+//   LoadConst v, Minus                  -> LoadConst (-v)
+//
+// Does NOT fold LoadName even when the value is statically known. SSA name
+// loads carry information used by tier-1 IC, super-op detection, and the
+// memoization layer; replacing them with constants pessimises those paths.
+//
+// After folding, instructions marked dead are removed and all jump operands
+// are remapped to their new positions in the compacted array.
 
 use crate::modules::parser::{OpCode, SSAChunk, Instruction, Value};
 use super::types::Val;
@@ -6,149 +20,36 @@ use alloc::{vec, vec::Vec};
 
 pub fn constant_fold(chunk: &mut SSAChunk) {
     let n = chunk.instructions.len();
-    let mut known: Vec<Option<Val>> = vec![None; chunk.names.len()];
+    if n == 0 {
+        for (_, body, _, _) in chunk.functions.iter_mut() { constant_fold(body); }
+        for class_body in chunk.classes.iter_mut() { constant_fold(class_body); }
+        return;
+    }
+
     let mut dead = vec![false; n];
 
-    let has_successor: Vec<bool> = {
-        let mut v = vec![false; chunk.names.len()];
-        for prev in chunk.prev_slots.iter().flatten() {
-            let i = *prev as usize;
-            if i < v.len() { v[i] = true; }
-        }
-        // Any slot whose base name is declared `nonlocal` in a child function can be mutated at runtime via back-propagation. Treat as volatile.
-        for (_, body, _, _) in &chunk.functions {
-            for base in &body.nonlocals {
-                for (i, name) in chunk.names.iter().enumerate() {
-                    if name.rfind('_').is_some_and(|p| &name[..p] == base.as_str()) && i < v.len() {
-                        v[i] = true;
-                    }
-                }
-            }
-        }
-        v
-    };
-
     for ip in 0..n {
-        let ins = chunk.instructions[ip];
-        match ins.opcode {
+        if dead[ip] { continue; }
+        let opcode = chunk.instructions[ip].opcode;
 
-            OpCode::LoadConst => {
-                if let Some(next) = chunk.instructions.get(ip + 1)
-                    && next.opcode == OpCode::StoreName
-                    && let Some(v) = const_to_val(&chunk.constants, ins.operand)
-                {
-                    let slot = next.operand as usize;
-                    if slot < known.len() { known[slot] = Some(v); }
-                }
-            }
-
-            OpCode::LoadName => {
-                let slot = ins.operand as usize;
-                if has_successor.get(slot).copied().unwrap_or(true) {
-                    // El slot puede reasignarse: no plegar.
-                } else if let Some(Some(v)) = known.get(slot).copied()
-                    && let Some(idx) = find_or_push_const(chunk, v)
-                {
-                    chunk.instructions[ip] = Instruction {
-                        opcode: OpCode::LoadConst,
-                        operand: idx,
-                    };
-                }
-            }
-
-            OpCode::StoreName => {
-                let prev_ip = ip.wrapping_sub(1);
-                if let Some(prev) = chunk.instructions.get(prev_ip)
-                    && prev.opcode == OpCode::LoadConst
-                    && let Some(v) = const_to_val(&chunk.constants, prev.operand)
-                {
-                    let slot = ins.operand as usize;
-                    if slot < known.len() { known[slot] = Some(v); }
-                }
-            }
-
+        match opcode {
             OpCode::Add | OpCode::Sub | OpCode::Mul | OpCode::Div
-          | OpCode::Mod | OpCode::FloorDiv
-          | OpCode::Eq  | OpCode::NotEq | OpCode::Lt | OpCode::Gt | OpCode::LtEq | OpCode::GtEq
-          | OpCode::BitAnd | OpCode::BitOr | OpCode::BitXor
-          | OpCode::Shl | OpCode::Shr => {
-                let prev2 = ip.wrapping_sub(2);
-                let prev1 = ip.wrapping_sub(1);
-                if dead.get(prev2).copied().unwrap_or(true) || dead.get(prev1).copied().unwrap_or(true) {
-                    // Una de las dos LoadConst ya fue marcada muerta por un fold anterior.
-                    // No tocar: el chunk está en estado intermedio.
-                } else if let (Some(p2), Some(p1)) = (chunk.instructions.get(prev2), chunk.instructions.get(prev1))
-                    && p2.opcode == OpCode::LoadConst
-                    && p1.opcode == OpCode::LoadConst
-                    && let (Some(a), Some(b)) = (
-                        const_to_val(&chunk.constants, p2.operand),
-                        const_to_val(&chunk.constants, p1.operand),
-                    )
-                    && let Some(result) = fold_binop(ins.opcode, a, b)
-                    && write_const_load(chunk, prev2, result)
-                {
-                    dead[prev1] = true;
-                    dead[ip]    = true;
-                }
+            | OpCode::Mod | OpCode::FloorDiv
+            | OpCode::Eq  | OpCode::NotEq
+            | OpCode::Lt  | OpCode::Gt | OpCode::LtEq | OpCode::GtEq
+            | OpCode::BitAnd | OpCode::BitOr | OpCode::BitXor
+            | OpCode::Shl | OpCode::Shr => {
+                try_fold_binop(chunk, &mut dead, ip);
             }
-
-            // Plegar `Not` sobre constante booleana
-            OpCode::Not => {
-                let prev1 = ip.wrapping_sub(1);
-                if let Some(p1) = chunk.instructions.get(prev1)
-                    && p1.opcode == OpCode::LoadConst
-                    && let Some(v) = const_to_val(&chunk.constants, p1.operand)
-                {
-                    let folded = if v.is_bool() {
-                        Some(Val::bool(!v.as_bool()))
-                    } else if v.is_int() {
-                        Some(Val::bool(v.as_int() == 0))
-                    } else if v.is_none() {
-                        Some(Val::bool(true))
-                    } else { None };
-                    if let Some(r) = folded
-                        && let Some(idx) = find_or_push_const(chunk, r)
-                    {
-                        chunk.instructions[prev1] = Instruction { opcode: OpCode::LoadConst, operand: idx };
-                        dead[ip] = true;
-                    }
-                }
-            }
-
-            // Plegar `Minus` (negación unaria) sobre constante
-            OpCode::Minus => {
-                let prev1 = ip.wrapping_sub(1);
-                if let Some(p1) = chunk.instructions.get(prev1)
-                    && p1.opcode == OpCode::LoadConst
-                    && let Some(v) = const_to_val(&chunk.constants, p1.operand)
-                {
-                    let folded = if v.is_int() {
-                        let r = -(v.as_int() as i128);
-                        if (Val::INT_MIN as i128..=Val::INT_MAX as i128).contains(&r) {
-                            Some(Val::int(r as i64))
-                        } else { None }
-                    } else if v.is_float() {
-                        Some(Val::float(-v.as_float()))
-                    } else { None };
-                    if let Some(r) = folded
-                        && let Some(idx) = find_or_push_const(chunk, r)
-                    {
-                        chunk.instructions[prev1] = Instruction { opcode: OpCode::LoadConst, operand: idx };
-                        dead[ip] = true;
-                    }
-                }
-            }
-
+            OpCode::Not => try_fold_not(chunk, &mut dead, ip),
+            OpCode::Minus => try_fold_neg(chunk, &mut dead, ip),
             _ => {}
         }
     }
 
-    let mut idx = 0usize;
-    chunk.instructions.retain(|_| {
-        let keep = !dead[idx];
-        idx += 1;
-        keep
-    });
+    if dead.iter().any(|&d| d) {
+        compact_with_jump_remap(chunk, &dead);
+    }
 
     for (_, body, _, _) in chunk.functions.iter_mut() {
         constant_fold(body);
@@ -158,33 +59,61 @@ pub fn constant_fold(chunk: &mut SSAChunk) {
     }
 }
 
-fn const_to_val(constants: &[Value], idx: u16) -> Option<Val> {
-    match constants.get(idx as usize)? {
-        Value::Int(i) if (Val::INT_MIN..=Val::INT_MAX).contains(i) => Some(Val::int(*i)),
-        Value::Float(f) => Some(Val::float(*f)),
-        Value::Bool(b) => Some(Val::bool(*b)),
-        _ => None,
-    }
+#[inline]
+fn is_jump_op(op: OpCode) -> bool {
+    matches!(
+        op,
+        OpCode::Jump
+        | OpCode::JumpIfFalse
+        | OpCode::JumpIfFalseOrPop
+        | OpCode::JumpIfTrueOrPop
+        | OpCode::ForIter
+        | OpCode::SetupExcept
+    )
 }
 
-fn find_or_push_const(chunk: &mut SSAChunk, v: Val) -> Option<u16> {
-    let target: Value = if v.is_int() {
-        Value::Int(v.as_int())
-    } else if v.is_float() {
-        Value::Float(v.as_float())
-    } else {
-        return None;  // bool y none se emiten como opcodes dedicados
-    };
-    if let Some(pos) = chunk.constants.iter().position(|c| c == &target) {
-        return u16::try_from(pos).ok();
+// Build remap[i] = new index of instruction i after compaction. Dead targets
+// forward to the next live instruction; one-past-end (i == n) maps to the
+// new chunk length so jumps that fall through to the end stay valid.
+fn compact_with_jump_remap(chunk: &mut SSAChunk, dead: &[bool]) {
+    let n = chunk.instructions.len();
+    let alive_count: usize = dead.iter().filter(|&&d| !d).count();
+
+    let mut remap: Vec<usize> = Vec::with_capacity(n + 1);
+    let mut new_pos = 0usize;
+    for &is_dead in dead {
+        remap.push(new_pos);
+        if !is_dead { new_pos += 1; }
     }
-    let idx = chunk.constants.len();
-    chunk.constants.push(target);
-    u16::try_from(idx).ok()
+    remap.push(alive_count);
+
+    // Forward dead targets to their next live successor (walk back-to-front
+    // so each dead entry inherits the already-corrected next entry).
+    for i in (0..n).rev() {
+        if dead[i] {
+            remap[i] = remap[i + 1];
+        }
+    }
+
+    for (ip, _) in dead.iter().enumerate().take(n) {
+        if dead[ip] { continue; }
+        let ins = &mut chunk.instructions[ip];
+        if !is_jump_op(ins.opcode) { continue; }
+        let target = ins.operand as usize;
+        let new_target = if target > n { target } else { remap[target] };
+        if let Ok(v) = u16::try_from(new_target) {
+            ins.operand = v;
+        }
+    }
+
+    let mut idx = 0usize;
+    chunk.instructions.retain(|_| {
+        let keep = !dead[idx];
+        idx += 1;
+        keep
+    });
 }
 
-/// Reemplaza la instrucción en `pos` con la opcode adecuada para `v`.
-/// True/False/None usan opcodes dedicados (sin entrada en el pool).
 fn write_const_load(chunk: &mut SSAChunk, pos: usize, v: Val) -> bool {
     let new_ins = if v.is_bool() {
         Instruction {
@@ -202,8 +131,113 @@ fn write_const_load(chunk: &mut SSAChunk, pos: usize, v: Val) -> bool {
     true
 }
 
+fn find_or_push_const(chunk: &mut SSAChunk, v: Val) -> Option<u16> {
+    let target: Value = if v.is_int() {
+        Value::Int(v.as_int())
+    } else if v.is_float() {
+        Value::Float(v.as_float())
+    } else {
+        return None;
+    };
+    if let Some(pos) = chunk.constants.iter().position(|c| c == &target) {
+        return u16::try_from(pos).ok();
+    }
+    let idx = chunk.constants.len();
+    if idx >= u16::MAX as usize { return None; }
+    chunk.constants.push(target);
+    u16::try_from(idx).ok()
+}
+
+fn const_to_val(constants: &[Value], idx: u16) -> Option<Val> {
+    match constants.get(idx as usize)? {
+        Value::Int(i) if (Val::INT_MIN..=Val::INT_MAX).contains(i) => Some(Val::int(*i)),
+        Value::Float(f) => Some(Val::float(*f)),
+        Value::Bool(b) => Some(Val::bool(*b)),
+        _ => None,
+    }
+}
+
+// The most recent live instruction strictly before `from`. Required because
+// constant folding leaves gaps (the operands of an inner fold are dead), so
+// a naive `from - 1` would read instructions that no longer exist.
+fn prev_live(dead: &[bool], from: usize) -> Option<usize> {
+    let mut i = from;
+    while i > 0 {
+        i -= 1;
+        if !dead[i] { return Some(i); }
+    }
+    None
+}
+
+fn try_fold_binop(chunk: &mut SSAChunk, dead: &mut [bool], ip: usize) {
+    let Some(prev1_ip) = prev_live(dead, ip) else { return };
+    let Some(prev2_ip) = prev_live(dead, prev1_ip) else { return };
+
+    let p2 = chunk.instructions[prev2_ip];
+    let p1 = chunk.instructions[prev1_ip];
+    if p2.opcode != OpCode::LoadConst || p1.opcode != OpCode::LoadConst { return; }
+
+    let (Some(a), Some(b)) = (
+        const_to_val(&chunk.constants, p2.operand),
+        const_to_val(&chunk.constants, p1.operand),
+    ) else { return };
+
+    let opcode = chunk.instructions[ip].opcode;
+    let Some(result) = fold_binop(opcode, a, b) else { return };
+
+    if !write_const_load(chunk, prev2_ip, result) { return; }
+    dead[prev1_ip] = true;
+    dead[ip] = true;
+}
+
+fn try_fold_not(chunk: &mut SSAChunk, dead: &mut [bool], ip: usize) {
+    let Some(prev1_ip) = prev_live(dead, ip) else { return };
+    let p1 = chunk.instructions[prev1_ip];
+    if p1.opcode != OpCode::LoadConst { return; }
+    let Some(v) = const_to_val(&chunk.constants, p1.operand) else { return };
+
+    let folded = if v.is_bool() {
+        Some(Val::bool(!v.as_bool()))
+    } else if v.is_int() {
+        Some(Val::bool(v.as_int() == 0))
+    } else if v.is_float() {
+        Some(Val::bool(v.as_float() == 0.0))
+    } else if v.is_none() {
+        Some(Val::bool(true))
+    } else {
+        None
+    };
+
+    if let Some(r) = folded
+        && write_const_load(chunk, prev1_ip, r)
+    {
+        dead[ip] = true;
+    }
+}
+
+fn try_fold_neg(chunk: &mut SSAChunk, dead: &mut [bool], ip: usize) {
+    let Some(prev1_ip) = prev_live(dead, ip) else { return };
+    let p1 = chunk.instructions[prev1_ip];
+    if p1.opcode != OpCode::LoadConst { return; }
+    let Some(v) = const_to_val(&chunk.constants, p1.operand) else { return };
+
+    let folded = if v.is_int() {
+        let r = -(v.as_int() as i128);
+        if (Val::INT_MIN as i128..=Val::INT_MAX as i128).contains(&r) {
+            Some(Val::int(r as i64))
+        } else { None }
+    } else if v.is_float() {
+        Some(Val::float(-v.as_float()))
+    } else { None };
+
+    if let Some(r) = folded
+        && write_const_load(chunk, prev1_ip, r)
+    {
+        dead[ip] = true;
+    }
+}
+
 fn fold_binop(op: OpCode, a: Val, b: Val) -> Option<Val> {
-    // Comparaciones (cualquier tipo numérico)
     if matches!(op, OpCode::Eq | OpCode::NotEq | OpCode::Lt | OpCode::Gt | OpCode::LtEq | OpCode::GtEq) {
         let (af, bf) = if a.is_int() && b.is_int() {
             (a.as_int() as f64, b.as_int() as f64)
@@ -225,7 +259,6 @@ fn fold_binop(op: OpCode, a: Val, b: Val) -> Option<Val> {
         }));
     }
 
-    // Aritmética entera (con detección de overflow)
     if a.is_int() && b.is_int() {
         let (ai, bi) = (a.as_int() as i128, b.as_int() as i128);
         let r = match op {
@@ -244,10 +277,9 @@ fn fold_binop(op: OpCode, a: Val, b: Val) -> Option<Val> {
         if (Val::INT_MIN as i128..=Val::INT_MAX as i128).contains(&r) {
             return Some(Val::int(r as i64));
         }
-        return None;  // overflow → no plegar, dejar al runtime promover a BigInt
+        return None;
     }
 
-    // Aritmética en coma flotante
     if (a.is_int() || a.is_float()) && (b.is_int() || b.is_float()) {
         let af = if a.is_int() { a.as_int() as f64 } else { a.as_float() };
         let bf = if b.is_int() { b.as_int() as f64 } else { b.as_float() };

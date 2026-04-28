@@ -1,3 +1,5 @@
+extern crate alloc;
+
 use compiler_lib::modules::{lexer::lexer, parser::Parser, vm::{VM, Limits}};
 use std::{env, fs, process::exit};
 use compiler_lib::s;
@@ -55,13 +57,14 @@ fn run(path: &str, sandbox: bool, verbosity: usize, quiet: bool) -> Result<(), S
         path.to_string()
     };
 
-    let (chunk, errs) = Parser::new(&src, lexer(&src)).parse();
+    let (mut chunk, errs) = Parser::new(&src, lexer(&src)).parse();
     if !errs.is_empty() {
         for e in &errs {
             eprint_msg(&s!("syntax: ", str &e.render_with_path(path)));
         }
         exit(1);
     }
+    compiler_lib::modules::vm::optimizer::constant_fold(&mut chunk);
 
     if !quiet {
         print_msg("info", &s!(

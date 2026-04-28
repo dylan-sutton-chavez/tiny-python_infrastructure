@@ -37,7 +37,7 @@ mod runtime {
             },
         };
 
-        let (chunk, errs) = Parser::new(src, lexer(src)).parse();
+        let (mut chunk, errs) = Parser::new(src, lexer(src)).parse();
 
         let out: String = if !errs.is_empty() {
             let mut s = String::new();
@@ -47,6 +47,7 @@ mod runtime {
             }
             s
         } else {
+            crate::modules::vm::optimizer::constant_fold(&mut chunk);
             let mut vm = VM::with_limits(&chunk, Limits::sandbox());
             match vm.run() {
                 Ok(_) => vm.output.join("\n"),

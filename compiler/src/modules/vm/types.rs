@@ -779,6 +779,18 @@ impl VmErr {
             Self::Raised(_) => "Exception",
         }
     }
+
+    pub fn render(&self) -> alloc::string::String {
+        use crate::s;
+        match self {
+            Self::Name(n)    => s!("NameError: name '", str n, "' is not defined"),
+            Self::Raised(m)  => s!("Exception: ", str m),
+            Self::Type(m)    => s!("TypeError: ", str m),
+            Self::Value(m)   => s!("ValueError: ", str m),
+            Self::Runtime(m) => s!("RuntimeError: ", str m),
+            other            => alloc::string::String::from(other.as_str()),
+        }
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]

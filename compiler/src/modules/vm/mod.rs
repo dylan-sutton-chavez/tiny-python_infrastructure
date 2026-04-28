@@ -7,7 +7,7 @@ mod builtins;
 mod collections;
 mod handlers;
 mod super_ops;
-mod optimizer;
+pub mod optimizer;
 
 use crate::s;
 use crate::modules::parser::{OpCode, SSAChunk, Value, BUILTIN_TYPES};

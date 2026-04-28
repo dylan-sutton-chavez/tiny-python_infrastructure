@@ -279,7 +279,6 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
         self.chunk.emit(OpCode::ReturnValue, 0);
         self.chunk.finalize_prev_slots();
-        crate::modules::vm::optimizer::constant_fold(&mut self.chunk);
         (self.chunk, self.errors)
     }
 }

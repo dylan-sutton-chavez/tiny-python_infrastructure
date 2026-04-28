@@ -1,6 +1,6 @@
 // vm/cache.rs
 
-use super::types::eq_vals_with_heap;
+use super::types::{Val, eq_vals_with_heap};
 use super::super_ops::SuperOp;
 
 use crate::modules::parser::{OpCode, SSAChunk};
