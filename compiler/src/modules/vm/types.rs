@@ -781,21 +781,15 @@ impl VmErr {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-mod display_impls {
-    use core::fmt;
-    use super::VmErr;
-
-    impl fmt::Display for VmErr {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            match self {
-                Self::Type(s) => { f.write_str("TypeError: ")?; f.write_str(s) }
-                Self::Value(s) => { f.write_str("ValueError: ")?; f.write_str(s) }
-                Self::Runtime(s) => { f.write_str("RuntimeError: ")?; f.write_str(s) }
-                Self::Name(s) => { f.write_str("NameError: '")?; f.write_str(s)?; f.write_str("'") }
-                Self::Raised(s) => { f.write_str("Exception: ")?; f.write_str(s) }
-                other => f.write_str(other.as_str()),
-            }
+impl VmErr {
+    pub fn render(&self) -> alloc::string::String {
+        match self {
+            Self::Type(s)    => crate::s!("TypeError: ", str s),
+            Self::Value(s)   => crate::s!("ValueError: ", str s),
+            Self::Runtime(s) => crate::s!("RuntimeError: ", str s),
+            Self::Name(s)    => crate::s!("NameError: '", str s, "'"),
+            Self::Raised(s)  => crate::s!("Exception: ", str s),
+            other            => alloc::string::String::from(other.as_str()),
         }
     }
 }

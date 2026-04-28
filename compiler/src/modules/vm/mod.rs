@@ -42,16 +42,10 @@ pub struct VM<'a> {
     pub(crate) max_calls: usize,
     pub(crate) observed_impure: Vec<bool>,
     pub(crate) exception_stack: Vec<ExceptionFrame>,
-    pub output: Vec<String>,
-
-    // ── NEW: flat global function table built at VM init ──
-    /// All function descriptors in the program, flattened. Index is the
-    /// global function id stored in `HeapObj::Func`.
     pub(crate) functions: Vec<&'a (Vec<String>, SSAChunk, u16, u16)>,
-    /// For each chunk seen during the flatten pass: the global ids of its
-    /// local `chunk.functions` entries, in order. `MakeFunction <local>`
-    /// inside `chunk` resolves via `fn_index[&(chunk as *const _)][local]`.
     pub(crate) fn_index: HashMap<*const SSAChunk, Vec<u32>>,
+    pub(crate) super_ops_cache: HashMap<*const SSAChunk, alloc::rc::Rc<Vec<Option<super_ops::SuperOp>>>>,    
+    pub output: Vec<String>,
 }
 
 impl<'a> VM<'a> {
@@ -212,6 +206,7 @@ impl<'a> VM<'a> {
             exception_stack: Vec::new(),
             functions: Vec::new(),
             fn_index: HashMap::default(),
+            super_ops_cache: HashMap::default(),
         };
         vm.build_function_table(chunk);
         for &name in BUILTIN_TYPES {
@@ -360,12 +355,25 @@ impl<'a> VM<'a> {
     pub(crate) fn exec(&mut self, chunk: &SSAChunk, slots: &mut [Option<Val>]) -> Result<Val, VmErr> {
         use super_ops::{FusedOutcome, SuperOp};
 
-        let slots_base  = self.live_slots.len();
-        let exc_base    = self.exception_stack.len();
-        let mut cache   = OpcodeCache::new(chunk);
-        let n = cache.instructions.len();
-        let mut ip      = 0usize;
-        let prev_slots  = chunk.prev_slots.as_slice();
+        let slots_base = self.live_slots.len();
+        let exc_base   = self.exception_stack.len();
+
+        // Resolver super_ops cacheados; calcular solo en el primer encuentro
+        // con este chunk. Subsiguientes llamadas (recursión, loops) clonan un Rc.
+        let key = chunk as *const _;
+        let super_ops = match self.super_ops_cache.get(&key) {
+            Some(rc) => rc.clone(),
+            None => {
+                let computed = alloc::rc::Rc::new(super_ops::detect(chunk));
+                self.super_ops_cache.insert(key, computed.clone());
+                computed
+            }
+        };
+
+        let mut cache  = OpcodeCache::new(chunk, super_ops);
+        let n          = chunk.instructions.len();
+        let mut ip     = 0usize;
+        let prev_slots = chunk.prev_slots.as_slice();
 
         loop {
             if ip >= n {
@@ -509,7 +517,7 @@ impl<'a> VM<'a> {
     ) -> Result<Option<Val>, VmErr> {
         if *ip >= n { return Err(VmErr::Runtime("instruction pointer out of bounds")); }
 
-        let ins = unsafe { cache.instructions.get_unchecked(*ip) };
+        let ins = unsafe { chunk.instructions.get_unchecked(*ip) };
         let op  = ins.operand;
         let rip = *ip;
         *ip += 1;
@@ -549,7 +557,7 @@ impl<'a> VM<'a> {
                 if self.heap.needs_gc() { self.collect(slots); }
             }
             OpCode::LoadConst => {
-                let v = cache.constants.get(op as usize)
+                let v = chunk.constants.get(op as usize)
                     .ok_or(VmErr::Runtime("constant index out of bounds"))
                     .and_then(|c| self.val_from(c))?;
                 self.push(v);

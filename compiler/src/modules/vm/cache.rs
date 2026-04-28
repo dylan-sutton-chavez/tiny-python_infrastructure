@@ -35,20 +35,14 @@ struct CacheSlot {
 
 pub struct OpcodeCache {
     slots: Vec<CacheSlot>,
-    super_ops: Vec<Option<SuperOp>>,
-    pub(super) instructions: Vec<Instruction>,
-    pub(super) constants: Vec<crate::modules::parser::Value>,
+    super_ops: Rc<Vec<Option<SuperOp>>>,
 }
 
 impl OpcodeCache {
-    pub fn new(chunk: &SSAChunk) -> Self {
-        let mut folded = chunk.clone();
-        optimizer::constant_fold(&mut folded);
+    pub fn new(chunk: &SSAChunk, super_ops: Rc<Vec<Option<SuperOp>>>) -> Self {
         Self {
-            slots:        vec![CacheSlot::default(); folded.instructions.len()],
-            super_ops:    super_ops::detect(&folded),
-            instructions: folded.instructions,
-            constants:    folded.constants,
+            slots: vec![CacheSlot::default(); chunk.instructions.len()],
+            super_ops,
         }
     }
 

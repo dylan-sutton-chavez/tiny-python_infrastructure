@@ -365,17 +365,22 @@ pub fn detect(chunk: &SSAChunk) -> Vec<Option<SuperOp>> {
             i += 4; continue;
         }
 
-        // GAP 3: 4-op IncRight (1 + i)
+        // GAP 3: 4-op Dec (i - 1) — usa Inc con delta negado
         if i + 4 <= n
-            && ins[i].opcode == OpCode::LoadConst
-            && ins[i+1].opcode == OpCode::LoadName
-            && ins[i+2].opcode == OpCode::Add
+            && ins[i].opcode == OpCode::LoadName
+            && ins[i+1].opcode == OpCode::LoadConst
+            && ins[i+2].opcode == OpCode::Sub
             && ins[i+3].opcode == OpCode::StoreName
-            && same_var(ins[i+1].operand, ins[i+3].operand)
-            && let Some(delta) = int_const(ins[i].operand)
+            && same_var(ins[i].operand, ins[i+3].operand)
+            && let Some(k) = int_const(ins[i+1].operand)
+            && let Some(neg) = k.as_int().checked_neg()
+            && (Val::INT_MIN..=Val::INT_MAX).contains(&neg)
         {
             out[i] = Some(SuperOp::Inc {
-                load: ins[i+1].operand, store: ins[i+3].operand, delta, len: 4,
+                load: ins[i].operand,
+                store: ins[i+3].operand,
+                delta: Val::int(neg),
+                len: 4,
             });
             i += 4; continue;
         }

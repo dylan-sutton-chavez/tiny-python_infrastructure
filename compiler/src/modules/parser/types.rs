@@ -91,7 +91,8 @@ pub struct SSAChunk {
     pub prev_slots: Vec<Option<u16>>,
     pub phi_map: Vec<usize>,
     pub nonlocals: Vec<String>,
-    pub(super) name_index: HashMap<String, u16>
+    pub super_ops: Vec<u8>,
+    pub(super) name_index: HashMap<String, u16>,
 }
 
 impl SSAChunk {
@@ -141,12 +142,15 @@ impl SSAChunk {
             body.finalize_prev_slots();
         }
 
-        self.phi_map = vec![0; self.instructions.len()];
-        let mut phi_idx = 0;
-        for (i, ins) in self.instructions.iter().enumerate() {
-            if ins.opcode == OpCode::Phi {
-                self.phi_map[i] = phi_idx;
-                phi_idx += 1;
+        let phi_count = self.instructions.iter().filter(|i| i.opcode == OpCode::Phi).count();
+        if phi_count > 0 {
+            self.phi_map = vec![0; self.instructions.len()];
+            let mut phi_idx = 0;
+            for (i, ins) in self.instructions.iter().enumerate() {
+                if ins.opcode == OpCode::Phi {
+                    self.phi_map[i] = phi_idx;
+                    phi_idx += 1;
+                }
             }
         }
     }
@@ -169,14 +173,13 @@ pub struct Diagnostic {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-mod display_impls {
-    use core::fmt;
-    use super::Diagnostic;
+impl Diagnostic {
+    pub fn render(&self) -> alloc::string::String {
+        crate::s!("line ", int self.line + 1, ":", int self.col, ": ", str &self.msg)
+    }
 
-    impl fmt::Display for Diagnostic {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "line {}:{}: {}", self.line + 1, self.col, self.msg)
-        }
+    pub fn render_with_path(&self, path: &str) -> alloc::string::String {
+        crate::s!(str path, ":", int self.line + 1, ":", int self.col, ": ", str &self.msg)
     }
 }
 

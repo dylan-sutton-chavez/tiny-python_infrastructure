@@ -1,6 +1,6 @@
 use compiler_lib::modules::{lexer::lexer, parser::Parser, vm::{VM, Limits}};
 use std::{env, fs, process::exit};
-use log::{debug, info, error};
+use compiler_lib::s;
 
 const HELP: &str = "
 usage: edge [options] <file>
@@ -14,6 +14,18 @@ options:
   --sandbox    enable limits (512 calls, 1e8 ops, 1e5 heap)
   -h           show this help
 ";
+
+#[inline]
+fn eprint_msg(msg: &str) {
+    use std::io::Write;
+    let _ = writeln!(std::io::stderr(), "{}", msg);
+}
+
+#[inline]
+fn print_msg(level: &str, msg: &str) {
+    use std::io::Write;
+    let _ = writeln!(std::io::stdout(), "[{}] {}", level, msg);
+}
 
 fn parse_args() -> (String, usize, bool, bool) {
     let args: Vec<_> = env::args().skip(1).collect();
@@ -30,7 +42,7 @@ fn parse_args() -> (String, usize, bool, bool) {
         return (code, v, q, sandbox);
     }
     let p = args.iter().find(|&a| !a.starts_with('-')).cloned().unwrap_or_else(|| {
-        error!("abort: no input file specified");
+        eprint_msg("abort: no input file specified");
         exit(1);
     });
     (p, v, q, sandbox)
@@ -46,12 +58,14 @@ fn run(path: &str, sandbox: bool) -> Result<(), String> {
     let (chunk, errs) = Parser::new(&src, lexer(&src)).parse();
     if !errs.is_empty() {
         for e in &errs {
-            error!("syntax: {}:{}:{}: {}", path, e.line + 1, e.col, e.msg);
+            error!("syntax: {}", e.render_with_path(path));
         }
         exit(1);
     }
 
-    info!("emit: snapshot created [ops={} consts={}]", chunk.instructions.len(), chunk.constants.len());
+    if !quiet {
+        print_msg("info", &s!("emit: snapshot created [ops=", int chunk.instructions.len()," consts=", int chunk.constants.len(), "]"));
+    }
 
     let limits = if sandbox { Limits::sandbox() } else { Limits::none() };
     let mut vm = VM::with_limits(&chunk, limits);
@@ -60,30 +74,21 @@ fn run(path: &str, sandbox: bool) -> Result<(), String> {
     vm.output.iter().for_each(|l| println!("{l}"));
 
     if let Err(e) = exec_result {
-        return Err(e.to_string());
+        return Err(e.render());
     }
 
     let (sp, tot) = vm.cache_stats();
-    debug!("vm: specialization_ratio={}/{} [heap_footprint={}b]", sp, tot, vm.heap_usage());
+    if verbosity >= 1 {
+        print_msg("debug", &s!("vm: specialization_ratio=", int sp, "/", int tot," [heap_footprint=", int vm.heap_usage(), "b]"));
+    }
 
     Ok(())
 }
 
 fn main() {
     let (p, v, q, sandbox) = parse_args();
-
-    let default_level = match (q, v) {
-        (true, _) => "error",
-        (_, 0) => "info",
-        (_, 1) => "debug",
-        _ => "trace",
-    };
-    env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or(default_level)
-    ).init();
-
-    if let Err(e) = run(&p, sandbox) {
-        error!("{}", e);
+    if let Err(e) = run(&p, sandbox, v, q) {
+        eprint_msg(&e);
         exit(1);
     }
 }

@@ -40,21 +40,20 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     }
 
     pub(super) fn ssa_name<'a>(name: &str, ver: u32, buf: &'a mut [u8; 128]) -> &'a str {
-        struct W<'a> { b: &'a mut [u8; 128], n: usize }
-        impl core::fmt::Write for W<'_> {
-            fn write_str(&mut self, s: &str) -> core::fmt::Result {
-                let end = self.n + s.len();
-                if end <= self.b.len() {
-                    self.b[self.n..end].copy_from_slice(s.as_bytes());
-                    self.n = end;
-                }
-                Ok(())
-            }
+        let name_bytes = name.as_bytes();
+        let cap = buf.len();
+        let mut n = name_bytes.len().min(cap);
+        buf[..n].copy_from_slice(&name_bytes[..n]);
+        if n < cap {
+            buf[n] = b'_';
+            n += 1;
         }
-        let mut w = W { b: buf, n: 0 };
-        use core::fmt::Write;
-        let _ = write!(w, "{}_{}", name, ver);
-        core::str::from_utf8(&w.b[..w.n]).unwrap() // lifetime tied to buf, zero heap allocation
+        let mut tmp = itoa::Buffer::new();
+        let s = tmp.format(ver).as_bytes();
+        let take = s.len().min(cap - n);
+        buf[n..n + take].copy_from_slice(&s[..take]);
+        n += take;
+        unsafe { core::str::from_utf8_unchecked(&buf[..n]) }
     }
 
     pub(super) fn increment_version(&mut self, name: &str) -> u32 {
@@ -280,6 +279,7 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
         self.chunk.emit(OpCode::ReturnValue, 0);
         self.chunk.finalize_prev_slots();
+        crate::modules::vm::optimizer::constant_fold(&mut self.chunk);
         (self.chunk, self.errors)
     }
 }

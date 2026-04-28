@@ -25,14 +25,7 @@ path = "tests/main.rs"
 hashbrown = { version = "0.17", default-features = false }
 itoa = "1"
 ryu = "1"
-log = "0.4"
 lol_alloc = { version = "0.4", optional = true }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-env_logger = "0.11"
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-log = { version = "0.4", features = ["max_level_off", "release_max_level_off"] }
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }
