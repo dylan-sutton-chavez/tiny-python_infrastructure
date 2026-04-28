@@ -43,7 +43,7 @@ While CPython 3.13 explores copy-and-patch Tier-2 JITs, Edge Python intentionall
 
 **Maintenance and Portability** 
 
-Edge Python is a $\pm 70$ KB embedded interpreter. 
+Edge Python is a $\pm 130$ KB embedded interpreter. 
 
 * **Method JITs** require platform-specific assembly stencils.
 * **Trace JITs** introduce a second execution model that must stay synchronized with the bytecode contract, garbage collector, and built-ins.
