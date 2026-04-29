@@ -1,6 +1,10 @@
 # Edge Python
 
-A high-performance, single-pass SSA compiler and virtual machine based on the CPython 3.13 specification. It features a hand-written lexer, a Pratt-precedence parser with direct SSA-to-bytecode emission, and a three-tier adaptive VM designed for deterministic execution and extreme safety in sandboxed environments.
+A compact, single-pass SSA-style bytecode compiler and stack VM for a subset
+of CPython 3.13 syntax. Hand-written lexer, Pratt-precedence parser that emits
+bytecode directly (no AST), and a threaded-code interpreter with per-instruction
+inline caching. Built for deterministic execution in sandboxed and embedded
+environments (≈130 KB native, also ships as `wasm32`).
 
 * **Demo:** [demo.edgepython.com](https://demo.edgepython.com/)
 * **Docs:** [edgepython.com](https://edgepython.com/)
@@ -9,149 +13,138 @@ A high-performance, single-pass SSA compiler and virtual machine based on the CP
 
 ## 1. Architecture Overview
 
-The apporach for using Static Single Assignment (SSA) even at the bytecode level, allowing a compile-time and runtime optimizations that typically require a full JIT maintaining a syntax parsing with linear time complexity.
-
-* **Lexer**: Hand-written, LUT-based scanner implementing the CPython 3.13 token specification.
-* **Parser**: Single-pass SSA engine using Pratt precedence climbing. It bypasses intermediate ASTs to emit bytecode directly with $\phi$-node resolution.
-* **VM (Threaded Adaptive)**:
-    * **Threaded Code**: Pre-compiled `ThreadedOp` array with baked-in operands eliminates the dispatch `match` overhead. Each instruction is a direct enum variant — no opcode lookup, no indirect branch through a jump table.
-    * **Inline Caching (IC)**: Type recording with adaptive specialization, promoting hot arithmetic and comparisons to type-specialized fast paths after $4$ stable hits.
-* **Memory**: NaN-boxed 64-bit values with an arbitrary-precision `BigInt` fallback and a mark-and-sweep garbage collector.
+* **Lexer** — Hand-written, LUT-driven scanner over CPython 3.13 token kinds.
+  Tokens are `(start, end, kind)` offsets into the source buffer; no string
+  copies during lexing.
+* **Parser** — Single-pass, Pratt precedence climbing. Emits SSA-versioned
+  bytecode directly (`x` → `x_1`, `x_2`) with explicit `Phi` opcodes at
+  control-flow joins. No intermediate AST.
+* **Optimizer** — One peephole pass: constant folding over adjacent literal
+  operands, plus dead-code compaction with jump remapping. Does not propagate
+  through `LoadName`.
+* **VM** — Stack-based interpreter over a pre-compiled `Vec<ThreadedOp>` where
+  operands are baked into typed enum variants. Dispatch is a flat `match` over
+  the variant. One LoadAttr+Call superinstruction (`CallMethod`).
+* **Inline Caching** — Per-instruction type-recording cache for arithmetic and
+  comparisons. After 4 stable hits the IC stores a `FastOp` (`AddInt`,
+  `LtFloat`, ...) used as a speculative fast path with type-guard deopt.
+* **Memory** — NaN-boxed 64-bit `Val` (48-bit signed int, IEEE-754 float, bool,
+  None, 28-bit heap index). Mark-and-sweep GC. Arbitrary-precision `BigInt`
+  fallback for integers outside the 48-bit range.
 
 ---
 
 ## 2. Compiler Design
 
-Maintaining a **SSA store convention**. Every local variable mutation is treated as a new versioning of a slot. Where:
+The store convention is SSA: every assignment increments a per-name version
+counter and emits a fresh slot. Control-flow joins backup the version maps and
+emit `Phi` instructions on exit so the runtime can resolve which version is
+live.
 
-1. **Phi-Resolution**: Control flow merges use explicit $\phi$-nodes to resolve variable versions (eg., `x` -> `x_1`, `x_2`).
-2. **Soundness**: By enforcing SSA invariants in the bytecode, we avoid the "hidden state" bugs common in register-based VMs.
-3. **Optimization Trigger**: The compiler performs a single constant-folding pass at parse time. If a loop matches a known induction pattern (like `for i in range(N)`), the SSA graph enables constant folding and closed-form loop evaluation at compile time.
+The single optimization pass folds patterns of the form `LoadConst a,
+LoadConst b, BinOp` into `LoadConst (a OP b)`, plus unary `Not` and `Minus`
+over constants. It deliberately does **not** fold `LoadName` even when the
+value is statically known, because keeping the load preserves the IC slot
+that drives runtime specialization.
 
----
+What the compiler intentionally does *not* do (kept honest):
 
-## 3. Optimization
-
-**Why Threaded Code Instead of Trace/Method JITs**
-
-While CPython 3.13 explores copy-and-patch Tier-2 JITs, Edge Python uses **threaded code** with inline caching for the following reasons:
-
-**Threaded Code Eliminates Dispatch Overhead** The bytecode is pre-compiled into a `ThreadedOp` array where each instruction carries its operand. The VM executes a flat match over pre-resolved variants — no opcode lookup, no indirect branch through a jump table. This removes the primary bottleneck of traditional interpreters (Ertl \& Gregg, 2003).
-
-**Inline Caching Specializes Hot Paths** Arithmetic and comparison operations record operand types. After 4 stable hits, the IC promotes to type-specialized fast paths (e.g., `AddInt`, `LtFloat`) that skip type checks entirely.
-
-**SSA Integrity** Trace executors often bypass the SSA store convention to gain speed. In this architecture, that would silently corrupt $\phi$ resolution after deoptimizations. Threaded code preserves SSA invariants by design.
-
-**Maintenance and Portability**
-
-Edge Python is a $\pm 130$ KB embedded interpreter.
-
-* **Method JITs** require platform-specific assembly stencils.
-* **Trace JITs** introduce a second execution model that must stay synchronized with the bytecode contract, garbage collector, and built-ins.
-
-*Staying "using just Rust" ensures identical behavior across `x86_64`, `aarch64`, and `wasm32`.*
+* No SSA-wide constant propagation through `LoadName`.
+* No CSE, no GVN, no LICM, no inlining, no closed-form loop folding.
+* No dead-store elimination beyond what falls out of constant folding.
+* No IR — bytecode is the only representation.
 
 ---
 
-## 4. Benchmark
+## 3. Why this dispatch shape
 
-Testing Ten Million Iterations ($10^7$):
-
-```python
-counter: int = 0
-for _ in range(10_000_000): counter += 1
-print(counter)
-```
-
-| Runtime          | Real Time  | Logic                    |
-|------------------|------------|--------------------------|
-| **CPython 3.13** | 1.180s     | Standard Bytecode Loop   |
-| **Edge Python**  | **0.010s** | Threaded code + IC |
+* **Threaded operands** keep dispatch as a flat `match` over a typed enum
+  rather than `(u16 opcode, u16 operand)` tuples. The Rust compiler lowers
+  this to a jump table; this is *token-threading*, not direct-threading
+  (computed-goto is unavailable in safe Rust).
+* **Inline caching** records operand type tags per instruction and promotes
+  to a typed `FastOp` after 4 stable hits. The fast path still re-checks
+  types as a deopt guard; on a guard miss the cache invalidates and falls
+  back to the generic handler.
+* **No JIT.** Edge Python stays single-tier and pure Rust. Method JITs need
+  per-arch stencils; trace JITs duplicate the execution model and complicate
+  the GC contract. Single-tier loses on hot loops but is small, portable
+  across `x86_64` / `aarch64` / `wasm32`, and trivial to embed.
 
 ---
 
-## 5. Technical Implementation
+## 4. Value Representation
 
-### Value Representation
+64-bit NaN-boxed `Val`:
 
-Utilize **NaN-boxing** (64-bit).
+| Tag      | Encoding                            | Notes                                |
+|----------|-------------------------------------|--------------------------------------|
+| Int      | `QNAN | SIGN | i48`                 | ±2⁴⁷ inline, BigInt above            |
+| Float    | IEEE-754 (any non-canonical NaN)    | Quiet NaN remapped to canonical      |
+| Bool     | `QNAN | 2` / `QNAN | 3`             | `True` / `False`                     |
+| None     | `QNAN | 1`                          |                                      |
+| Heap     | `QNAN | 4 | i28`                    | 28-bit index into `HeapPool`         |
 
-* **Integers**: 48-bit signed ($\pm 2^{47}$) stored inline.
-* **BigInt**: Fallback for values $> 48$-bit; uses a base-$2^{32}$ limb array.
-* **Floats**: Standard IEEE 754.
-* **Heap**: 28-bit index ($2^{28}$ max objects).
+BigInt uses a base-2³² limb array with Knuth-D long division.
+Strings ≤ 64 bytes are interned.
 
-### Garbage Collection
+---
 
-A **Mark-and-Sweep** collector handles heap management:
+## 5. Garbage Collection
 
-* **String Interning**: Applied to all strings $\leq 64$ bytes.
-* **Thresholds**: Configurable memory pressure triggers.
-* **Sandbox**: Hard limits on recursion depth, total operations, and heap size.
+Mark-and-sweep with roots: stack, globals, iterator frames, current slot
+window, and saved live-slot snapshots. Triggered by a configurable heap
+threshold inside `HeapPool::alloc`.
+
+`Limits` controls hard caps for sandboxed execution: max ops, max heap
+bytes, max call depth.
 
 ---
 
 ## 6. Project Structure
 
 ```text
-├── Cargo.lock
-├── Cargo.toml
-├── README.md
-├── src
-│   ├── lib.rs
-│   ├── main.rs
-│   ├── modules
-│   │   ├── fstr.rs
-│   │   ├── fx.rs
-│   │   ├── lexer
-│   │   │   ├── mod.rs
-│   │   │   ├── scan.rs
-│   │   │   └── tables.rs
-│   │   ├── parser
-│   │   │   ├── control.rs
-│   │   │   ├── expr.rs
-│   │   │   ├── literals.rs
-│   │   │   ├── mod.rs
-│   │   │   ├── stmt.rs
-│   │   │   └── types.rs
-│   │   └── vm
-│   │       ├── builtins.rs
-│   │       ├── cache.rs
-│   │       ├── collections.rs
-│   │       ├── handlers
-│   │       │   ├── arith.rs
-│   │       │   ├── attr.rs
-│   │       │   ├── data.rs
-│   │       │   ├── function.rs
-│   │       │   ├── mod.rs
-│   │       │   └── unsupported.rs
-│   │       ├── mod.rs
-│   │       ├── ops.rs
-│   │       ├── optimizer.rs
-│   │       ├── threaded.rs
-│   │       └── types.rs
-│   └── wasm.rs
-└── tests
-    ├── cases
-    │   ├── lexer.json
-    │   ├── parser.json
-    │   └── vm.json
-    ├── lexer.rs
-    ├── main.rs
-    ├── parser.rs
-    └── vm.rs
+src/
+├── lib.rs
+├── main.rs
+└── modules/
+    ├── fstr.rs
+    ├── fx.rs
+    ├── lexer/
+    │   ├── mod.rs
+    │   ├── scan.rs
+    │   └── tables.rs
+    ├── parser/
+    │   ├── mod.rs
+    │   ├── expr.rs
+    │   ├── stmt.rs
+    │   ├── control.rs
+    │   ├── literals.rs
+    │   └── types.rs
+    └── vm/
+        ├── mod.rs
+        ├── threaded.rs
+        ├── cache.rs
+        ├── optimizer.rs
+        ├── ops.rs
+        ├── types.rs
+        ├── builtins.rs
+        ├── collections.rs
+        └── handlers/
+            ├── arith.rs
+            ├── attr.rs
+            ├── data.rs
+            ├── function.rs
+            └── unsupported.rs
 ```
+
+---
 
 ## 7. Quick Start
 
 ```bash
-# Build the native binary
 cargo build --release
-
-# Run a simple script
-./target/release/edge -c 'print("Edge Python Online")'
-
-# Run in Sandbox Mode
+./target/release/edge -c 'print("hello")'
 ./target/release/edge --sandbox script.py
 ```
 
@@ -159,18 +152,14 @@ cargo build --release
 
 ## 8. References
 
-1.  **Aho, Sethi & Ullman**, *Compilers: Principles, Techniques and Tools* (1986). LUT-based lexer.
-2.  **Pratt**, *Top Down Operator Precedence* (POPL 1973). Precedence climbing parser.
-3.  **Cytron et al.**, *Efficiently Computing Static Single Assignment Form* (TOPLAS 1991). SSA, $\phi$-nodes.
-4.  **Gudeman**, *Representing Type Information in Dynamically Typed Languages* (1993). NaN-boxing.
-5.  **Deutsch & Schiffman**, *Efficient Implementation of the Smalltalk-80 System* (POPL 1984). Inline caching.
-6.  **Ertl & Gregg**, *The Structure and Performance of Efficient Interpreters* (JILP 2003). Bytecode dispatch.
-7.  **Hölzle & Ungar**, *Optimizing Dynamically-Dispatched Calls with Run-Time Type Feedback* (PLDI 1994).
-8.  **Brunthaler**, *Inline Caching Meets Quickening* (ECOOP 2010). Per-bytecode specialization.
-9.  **Casey et al.**, *Towards Superinstructions for Java Interpreters* (SCOPES 2003). Superinstruction fusion.
-10. **Michie**, *Memo Functions and Machine Learning* (Nature 1968). Template memoization.
-11. **McCarthy**, *Recursive Functions of Symbolic Expressions* (CACM 1960). Mark-sweep GC.
-12. **Knuth**, *The Art of Computer Programming, Vol. 2* (1981). Arbitrary-precision arithmetic.
-13. **Shannon**, *PEP 659: Specializing Adaptive Interpreter* (2021). Tiered specialization (CPython 3.11+).
-14. **O'Connor**, *PEP 709: Inlined Comprehensions* (2023). Drain-and-reinject compilation.
-15. **Xu & Kjolstad**, *Copy-and-Patch Compilation* (OOPSLA 2021). Basis for CPython 3.13's Tier-2 JIT.
+1. **Aho, Sethi & Ullman**, *Compilers: Principles, Techniques and Tools* (1986). LUT-based lexer.
+2. **Pratt**, *Top Down Operator Precedence* (POPL 1973). Precedence climbing parser.
+3. **Cytron et al.**, *Efficiently Computing Static Single Assignment Form* (TOPLAS 1991). SSA, φ-nodes.
+4. **Gudeman**, *Representing Type Information in Dynamically Typed Languages* (1993). NaN-boxing.
+5. **Deutsch & Schiffman**, *Efficient Implementation of the Smalltalk-80 System* (POPL 1984). Inline caching.
+6. **Ertl & Gregg**, *The Structure and Performance of Efficient Interpreters* (JILP 2003). Threaded dispatch.
+7. **Hölzle & Ungar**, *Optimizing Dynamically-Dispatched Calls with Run-Time Type Feedback* (PLDI 1994).
+8. **Casey et al.**, *Towards Superinstructions for Java Interpreters* (SCOPES 2003). LoadAttr+Call fusion.
+9. **Michie**, *Memo Functions and Machine Learning* (Nature 1968). Pure-function memoization.
+10. **McCarthy**, *Recursive Functions of Symbolic Expressions* (CACM 1960). Mark-sweep GC.
+11. **Knuth**, *The Art of Computer Programming, Vol. 2* (1981). Algorithm D for BigInt division.
