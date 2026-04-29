@@ -1023,17 +1023,25 @@
     "annotations": {}
   },
   {
-      "src": "x = [i for i in range(3) for j in range(2)]",
-      "constants": ["3", "2"],
-      "names": ["i_0", "i_1", "j_1", "x_1"],
-      "instructions": [["BuildList",0], ["LoadConst",0], ["CallRange",1], ["GetIter",0], ["ForIter",15], ["StoreName",1], ["LoadConst",1], ["CallRange",1], ["GetIter",0], ["ForIter",14], ["StoreName",2], ["LoadName",1], ["ListAppend",0], ["Jump",9], ["Jump",4], ["StoreName",3], ["ReturnValue",0]],
-      "annotations": {}
+    "src": "x = [i for i in range(3) for j in range(2)]",
+    "constants": ["3", "2"],
+    "names": ["i_0", "i_1", "j_1", "x_1"],
+    "instructions": [["BuildList",0], ["LoadConst",0], ["CallRange",1], ["GetIter",0], ["ForIter",15], ["StoreName",1], ["LoadConst",1], ["CallRange",1], ["GetIter",0], ["ForIter",14], ["StoreName",2], ["LoadName",1], ["ListAppend",0], ["Jump",9], ["Jump",4], ["StoreName",3], ["ReturnValue",0]],
+    "annotations": {}
+  },
+  {
+    "src": "with a, b:\n    pass",
+    "constants": [],
+    "names": ["a_0", "b_0"],
+    "instructions": [["LoadName", 0], ["SetupWith", 0],["LoadName", 1], ["SetupWith", 0],["ExitWith", 0], ["ExitWith", 0],["ReturnValue", 0]],
+    "annotations": {}
   },
   {
     "src": "with a as x, b as y:\n    pass",
     "constants": [],
     "names": ["a_0", "x_1", "b_0", "y_1"],
-    "instructions": [["LoadName", 0], ["SetupWith", 0], ["StoreName", 1], ["LoadName", 2], ["SetupWith", 0], ["StoreName", 3], ["ExitWith", 0], ["ExitWith", 0], ["ReturnValue", 0]],
+    "instructions": [["LoadName", 0], ["SetupWith", 0], ["StoreName", 1],["LoadName", 2], ["SetupWith", 0], ["StoreName", 3],["ExitWith", 0], ["ExitWith", 0],["ReturnValue", 0]
+    ],
     "annotations": {}
   },
   {
