@@ -10,7 +10,7 @@ fn message(op: OpCode) -> &'static str {
         OpCode::LoadAttr | OpCode::StoreAttr => "attribute access not yet supported",
         OpCode::SetupWith | OpCode::ExitWith => "with/as not yet supported",
         OpCode::UnpackArgs => "*args/**kwargs not yet supported",
-        _ => "opcode not yet supported",
+        _ => "opcode not supported, please open an issue; https://github.com/dylan-sutton-chavez/edge-python/issues",
     }
 }
 
