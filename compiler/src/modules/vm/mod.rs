@@ -610,7 +610,7 @@ impl<'a> VM<'a> {
             }
 
             ThreadedOp::Generic { opcode, operand } => {
-                self.dispatch_generic(opcode, operand, chunk, slots, ip, n, prev_slots)?;
+                self.dispatch_generic(opcode, operand, slots)?;
             }
         }
         Ok(None)
@@ -618,8 +618,7 @@ impl<'a> VM<'a> {
 
     fn dispatch_generic(
         &mut self, opcode: OpCode, operand: u16,
-        _chunk: &SSAChunk, slots: &mut [Option<Val>],
-        _ip: &mut usize, _n: usize, _prev_slots: &[Option<u16>],
+        slots: &mut [Option<Val>],
     ) -> Result<(), VmErr> {
         match opcode {
             OpCode::BitAnd | OpCode::BitOr | OpCode::BitXor

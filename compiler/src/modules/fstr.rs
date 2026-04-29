@@ -5,7 +5,7 @@
 
 /// Format an f64 to a string suitable for Python display.
 pub fn format_f64(f: f64) -> alloc::string::String {
-    if f != f { return alloc::string::String::from("NaN"); }
+    if f.is_nan() { return alloc::string::String::from("NaN"); }
     if f == f64::INFINITY { return alloc::string::String::from("inf"); }
     if f == f64::NEG_INFINITY { return alloc::string::String::from("-inf"); }
     if f == 0.0 {

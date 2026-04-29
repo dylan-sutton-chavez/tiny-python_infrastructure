@@ -212,12 +212,11 @@ impl<'a> VM<'a> {
                     let _ = (sa, sb);
                     // In-place append when `a` is not interned (len > 128).
                     // Avoids allocating a new string + copying the old one.
-                    if sa_len > 128 {
-                        if let HeapObj::Str(s) = self.heap.get_mut(a) {
+                    if sa_len > 128
+                        && let HeapObj::Str(s) = self.heap.get_mut(a) {
                             s.push_str(&sb_clone);
                             return Ok(a);
                         }
-                    }
                     let mut r = String::with_capacity(sa_clone.len() + sb_clone.len());
                     r.push_str(&sa_clone);
                     r.push_str(&sb_clone);
