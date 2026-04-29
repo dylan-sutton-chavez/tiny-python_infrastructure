@@ -724,9 +724,8 @@ impl<'a> VM<'a> {
                 let _ = operand;
                 let cm = self.with_stack.pop()
                     .ok_or(cold_runtime("ExitWith without matching SetupWith"))?;
-                if let Some(&top) = self.stack.last() {
-                    if top.0 == cm.0 { self.pop()?; }
-                }
+                if let Some(&top) = self.stack.last()
+                    && top.0 == cm.0 { self.pop()?; }
             }
             OpCode::UnpackArgs => {
                 let val = self.pop()?;
