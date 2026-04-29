@@ -48,7 +48,7 @@ static ATTR_TABLE: &[AttrRow] = &[
 ];
 
 #[inline]
-fn lookup_attr(ty: &str, attr: &str) -> Option<BuiltinMethodId> {
+pub(crate) fn lookup_method(ty: &str, attr: &str) -> Option<BuiltinMethodId> {
     ATTR_TABLE.binary_search_by(|&(t, a, _)| { t.cmp(ty).then_with(|| a.cmp(attr))})
         .ok()
         .map(|i| ATTR_TABLE[i].2)
@@ -61,7 +61,7 @@ impl<'a> VM<'a> {
         let obj = self.pop()?;
         let ty = self.type_name(obj);
 
-        let method_id = lookup_attr(ty, name.as_str()).ok_or_else(|| attr_not_found(ty, name.as_str()))?; // Binary search using O(log n)
+        let method_id = lookup_method(ty, name.as_str()).ok_or_else(|| attr_not_found(ty, name.as_str()))?; // Binary search using O(log n)
 
         let bound = self.heap.alloc(HeapObj::BoundMethod(obj, method_id))?;
         self.push(bound);

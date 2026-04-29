@@ -8,7 +8,7 @@ impl<'a> VM<'a> {
     
     pub(crate) fn handle_store(&mut self, operand: u16, slots: &mut [Option<Val>], prev_slots: &[Option<u16>]) -> Result<(), VmErr> {
         let v = self.pop()?;
-        super::super::super_ops::p_store_ssa(slots, prev_slots, operand, v);
+        super::super::types::p_store_ssa(slots, prev_slots, operand, v);
         Ok(())
     }
 

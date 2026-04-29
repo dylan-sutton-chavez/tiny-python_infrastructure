@@ -54,16 +54,16 @@ impl<'a> VM<'a> {
 
     pub fn unpack_ex(&mut self, op: u16) -> Result<(), VmErr> {
         let obj = self.pop()?;
-        if !obj.is_heap() { return Err(VmErr::Type("cannot unpack non-iterable")); }
+        if !obj.is_heap() { return Err(cold_type("cannot unpack non-iterable")); }
         let items: Vec<Val> = match self.heap.get(obj) {
             HeapObj::List(v) => v.borrow().clone(),
             HeapObj::Tuple(v) => v.clone(),
-            _ => return Err(VmErr::Type("cannot unpack non-iterable")),
+            _ => return Err(cold_type("cannot unpack non-iterable")),
         };
         let before = (op >> 8) as usize;
         let after = (op & 0xFF) as usize;
         if items.len() < before + after {
-            return Err(VmErr::Value("not enough values to unpack"));
+            return Err(cold_value("not enough values to unpack"));
         }
         let mid = items.len() - after;
         for &v in items[mid..].iter().rev() { self.push(v); }
@@ -108,10 +108,10 @@ impl<'a> VM<'a> {
                         let s = s.clone();
                         self.str_to_char_vals(&s)?
                     },
-                    _ => return Err(VmErr::Type("set() argument must be iterable")),
+                    _ => return Err(cold_type("set() argument must be iterable")),
                 }
             } else {
-                return Err(VmErr::Type("set() argument must be iterable"));
+                return Err(cold_type("set() argument must be iterable"));
             };
             let val = self.alloc_set(src)?;
             self.push(val);
@@ -139,7 +139,7 @@ impl<'a> VM<'a> {
                 let chars: Vec<char> = s.chars().collect();
                 let i  = idx.as_int();
                 let ui = normalize_index(i, chars.len());
-                let c  = chars.get(ui).copied().ok_or(VmErr::Value("string index out of range"))?;
+                let c  = chars.get(ui).copied().ok_or(cold_value("string index out of range"))?;
                 let val = self.heap.alloc(HeapObj::Str(c.to_string()))?;
                 self.push(val);
                 return Ok(true);
@@ -153,17 +153,17 @@ impl<'a> VM<'a> {
     /* Single heap pass via SliceSource, extracts sub-sequence preserving type. */
 
     fn slice_val(&mut self, obj: Val, start: Val, stop: Val, step: Val) -> Result<Val, VmErr> {
-        if !obj.is_heap() { return Err(VmErr::Type("slice requires a sequence")); }
+        if !obj.is_heap() { return Err(cold_type("slice requires a sequence")); }
         let st = if step.is_none() { 1 } else if step.is_int() { step.as_int() } else {
-            return Err(VmErr::Type("slice step must be an integer"));
+            return Err(cold_type("slice step must be an integer"));
         };
-        if st == 0 { return Err(VmErr::Value("slice step cannot be zero")); }
+        if st == 0 { return Err(cold_value("slice step cannot be zero")); }
 
         let source = match self.heap.get(obj) {
             HeapObj::List(v) => SliceSource::List(v.borrow().clone()),
             HeapObj::Tuple(v) => SliceSource::Tuple(v.clone()),
             HeapObj::Str(s) => SliceSource::Str(s.chars().collect()),
-            _ => return Err(VmErr::Type("object is not sliceable")),
+            _ => return Err(cold_type("object is not sliceable")),
         };
 
         let len = source.len();
@@ -202,25 +202,25 @@ impl<'a> VM<'a> {
     /* Index dispatch for list[int], tuple[int], dict[key]. */
 
     pub fn getitem_val(&self, obj: Val, idx: Val) -> Result<Val, VmErr> {
-        if !obj.is_heap() { return Err(VmErr::Type("object is not subscriptable")); }
+        if !obj.is_heap() { return Err(cold_type("object is not subscriptable")); }
         match self.heap.get(obj) {
             HeapObj::List(v) => {
-                if !idx.is_int() { return Err(VmErr::Type("list indices must be integers")); }
+                if !idx.is_int() { return Err(cold_type("list indices must be integers")); }
                 let b = v.borrow(); let i = idx.as_int();
                 let ui = normalize_index(i, b.len());
-                b.get(ui).copied().ok_or(VmErr::Value("list index out of range"))
+                b.get(ui).copied().ok_or(cold_value("list index out of range"))
             }
             HeapObj::Tuple(v) => {
-                if !idx.is_int() { return Err(VmErr::Type("tuple indices must be integers")); }
+                if !idx.is_int() { return Err(cold_type("tuple indices must be integers")); }
                 let i = idx.as_int();
                 let ui = normalize_index(i, v.len());
-                v.get(ui).copied().ok_or(VmErr::Value("tuple index out of range"))
+                v.get(ui).copied().ok_or(cold_value("tuple index out of range"))
             }
             HeapObj::Dict(p) => {
                 p.borrow().get(&idx).copied()
-                    .ok_or(VmErr::Value("key not found"))
+                    .ok_or(cold_value("key not found"))
             }
-            _ => Err(VmErr::Type("object is not subscriptable")),
+            _ => Err(cold_type("object is not subscriptable")),
         }
     }
 
@@ -230,19 +230,19 @@ impl<'a> VM<'a> {
         let value = self.pop()?;
         let idx_val = self.pop()?;
         let cont = self.pop()?;
-        if !cont.is_heap() { return Err(VmErr::Type("object does not support item assignment")); }
+        if !cont.is_heap() { return Err(cold_type("object does not support item assignment")); }
         match self.heap.get_mut(cont) {
             HeapObj::List(v) => {
-                if !idx_val.is_int() { return Err(VmErr::Type("list indices must be integers")); }
+                if !idx_val.is_int() { return Err(cold_type("list indices must be integers")); }
                 let mut b = v.borrow_mut();
                 let i = idx_val.as_int();
                 let ui = normalize_index(i, b.len());
-                if ui >= b.len() { return Err(VmErr::Value("list assignment index out of range")); }
+                if ui >= b.len() { return Err(cold_value("list assignment index out of range")); }
                 b[ui] = value;
             }
             HeapObj::Dict(p) => { p.borrow_mut().insert(idx_val, value); }
-            HeapObj::Tuple(_) => return Err(VmErr::Type("tuple does not support item assignment")),
-            _ => return Err(VmErr::Type("object does not support item assignment")),
+            HeapObj::Tuple(_) => return Err(cold_type("tuple does not support item assignment")),
+            _ => return Err(cold_type("object does not support item assignment")),
         }
         Ok(())
     }

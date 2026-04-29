@@ -1,12 +1,12 @@
 // vm/cache.rs
 
 use super::types::{Val, eq_vals_with_heap};
-use super::super_ops::SuperOp;
+use super::threaded::{self, ThreadedOp};
 
 use crate::modules::parser::{OpCode, SSAChunk};
 use crate::modules::fx::FxHashMap as HashMap;
 
-use alloc::{vec, vec::Vec, rc::Rc};
+use alloc::{vec, vec::Vec};
 
 /* Specialized operation types for inline cache type-stable binary dispatch. */
 
@@ -21,7 +21,7 @@ pub enum FastOp {
     NotEqInt
 }
 
-/* Per-frame slot combining inline-cache type recording with adaptive hot-path rewriting. Collocates both tiers per instruction to avoid split cache lines. */
+/* Per-instruction IC slot. */
 
 const QUICK_THRESH: u8 = 4;
 
@@ -34,19 +34,28 @@ struct CacheSlot {
 
 pub struct OpcodeCache {
     slots: Vec<CacheSlot>,
-    super_ops: Rc<Vec<Option<SuperOp>>>,
+    threaded: Option<Vec<ThreadedOp>>,
 }
 
 impl OpcodeCache {
-    pub fn new(chunk: &SSAChunk, super_ops: Rc<Vec<Option<SuperOp>>>) -> Self {
+    pub fn new(chunk: &SSAChunk) -> Self {
         Self {
             slots: vec![CacheSlot::default(); chunk.instructions.len()],
-            super_ops,
+            threaded: None,
         }
     }
 
-    #[inline] pub fn get_super(&self, ip: usize) -> Option<SuperOp> {
-        self.super_ops.get(ip).copied().flatten()
+    /// Compile threaded code on first access, return shared ref.
+    pub fn ensure_threaded(&mut self, chunk: &SSAChunk) -> &[ThreadedOp] {
+        if self.threaded.is_none() {
+            self.threaded = Some(threaded::compile(chunk));
+        }
+        self.threaded.as_ref().unwrap()
+    }
+
+    /// Direct access to the threaded ops (must call ensure_threaded first).
+    pub fn threaded_ref(&self) -> &[ThreadedOp] {
+        self.threaded.as_ref().expect("threaded code not compiled")
     }
 
     pub fn record(&mut self, ip: usize, opcode: &OpCode, ta: u8, tb: u8) {
@@ -85,7 +94,7 @@ impl OpcodeCache {
     }
 }
 
-/* Caches pure function results by deep-equal argument matching after four repeated calls. */
+/* Template memoization — unchanged */
 
 fn args_match(e: &TplEntry, args: &[Val], h: u64, heap: &super::types::HeapPool) -> bool {
     e.hash == h
@@ -93,7 +102,7 @@ fn args_match(e: &TplEntry, args: &[Val], h: u64, heap: &super::types::HeapPool)
     && e.args.iter().zip(args).all(|(a, b)| eq_vals_with_heap(*a, *b, heap))
 }
 
-const TPL_THRESH: u32 = 2; // `is_pure` eliminate risk using two for threshold, making memoization safe for production.
+const TPL_THRESH: u32 = 2;
 
 struct TplEntry { args: Vec<Val>, result: Val, hits: u32, hash: u64 }
 

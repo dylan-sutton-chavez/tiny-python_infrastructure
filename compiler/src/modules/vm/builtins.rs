@@ -41,8 +41,8 @@ impl<'a> VM<'a> {
             HeapObj::Dict(v) => v.borrow().len() as i64,
             HeapObj::Set(v) => v.borrow().len() as i64,
             HeapObj::Range(s,e,st) => { let st=*st; ((e-s+st-st.signum())/st).max(0) }
-            _ => return Err(VmErr::Type("object has no len()")),
-        }} else { return Err(VmErr::Type("object has no len()")); };
+            _ => return Err(cold_type("object has no len()")),
+        }} else { return Err(cold_type("object has no len()")); };
         self.push(Val::int(n)); Ok(())
     }
 
@@ -62,10 +62,10 @@ impl<'a> VM<'a> {
                 let v = self.bigint_to_val(ab)?;
                 self.push(v);
             } else {
-                return Err(VmErr::Type("abs() requires a number"));
+                return Err(cold_type("abs() requires a number"));
             }
         } else {
-            return Err(VmErr::Type("abs() requires a number"));
+            return Err(cold_type("abs() requires a number"));
         }
         Ok(())
     }
@@ -92,10 +92,10 @@ impl<'a> VM<'a> {
             else if o.is_float() { o.as_float() as i64 }
             else if o.is_bool() { o.as_bool() as i64 }
             else if o.is_heap() { match self.heap.get(o) {
-                HeapObj::Str(s) => s.trim().parse().map_err(|_| VmErr::Value("int(): invalid literal"))?,
-                _ => return Err(VmErr::Type("int() requires a number or string")),
+                HeapObj::Str(s) => s.trim().parse().map_err(|_| cold_value("int(): invalid literal"))?,
+                _ => return Err(cold_type("int() requires a number or string")),
             }}
-            else { return Err(VmErr::Type("int() requires a number or string")); };
+            else { return Err(cold_type("int() requires a number or string")); };
         let v = self.bigint_to_val(BigInt::from_i64(i))?;
         self.push(v); Ok(())
     }
@@ -108,11 +108,11 @@ impl<'a> VM<'a> {
             else if o.is_bool() { o.as_bool() as i64 as f64 }
             else if o.is_int() { o.as_int() as f64 }
             else if o.is_heap() { match self.heap.get(o) {
-                HeapObj::Str(s) => s.trim().parse().map_err(|_| VmErr::Value("float(): invalid literal"))?,
+                HeapObj::Str(s) => s.trim().parse().map_err(|_| cold_value("float(): invalid literal"))?,
                 HeapObj::BigInt(b) => b.to_f64(),
-                _ => return Err(VmErr::Type("float() requires a number or string"))
+                _ => return Err(cold_type("float() requires a number or string"))
             }}
-            else { return Err(VmErr::Type("float() requires a number or string")); };
+            else { return Err(cold_type("float() requires a number or string")); };
         self.push(Val::float(f)); Ok(())
     }
 
@@ -131,8 +131,8 @@ impl<'a> VM<'a> {
 
     pub fn call_chr(&mut self) -> Result<(), VmErr> {
         let o = self.pop()?;
-        if !o.is_int() { return Err(VmErr::Type("chr() requires an integer")); }
-        let c = char::from_u32(o.as_int() as u32).ok_or(VmErr::Value("chr() arg out of range"))?;
+        if !o.is_int() { return Err(cold_type("chr() requires an integer")); }
+        let c = char::from_u32(o.as_int() as u32).ok_or(cold_value("chr() arg out of range"))?;
         let mut s = String::with_capacity(4); // max UTF-8 char size
         s.push(c);
         let v = self.heap.alloc(HeapObj::Str(s))?; self.push(v); Ok(())
@@ -147,7 +147,7 @@ impl<'a> VM<'a> {
                     self.push(Val::int(c as i64)); return Ok(());
                 }
         }
-        Err(VmErr::Type("ord() requires string of length 1"))
+        Err(cold_type("ord() requires string of length 1"))
     }
 
     /* Creates lazy Range(start, end, step) with 1-3 int arguments. */
@@ -155,15 +155,15 @@ impl<'a> VM<'a> {
     pub fn call_range(&mut self, op: u16) -> Result<(), VmErr> {
         let args = self.pop_n(op as usize)?;
         let gi = |v: Val| -> Result<i64, VmErr> {
-            if v.is_int() { Ok(v.as_int()) } else { Err(VmErr::Type("range() arguments must be integers")) }
+            if v.is_int() { Ok(v.as_int()) } else { Err(cold_type("range() arguments must be integers")) }
         };
         let (s, e, st) = match args.len() {
             1 => (0, gi(args[0])?, 1),
             2 => (gi(args[0])?, gi(args[1])?, 1),
             3 => (gi(args[0])?, gi(args[1])?, gi(args[2])?),
-            _ => return Err(VmErr::Type("range() takes 1 to 3 arguments")),
+            _ => return Err(cold_type("range() takes 1 to 3 arguments")),
         };
-        if st == 0 { return Err(VmErr::Value("range() step cannot be zero")); }
+        if st == 0 { return Err(cold_value("range() step cannot be zero")); }
         let val = self.heap.alloc(HeapObj::Range(s, e, st))?;
         self.push(val); Ok(())
     }
@@ -180,7 +180,7 @@ impl<'a> VM<'a> {
             (Some(o), None) if o.is_float() => Val::int(fround(o.as_float()) as i64),
             (Some(o), _) if o.is_int() => *o,
             (Some(o), _) if o.is_heap() && matches!(self.heap.get(*o), HeapObj::BigInt(_)) => *o,
-            _ => return Err(VmErr::Type("round() requires a number")),
+            _ => return Err(cold_type("round() requires a number")),
         };
         self.push(v); Ok(())
     }
@@ -190,7 +190,7 @@ impl<'a> VM<'a> {
     pub fn call_min(&mut self, op: u16) -> Result<(), VmErr> {
         let args: Vec<Val> = self.pop_n(op as usize)?;
         let items = self.unwrap_single_iterable(args)?;
-        if items.is_empty() { return Err(VmErr::Value("min() arg is an empty sequence")); }
+        if items.is_empty() { return Err(cold_value("min() arg is an empty sequence")); }
         let m = items[1..].iter().try_fold(items[0], |m, &x| {
             self.lt_vals(x, m).map(|lt| if lt { x } else { m })
         })?;
@@ -200,7 +200,7 @@ impl<'a> VM<'a> {
     pub fn call_max(&mut self, op: u16) -> Result<(), VmErr> {
         let args = self.pop_n(op as usize)?;
         let items = self.unwrap_single_iterable(args)?;
-        if items.is_empty() { return Err(VmErr::Value("max() arg is an empty sequence")); }
+        if items.is_empty() { return Err(cold_value("max() arg is an empty sequence")); }
         let m = items[1..].iter().try_fold(items[0], |m, &x| {
             self.lt_vals(m, x).map(|lt| if lt { x } else { m })
         })?;
@@ -211,7 +211,7 @@ impl<'a> VM<'a> {
     
     pub fn call_sum(&mut self, op: u16) -> Result<(), VmErr> {
         let args = self.pop_n(op as usize)?;
-        if args.is_empty() { return Err(VmErr::Type("sum() requires at least 1 argument")); }
+        if args.is_empty() { return Err(cold_type("sum() requires at least 1 argument")); }
         let start = if args.len() > 1 { args[1] } else { Val::int(0) };
         let items = self.extract_iterable(args[0])?;
         let mut acc = start;
@@ -264,8 +264,8 @@ impl<'a> VM<'a> {
         let items: Vec<Val> = if o.is_heap() { match self.heap.get(o) {
             HeapObj::Tuple(v) => v.clone(),
             HeapObj::List(v)  => v.borrow().clone(),
-            _ => return Err(VmErr::Type("tuple() argument must be iterable")),
-        }} else { return Err(VmErr::Type("tuple() argument must be iterable")); };
+            _ => return Err(cold_type("tuple() argument must be iterable")),
+        }} else { return Err(cold_type("tuple() argument must be iterable")); };
         let val = self.heap.alloc(HeapObj::Tuple(items))?;
         self.push(val); Ok(())
     }
@@ -363,12 +363,12 @@ impl<'a> VM<'a> {
     /* Extracts Vec<Val> from list, tuple, or set heap objects. */
 
     fn extract_iterable(&self, o: Val) -> Result<Vec<Val>, VmErr> {
-        if !o.is_heap() { return Err(VmErr::Type("object is not iterable")); }
+        if !o.is_heap() { return Err(cold_type("object is not iterable")); }
         Ok(match self.heap.get(o) {
             HeapObj::List(v) => v.borrow().clone(),
             HeapObj::Tuple(v) => v.clone(),
             HeapObj::Set(v) => v.borrow().iter().cloned().collect::<Vec<Val>>(),
-            _ => return Err(VmErr::Type("object is not iterable")),
+            _ => return Err(cold_type("object is not iterable")),
         })
     }
 

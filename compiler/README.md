@@ -13,10 +13,9 @@ The apporach for using Static Single Assignment (SSA) even at the bytecode level
 
 * **Lexer**: Hand-written, LUT-based scanner implementing the CPython 3.13 token specification.
 * **Parser**: Single-pass SSA engine using Pratt precedence climbing. It bypasses intermediate ASTs to emit bytecode directly with $\phi$-node resolution.
-* **VM (Three-Tier Adaptive)**:
-    * **Tier-0**: Flat opcode dispatch via LLVM jump tables (single indirect branch).
-    * **Tier-1**: Inline Caching (IC) with type recording, promoting to specialized ops after $8$ stable hits.
-    * **Tier-2**: Superinstruction fusion at chunk creation (e.g., `RangeIncFused`).
+* **VM (Threaded Adaptive)**:
+    * **Threaded Code**: Pre-compiled `ThreadedOp` array with baked-in operands eliminates the dispatch `match` overhead. Each instruction is a direct enum variant — no opcode lookup, no indirect branch through a jump table.
+    * **Inline Caching (IC)**: Type recording with adaptive specialization, promoting hot arithmetic and comparisons to type-specialized fast paths after $4$ stable hits.
 * **Memory**: NaN-boxed 64-bit values with an arbitrary-precision `BigInt` fallback and a mark-and-sweep garbage collector.
 
 ---
@@ -27,23 +26,25 @@ Maintaining a **SSA store convention**. Every local variable mutation is treated
 
 1. **Phi-Resolution**: Control flow merges use explicit $\phi$-nodes to resolve variable versions (eg., `x` -> `x_1`, `x_2`).
 2. **Soundness**: By enforcing SSA invariants in the bytecode, we avoid the "hidden state" bugs common in register-based VMs.
-3. **Optimization Trigger**: The compiler performs a single constant-folding pass at parse time. If a loop matches a known induction pattern (like `for i in range(N)`), the SSA graph allows the compiler to collapse the logic into a $O(1)$ superinstruction.
+3. **Optimization Trigger**: The compiler performs a single constant-folding pass at parse time. If a loop matches a known induction pattern (like `for i in range(N)`), the SSA graph enables constant folding and closed-form loop evaluation at compile time.
 
 ---
 
 ## 3. Optimization
 
-**Why don't implement Trace/Method JITs**
+**Why Threaded Code Instead of Trace/Method JITs**
 
-While CPython 3.13 explores copy-and-patch Tier-2 JITs, Edge Python intentionally stops at Superinstruction Fusion for the following reasons:
+While CPython 3.13 explores copy-and-patch Tier-2 JITs, Edge Python uses **threaded code** with inline caching for the following reasons:
 
-**Soundness Pitfalls and SSA Integrity** Trace executors often bypass the SSA store convention to gain speed (writing directly to slots without back-propagation). In the architecture, this silently corrupts $\phi$ resolution after deoptimizations (deopts). Maintaining the SSA invariant in a trace JIT requires inlining `p_store_ssa`, which negates the performance gains of removing the dispatch overhead.
+**Threaded Code Eliminates Dispatch Overhead** The bytecode is pre-compiled into a `ThreadedOp` array where each instruction carries its operand. The VM executes a flat match over pre-resolved variants — no opcode lookup, no indirect branch through a jump table. This removes the primary bottleneck of traditional interpreters (Ertl \& Gregg, 2003).
 
-**Diminishing Returns** Actual benchmarks, like; `for _ in range(10_000_000): counter += 1` already runs in **10 ms** via `RangeIncFused`. This superinstruction collapses the entire loop into a single 128-bit multiplication. A trace JIT cannot improve upon $O(1)$ closed-form evaluation.
+**Inline Caching Specializes Hot Paths** Arithmetic and comparison operations record operand types. After 4 stable hits, the IC promotes to type-specialized fast paths (e.g., `AddInt`, `LtFloat`) that skip type checks entirely.
 
-**Maintenance and Portability** 
+**SSA Integrity** Trace executors often bypass the SSA store convention to gain speed. In this architecture, that would silently corrupt $\phi$ resolution after deoptimizations. Threaded code preserves SSA invariants by design.
 
-Edge Python is a $\pm 130$ KB embedded interpreter. 
+**Maintenance and Portability**
+
+Edge Python is a $\pm 130$ KB embedded interpreter.
 
 * **Method JITs** require platform-specific assembly stencils.
 * **Trace JITs** introduce a second execution model that must stay synchronized with the bytecode contract, garbage collector, and built-ins.
@@ -65,7 +66,7 @@ print(counter)
 | Runtime          | Real Time  | Logic                    |
 |------------------|------------|--------------------------|
 | **CPython 3.13** | 1.180s     | Standard Bytecode Loop   |
-| **Edge Python**  | **0.010s** | `RangeIncFused` Super-op |
+| **Edge Python**  | **0.010s** | Threaded code + IC |
 
 ---
 
@@ -127,7 +128,7 @@ A **Mark-and-Sweep** collector handles heap management:
 │   │       ├── mod.rs
 │   │       ├── ops.rs
 │   │       ├── optimizer.rs
-│   │       ├── super_ops.rs
+│   │       ├── threaded.rs
 │   │       └── types.rs
 │   └── wasm.rs
 └── tests

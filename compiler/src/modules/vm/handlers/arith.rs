@@ -40,10 +40,10 @@ impl<'a> VM<'a> {
         } else if v.is_heap() {
             match self.heap.get(v) {
                 HeapObj::BigInt(b) => { let n = b.neg(); self.bigint_to_val(n)? }
-                _ => return Err(VmErr::Type("unary - requires a number")),
+                _ => return Err(cold_type("unary - requires a number")),
             }
         } else {
-            return Err(VmErr::Type("unary - requires a number"));
+            return Err(cold_type("unary - requires a number"));
         };
         self.push(result);
         Ok(())
@@ -51,14 +51,14 @@ impl<'a> VM<'a> {
 
     fn exec_mod(&mut self, a: Val, b: Val) -> Result<Val, VmErr> {
         let (Some(ba), Some(bb)) = (self.to_bigint(a), self.to_bigint(b))
-            else { return Err(VmErr::Type("% requires integer operands")); };
+            else { return Err(cold_type("% requires integer operands")); };
         let (_, r) = ba.divmod(&bb).ok_or(VmErr::ZeroDiv)?;
         self.bigint_to_val(r)
     }
 
     fn exec_floordiv(&mut self, a: Val, b: Val) -> Result<Val, VmErr> {
         let (Some(ba), Some(bb)) = (self.to_bigint(a), self.to_bigint(b))
-            else { return Err(VmErr::Type("// requires integer operands")); };
+            else { return Err(cold_type("// requires integer operands")); };
         let (q, _) = ba.divmod(&bb).ok_or(VmErr::ZeroDiv)?;
         self.bigint_to_val(q)
     }
@@ -68,7 +68,7 @@ impl<'a> VM<'a> {
             let exp = b.as_int();
             if exp >= 0 {
                 if exp > u32::MAX as i64 {
-                    return Err(VmErr::Value("pow() exponent too large"));
+                    return Err(cold_value("pow() exponent too large"));
                 }
                 return self.bigint_to_val(ba.pow_u32(exp as u32));
             }
@@ -77,7 +77,7 @@ impl<'a> VM<'a> {
         let to_f = |v: Val| -> Result<f64, VmErr> {
             if v.is_int() { Ok(v.as_int() as f64) }
             else if v.is_float() { Ok(v.as_float()) }
-            else { Err(VmErr::Type("** requires numeric operands")) }
+            else { Err(cold_type("** requires numeric operands")) }
         };
         Ok(Val::float(fpowf(to_f(a)?, to_f(b)?)))
     }
@@ -87,7 +87,7 @@ impl<'a> VM<'a> {
     pub(crate) fn handle_bitwise(&mut self, op: OpCode) -> Result<(), VmErr> {
         if op == OpCode::BitNot {
             let v = self.pop()?;
-            let b = self.to_bigint(v).ok_or(VmErr::Type("~ requires an integer"))?;
+            let b = self.to_bigint(v).ok_or(cold_type("~ requires an integer"))?;
             let one = BigInt::from_i64(1);
             let result = b.add(&one).neg();
             let out = self.bigint_to_val(result)?;
@@ -109,23 +109,23 @@ impl<'a> VM<'a> {
     }
 
     fn exec_shl(&mut self, a: Val, b: Val) -> Result<Val, VmErr> {
-        if !b.is_int() { return Err(VmErr::Type("shift count must be an integer")); }
+        if !b.is_int() { return Err(cold_type("shift count must be an integer")); }
         let shift = b.as_int();
-        if shift < 0 { return Err(VmErr::Value("negative shift count")); }
-        let ba = self.to_bigint(a).ok_or(VmErr::Type("<< requires an integer"))?;
-        if shift >= 512 { return Err(VmErr::Value("shift too large")); }
+        if shift < 0 { return Err(cold_value("negative shift count")); }
+        let ba = self.to_bigint(a).ok_or(cold_type("<< requires an integer"))?;
+        if shift >= 512 { return Err(cold_value("shift too large")); }
         let factor = BigInt::from_i64(1).shl_u32(shift as u32);
         self.bigint_to_val(ba.mul(&factor))
     }
 
     fn exec_shr(&mut self, a: Val, b: Val) -> Result<Val, VmErr> {
-        if !b.is_int() { return Err(VmErr::Type("shift count must be an integer")); }
+        if !b.is_int() { return Err(cold_type("shift count must be an integer")); }
         let shift = b.as_int();
-        if shift < 0 { return Err(VmErr::Value("negative shift count")); }
+        if shift < 0 { return Err(cold_value("negative shift count")); }
         if a.is_int() {
             return Ok(Val::int(a.as_int() >> shift.min(63)));
         }
-        let ba = self.to_bigint(a).ok_or(VmErr::Type(">> requires an integer"))?;
+        let ba = self.to_bigint(a).ok_or(cold_type(">> requires an integer"))?;
         self.bigint_to_val(ba.shr_u32(shift.min(1024) as u32))
     }
 

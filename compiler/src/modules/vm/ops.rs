@@ -68,10 +68,10 @@ impl<'a> VM<'a> {
         }
         let ai = self.to_bigint(a)
             .and_then(|b| b.to_i64_checked())
-            .ok_or(VmErr::Type("bitwise op requires integer operands"))?;
+            .ok_or(cold_type("bitwise op requires integer operands"))?;
         let bi = self.to_bigint(b)
             .and_then(|b| b.to_i64_checked())
-            .ok_or(VmErr::Type("bitwise op requires integer operands"))?;
+            .ok_or(cold_type("bitwise op requires integer operands"))?;
         Ok(Val::int(op(ai, bi)))
     }
 
@@ -116,7 +116,7 @@ impl<'a> VM<'a> {
                 if !(Val::INT_MIN..=Val::INT_MAX).contains(&i) { return b.format(i).into(); }
                 let mut s = String::new(); s.push_str(b.format(i)); s.push_str(".0"); return s;
             }
-            let mut b = ryu::Buffer::new(); return b.format(f).into();
+            return crate::modules::fstr::format_f64(f);
         }
         if v.is_true() { return "True".into(); }
         if v.is_false() { return "False".into(); }
@@ -206,9 +206,21 @@ impl<'a> VM<'a> {
         if a.is_heap() && b.is_heap() {
             match (self.heap.get(a), self.heap.get(b)) {
                 (HeapObj::Str(sa), HeapObj::Str(sb)) => {
-                    let mut r = String::with_capacity(sa.len() + sb.len());
-                    r.push_str(sa);
-                    r.push_str(sb);
+                    let sa_len = sa.len();
+                    let sb_clone = sb.clone();
+                    let sa_clone = sa.clone();
+                    let _ = (sa, sb);
+                    // In-place append when `a` is not interned (len > 128).
+                    // Avoids allocating a new string + copying the old one.
+                    if sa_len > 128 {
+                        if let HeapObj::Str(s) = self.heap.get_mut(a) {
+                            s.push_str(&sb_clone);
+                            return Ok(a);
+                        }
+                    }
+                    let mut r = String::with_capacity(sa_clone.len() + sb_clone.len());
+                    r.push_str(&sa_clone);
+                    r.push_str(&sb_clone);
                     return self.heap.alloc(HeapObj::Str(r));
                 }
                 (HeapObj::List(va), HeapObj::List(vb)) => {
@@ -222,7 +234,7 @@ impl<'a> VM<'a> {
                 _ => {}
             }
         }
-        Err(VmErr::Type("unsupported operand type(s) for '+'"))
+        Err(cold_type("unsupported operand type(s) for '+'"))
     }
 
     pub fn sub_vals(&mut self, a: Val, b: Val) -> Result<Val, VmErr> {
@@ -237,7 +249,7 @@ impl<'a> VM<'a> {
         if let (Some(ba), Some(bb)) = (self.to_bigint(a), self.to_bigint(b)) {
             return self.bigint_to_val(ba.sub(&bb));
         }
-        Err(VmErr::Type("unsupported operand type(s) for '-'"))
+        Err(cold_type("unsupported operand type(s) for '-'"))
     }
 
     pub fn mul_vals(&mut self, a: Val, b: Val) -> Result<Val, VmErr> {
@@ -254,7 +266,7 @@ impl<'a> VM<'a> {
         }
         let (seq_val, count) = if a.is_heap() && b.is_int() { (a, b.as_int()) }
                 else if a.is_int() && b.is_heap() { (b, a.as_int()) }
-                else { return Err(VmErr::Type("unsupported operand type(s) for '*'")); };
+                else { return Err(cold_type("unsupported operand type(s) for '*'")); };
         let n = count.max(0) as usize;
         match self.heap.get(seq_val) {
             HeapObj::Str(s) => {
@@ -275,13 +287,13 @@ impl<'a> VM<'a> {
             }
             _ => {}
         }
-        Err(VmErr::Type("unsupported operand type(s) for '*'"))
+        Err(cold_type("unsupported operand type(s) for '*'"))
     }
 
     pub fn div_vals(&self, a: Val, b: Val) -> Result<Val, VmErr> {
-        let bv = self.to_f64_coerce(b).map_err(|_| VmErr::Type("'/' requires numeric operands"))?;
+        let bv = self.to_f64_coerce(b).map_err(|_| cold_type("'/' requires numeric operands"))?;
         if bv == 0.0 { return Err(VmErr::ZeroDiv); }
-        let av = self.to_f64_coerce(a).map_err(|_| VmErr::Type("'/' requires numeric operands"))?;
+        let av = self.to_f64_coerce(a).map_err(|_| cold_type("'/' requires numeric operands"))?;
         Ok(Val::float(av / bv))
     }
 
@@ -303,7 +315,7 @@ impl<'a> VM<'a> {
         if v.is_float() { return Ok(v.as_float()); }
         if v.is_heap()
             && let HeapObj::BigInt(b) = self.heap.get(v) { return Ok(b.to_f64()); }
-        Err(VmErr::Type("numeric operand required"))
+        Err(cold_type("numeric operand required"))
     }
 
     pub(crate) fn i128_to_val(&mut self, r: i128) -> Result<Val, VmErr> {

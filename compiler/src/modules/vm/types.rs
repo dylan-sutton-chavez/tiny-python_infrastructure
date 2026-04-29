@@ -878,3 +878,23 @@ pub fn fpowf(base: f64, exp: f64) -> f64 {
 #[cold] #[inline(never)] pub fn cold_heap() -> VmErr { VmErr::Heap }
 #[cold] #[inline(never)] pub fn cold_budget() -> VmErr { VmErr::Budget }
 #[cold] #[inline(never)] pub fn cold_depth() -> VmErr { VmErr::CallDepth }
+#[cold] #[inline(never)] pub fn cold_type(m: &'static str) -> VmErr { VmErr::Type(m) }
+#[cold] #[inline(never)] pub fn cold_value(m: &'static str) -> VmErr { VmErr::Value(m) }
+#[cold] #[inline(never)] pub fn cold_runtime(m: &'static str) -> VmErr { VmErr::Runtime(m) }
+/// SSA store with back-propagation through prev_slots chain.
+#[inline(always)]
+pub fn p_store_ssa(slots: &mut [Option<Val>], prev: &[Option<u16>], s: u16, v: Val) {
+    let mut cur = s as usize;
+    if cur < slots.len() { slots[cur] = Some(v); }
+    let mut guard = prev.len();
+    while guard > 0 {
+        guard -= 1;
+        match prev.get(cur).and_then(|p| *p) {
+            Some(p) if (p as usize) != cur => {
+                cur = p as usize;
+                if cur < slots.len() { slots[cur] = Some(v); }
+            }
+            _ => break,
+        }
+    }
+}

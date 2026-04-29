@@ -1,4 +1,31 @@
-target/
+# Rust
 **/target/
-
 Cargo.lock
+
+# macOS
+.DS_Store
+**/.DS_Store
+._*
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Node (for the demo)
+node_modules/
+**/node_modules/
+dist/
+*.log
+
+# WASM
+pkg/
+**/pkg/
+
+# Secrets
+.env
+.env.*
