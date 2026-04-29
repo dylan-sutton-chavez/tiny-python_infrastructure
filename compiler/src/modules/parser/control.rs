@@ -301,9 +301,11 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
     pub(super) fn with_stmt_inner(&mut self, is_async: bool) {
         self.advance();
         let operand = is_async as u16;
+        let mut cm_count: u16 = 0;
         loop {
             self.expr();
             self.chunk.emit(OpCode::SetupWith, operand);
+            cm_count += 1;
             if self.eat_if(TokenType::As) {
                 let t = self.advance();
                 let name = self.lexeme(&t).to_string();
@@ -315,7 +317,10 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
         }
         self.eat(TokenType::Colon);
         self.compile_block();
-        self.chunk.emit(OpCode::ExitWith, operand);
+        // Un ExitWith por cada SetupWith emitido — empareja 1:1 al desarmar.
+        for _ in 0..cm_count {
+            self.chunk.emit(OpCode::ExitWith, operand);
+        }
     }
 
     /* Parses import and from-import syntax with optional aliases and star imports. */

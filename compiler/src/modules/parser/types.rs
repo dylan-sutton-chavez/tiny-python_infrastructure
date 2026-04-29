@@ -266,7 +266,10 @@ impl OpCode {
             Phi => OpCategory::Ssa,
             Yield => OpCategory::Yield,
             Assert | Del | Global | Nonlocal | TypeAlias | Import | ImportFrom | SetupExcept | PopExcept | Raise | RaiseFrom | Await | YieldFrom => OpCategory::Side,
-            MakeClass | LoadAttr | StoreAttr | SetupWith | ExitWith | UnpackArgs => OpCategory::Unsupported,
+            LoadAttr => OpCategory::Load,
+            SetupWith | ExitWith => OpCategory::ControlFlow,
+            UnpackArgs => OpCategory::Container,
+            MakeClass | StoreAttr => OpCategory::Unsupported,
         }
     }
 }

@@ -26,6 +26,7 @@ pub(crate) struct ExceptionFrame {
     pub handler_ip: usize,
     pub stack_depth: usize,
     pub iter_depth: usize,
+    pub with_depth: usize,
 }
 
 pub struct VM<'a> {
@@ -44,7 +45,10 @@ pub struct VM<'a> {
     pub(crate) exception_stack: Vec<ExceptionFrame>,
     pub(crate) functions: Vec<&'a (Vec<String>, SSAChunk, u16, u16)>,
     pub(crate) fn_index: HashMap<*const SSAChunk, Vec<u32>>,
-    pub(crate) opcode_caches: HashMap<*const SSAChunk, OpcodeCache>, 
+    pub(crate) opcode_caches: HashMap<*const SSAChunk, OpcodeCache>,
+    pub(crate) with_stack: Vec<Val>,
+    pub(crate) pending_pos_delta: i32,
+    pub(crate) pending_kw_delta: i32,
     pub output: Vec<String>,
 }
 
@@ -63,6 +67,50 @@ impl<'a> VM<'a> {
             self.build_function_table(&desc.1);  // recurse into body
         }
         self.fn_index.insert(chunk as *const _, indices);
+    }
+
+    /// Materializa un iterable en `Vec<Val>` para spread posicional.
+    /// Soporta list, tuple, set y range. Cadena se omite a propósito —
+    /// quien quiera spread por carácter puede pasar `list("hola")`.
+    fn iter_to_vec_for_spread(&self, v: Val) -> Result<Vec<Val>, VmErr> {
+        if !v.is_heap() {
+            return Err(VmErr::Type("argument after * must be an iterable"));
+        }
+        Ok(match self.heap.get(v) {
+            HeapObj::List(rc)  => rc.borrow().clone(),
+            HeapObj::Tuple(t)  => t.clone(),
+            HeapObj::Set(rc)   => rc.borrow().iter().cloned().collect(),
+            HeapObj::Range(s, e, st) => {
+                let (s, e, st) = (*s, *e, *st);
+                if st == 0 { return Err(VmErr::Value("range() arg 3 must not be zero")); }
+                let mut out = Vec::new();
+                let mut i = s;
+                if st > 0 { while i < e { out.push(Val::int(i)); i += st; } }
+                else      { while i > e { out.push(Val::int(i)); i += st; } }
+                out
+            }
+            _ => return Err(VmErr::Type("argument after * must be an iterable")),
+        })
+    }
+
+    /// Materializa un mapping en pares (clave_str, valor) para spread por nombre.
+    /// Sólo dict; las claves deben ser str (semántica de Python).
+    fn mapping_to_kw_pairs(&self, v: Val) -> Result<Vec<(Val, Val)>, VmErr> {
+        if !v.is_heap() {
+            return Err(VmErr::Type("argument after ** must be a mapping"));
+        }
+        match self.heap.get(v) {
+            HeapObj::Dict(rc) => {
+                let entries: Vec<(Val, Val)> = rc.borrow().iter().collect();
+                for (k, _) in &entries {
+                    if !k.is_heap() || !matches!(self.heap.get(*k), HeapObj::Str(_)) {
+                        return Err(VmErr::Type("keywords must be strings"));
+                    }
+                }
+                Ok(entries)
+            }
+            _ => Err(VmErr::Type("argument after ** must be a mapping")),
+        }
     }
 
     /*
@@ -201,6 +249,9 @@ impl<'a> VM<'a> {
             budget: limits.ops,
             depth: 0,
             max_calls: limits.calls,
+            with_stack: Vec::new(),
+            pending_pos_delta: 0,
+            pending_kw_delta: 0,
             output: Vec::new(),
             observed_impure: Vec::new(),
             exception_stack: Vec::new(),
@@ -226,6 +277,7 @@ impl<'a> VM<'a> {
     // Marks all reachable values from stack, globals, iterators and slots, then sweeps.
     fn collect(&mut self, current_slots: &[Option<Val>]) {
         for &v in &self.stack { self.heap.mark(v); }
+        for &v in &self.with_stack { self.heap.mark(v); }
         for &v in self.globals.values() { self.heap.mark(v); }
         for frame in &self.iter_stack {
             if let IterFrame::Seq { items, .. } = frame {
@@ -387,6 +439,9 @@ impl<'a> VM<'a> {
                             let frame = self.exception_stack.pop().unwrap();
                             self.stack.truncate(frame.stack_depth);
                             self.iter_stack.truncate(frame.iter_depth);
+                            self.with_stack.truncate(frame.with_depth);
+                            self.pending_pos_delta = 0;
+                            self.pending_kw_delta  = 0;
                             let msg = match &e {
                                 VmErr::ZeroDiv    => "ZeroDivisionError",
                                 VmErr::Type(_)    => "TypeError",
@@ -656,11 +711,44 @@ impl<'a> VM<'a> {
                     handler_ip:  operand as usize,
                     stack_depth: self.stack.len(),
                     iter_depth:  self.iter_stack.len(),
+                    with_depth:  self.with_stack.len(),
                 });
             }
+            OpCode::SetupWith => {
+                let _ = operand; // 0 sync, 1 async — semántica idéntica aquí
+                let cm = self.pop()?;
+                self.with_stack.push(cm);
+                self.push(cm); // dup para `as` o para que ExitWith lo descarte
+            }
+            OpCode::ExitWith => {
+                let _ = operand;
+                let cm = self.with_stack.pop()
+                    .ok_or(cold_runtime("ExitWith without matching SetupWith"))?;
+                if let Some(&top) = self.stack.last() {
+                    if top.0 == cm.0 { self.pop()?; }
+                }
+            }
+            OpCode::UnpackArgs => {
+                let val = self.pop()?;
+                match operand {
+                    1 => {
+                        let items = self.iter_to_vec_for_spread(val)?;
+                        let n = items.len() as i32;
+                        for v in items { self.push(v); }
+                        self.pending_pos_delta += n - 1;
+                    }
+                    2 => {
+                        let pairs = self.mapping_to_kw_pairs(val)?;
+                        let n = pairs.len() as i32;
+                        for (k, v) in pairs { self.push(k); self.push(v); }
+                        self.pending_pos_delta -= 1;
+                        self.pending_kw_delta  += n;
+                    }
+                    _ => return Err(cold_runtime("UnpackArgs: bad operand")),
+                }
+            }
             OpCode::PopExcept => { self.exception_stack.pop(); }
-            OpCode::MakeClass | OpCode::StoreAttr | OpCode::SetupWith
-            | OpCode::ExitWith | OpCode::UnpackArgs => {
+            OpCode::MakeClass | OpCode::StoreAttr => {
                 return Err(unsupported(opcode));
             }
             _ => return Err(cold_runtime("unexpected opcode in generic dispatch")),

@@ -169,8 +169,15 @@ impl<'a> VM<'a> {
 
     fn exec_call(&mut self, operand: u16, chunk: &SSAChunk, slots: &mut [Option<Val>]) -> Result<(), VmErr> {
         let raw = operand as usize;
-        let num_kw  = (raw >> 8) & 0xFF;
-        let num_pos = raw & 0xFF;
+
+        // Aplica y consume los deltas dejados por UnpackArgs antes de este Call.
+        let base_pos = (raw & 0xFF)        as i32;
+        let base_kw  = ((raw >> 8) & 0xFF) as i32;
+        let num_pos = (base_pos + self.pending_pos_delta).max(0) as usize;
+        let num_kw  = (base_kw  + self.pending_kw_delta ).max(0) as usize;
+        self.pending_pos_delta = 0;
+        self.pending_kw_delta  = 0;
+
         let total_items = num_pos + 2 * num_kw;
 
         if self.depth >= self.max_calls { return Err(cold_depth()); }
