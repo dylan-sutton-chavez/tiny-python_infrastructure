@@ -1,10 +1,6 @@
 # Edge Python
 
-A compact, single-pass SSA-style bytecode compiler and stack VM for a subset
-of CPython 3.13 syntax. Hand-written lexer, Pratt-precedence parser that emits
-bytecode directly (no AST), and a threaded-code interpreter with per-instruction
-inline caching. Built for deterministic execution in sandboxed and embedded
-environments (≈130 KB native, also ships as `wasm32`).
+A compact, single-pass SSA-style bytecode compiler and stack VM for a subset of CPython 3.13 syntax. Hand-written lexer, Pratt-precedence parser that emits bytecode directly (no AST), and a threaded-code interpreter with per-instruction inline caching. Built for deterministic execution in sandboxed and embedded environments (≈ 130 KB WASM release).
 
 * **Demo:** [demo.edgepython.com](https://demo.edgepython.com/)
 * **Docs:** [edgepython.com](https://edgepython.com/)
@@ -13,39 +9,20 @@ environments (≈130 KB native, also ships as `wasm32`).
 
 ## 1. Architecture Overview
 
-* **Lexer** — Hand-written, LUT-driven scanner over CPython 3.13 token kinds.
-  Tokens are `(start, end, kind)` offsets into the source buffer; no string
-  copies during lexing.
-* **Parser** — Single-pass, Pratt precedence climbing. Emits SSA-versioned
-  bytecode directly (`x` → `x_1`, `x_2`) with explicit `Phi` opcodes at
-  control-flow joins. No intermediate AST.
-* **Optimizer** — One peephole pass: constant folding over adjacent literal
-  operands, plus dead-code compaction with jump remapping. Does not propagate
-  through `LoadName`.
-* **VM** — Stack-based interpreter over a pre-compiled `Vec<ThreadedOp>` where
-  operands are baked into typed enum variants. Dispatch is a flat `match` over
-  the variant. One LoadAttr+Call superinstruction (`CallMethod`).
-* **Inline Caching** — Per-instruction type-recording cache for arithmetic and
-  comparisons. After 4 stable hits the IC stores a `FastOp` (`AddInt`,
-  `LtFloat`, ...) used as a speculative fast path with type-guard deopt.
-* **Memory** — NaN-boxed 64-bit `Val` (48-bit signed int, IEEE-754 float, bool,
-  None, 28-bit heap index). Mark-and-sweep GC. Arbitrary-precision `BigInt`
-  fallback for integers outside the 48-bit range.
+* **Lexer**: Hand-written, LUT-driven scanner over CPython 3.13 token kinds. Tokens are `(start, end, kind)` offsets into the source buffer; no string copies during lexing.
+* **Parser**: Single-pass, Pratt precedence climbing. Emits SSA-versioned bytecode directly (`x` → `x_1`, `x_2`) with explicit `Phi` opcodes at control-flow joins. No intermediate AST.
+* **Optimizer**: One peephole pass: constant folding over adjacent literal operands, plus dead-code compaction with jump remapping. Does not propagate through `LoadName`.
+* **VM**: Stack-based interpreter over a pre-compiled `Vec<ThreadedOp>` where operands are baked into typed enum variants. Dispatch is a flat `match` over the variant. One LoadAttr+Call superinstruction (`CallMethod`).
+* **Inline Caching**: Per-instruction type-recording cache for arithmetic and comparisons. After 4 stable hits the IC stores a `FastOp` (`AddInt`, `LtFloat`, ...) used as a speculative fast path with type-guard deopt.
+* **Memory**: NaN-boxed 64-bit `Val` (48-bit signed int, IEEE-754 float, bool, None, 28-bit heap index). Mark-and-sweep GC. Arbitrary-precision `BigInt` fallback for integers outside the 48-bit range.
 
 ---
 
 ## 2. Compiler Design
 
-The store convention is SSA: every assignment increments a per-name version
-counter and emits a fresh slot. Control-flow joins backup the version maps and
-emit `Phi` instructions on exit so the runtime can resolve which version is
-live.
+The store convention is SSA: every assignment increments a per-name version counter and emits a fresh slot. Control-flow joins backup the version maps and emit `Phi` instructions on exit so the runtime can resolve which version is live.
 
-The single optimization pass folds patterns of the form `LoadConst a,
-LoadConst b, BinOp` into `LoadConst (a OP b)`, plus unary `Not` and `Minus`
-over constants. It deliberately does **not** fold `LoadName` even when the
-value is statically known, because keeping the load preserves the IC slot
-that drives runtime specialization.
+The single optimization pass folds patterns of the form `LoadConst a, LoadConst b, BinOp` into `LoadConst (a OP b)`, plus unary `Not` and `Minus` over constants. It deliberately does **not** fold `LoadName` even when the value is statically known, because keeping the load preserves the IC slot that drives runtime specialization.
 
 What the compiler intentionally does *not* do (kept honest):
 
@@ -58,18 +35,9 @@ What the compiler intentionally does *not* do (kept honest):
 
 ## 3. Why this dispatch shape
 
-* **Threaded operands** keep dispatch as a flat `match` over a typed enum
-  rather than `(u16 opcode, u16 operand)` tuples. The Rust compiler lowers
-  this to a jump table; this is *token-threading*, not direct-threading
-  (computed-goto is unavailable in safe Rust).
-* **Inline caching** records operand type tags per instruction and promotes
-  to a typed `FastOp` after 4 stable hits. The fast path still re-checks
-  types as a deopt guard; on a guard miss the cache invalidates and falls
-  back to the generic handler.
-* **No JIT.** Edge Python stays single-tier and pure Rust. Method JITs need
-  per-arch stencils; trace JITs duplicate the execution model and complicate
-  the GC contract. Single-tier loses on hot loops but is small, portable
-  across `x86_64` / `aarch64` / `wasm32`, and trivial to embed.
+* **Threaded operands** keep dispatch as a flat `match` over a typed enum rather than `(u16 opcode, u16 operand)` tuples. The Rust compiler lowers this to a jump table; this is *token-threading*, not direct-threading (computed-goto is unavailable in safe Rust).
+* **Inline caching** records operand type tags per instruction and promotes to a typed `FastOp` after 4 stable hits. The fast path still re-checks types as a deopt guard; on a guard miss the cache invalidates and falls back to the generic handler.
+* **No JIT.** Edge Python stays single-tier and pure Rust. Method JITs need per-arch stencils; trace JITs duplicate the execution model and complicate the GC contract. Single-tier loses on hot loops but is small, portable across `x86_64` / `aarch64` / `wasm32`, and trivial to embed.
 
 ---
 
@@ -85,19 +53,13 @@ What the compiler intentionally does *not* do (kept honest):
 | None     | `QNAN | 1`                          |                                      |
 | Heap     | `QNAN | 4 | i28`                    | 28-bit index into `HeapPool`         |
 
-BigInt uses a base-2³² limb array with Knuth-D long division.
-Strings ≤ 64 bytes are interned.
+*BigInt uses a base-2³² limb array with Knuth-D long division. Strings ≤ 64 bytes are interned.*
 
 ---
 
 ## 5. Garbage Collection
 
-Mark-and-sweep with roots: stack, globals, iterator frames, current slot
-window, and saved live-slot snapshots. Triggered by a configurable heap
-threshold inside `HeapPool::alloc`.
-
-`Limits` controls hard caps for sandboxed execution: max ops, max heap
-bytes, max call depth.
+Mark-and-sweep with roots: stack, globals, iterator frames, current slot window, and saved live-slot snapshots. Triggered by a configurable heap threshold inside `HeapPool::alloc`. `Limits` controls hard caps for sandboxed execution: max ops, max heap bytes, max call depth.
 
 ---
 
