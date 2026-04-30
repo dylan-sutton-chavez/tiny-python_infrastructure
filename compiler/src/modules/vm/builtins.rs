@@ -230,7 +230,7 @@ impl<'a> VM<'a> {
         let args = self.pop_n(op as usize)?;
         if args.is_empty() { return Err(cold_type("sum() requires at least 1 argument")); }
         let start = if args.len() > 1 { args[1] } else { Val::int(0) };
-        let items = self.extract_iterable(args[0])?;
+        let items = self.extract_iter(args[0], false)?;
         let mut acc = start;
         for item in items { acc = self.add_vals(acc, item)?; }
         self.push(acc); Ok(())
@@ -240,7 +240,7 @@ impl<'a> VM<'a> {
 
     pub fn call_sorted(&mut self) -> Result<(), VmErr> {
         let o = self.pop()?;
-        let mut items = self.extract_iterable(o)?;
+        let mut items = self.extract_iter(o, false)?;
         let mut sort_err: Option<VmErr> = None;
         items.sort_by(|&a, &b| {
             if sort_err.is_some() { return core::cmp::Ordering::Equal; }
@@ -271,7 +271,7 @@ impl<'a> VM<'a> {
                 self.push(val);
                 return Ok(());
         }
-        let items = self.extract_iterable_full(o)?;
+        let items = self.extract_iter(o, true)?;
         let val = self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(items))))?;
         self.push(val); Ok(())
     }
@@ -291,7 +291,7 @@ impl<'a> VM<'a> {
 
     pub fn call_enumerate(&mut self) -> Result<(), VmErr> {
         let o = self.pop()?;
-        let src = self.extract_iterable(o)?;
+        let src = self.extract_iter(o, false)?;
         let mut pairs: Vec<Val> = Vec::with_capacity(src.len());
         for (i, x) in src.into_iter().enumerate() {
             let t = self.heap.alloc(HeapObj::Tuple(vec![Val::int(i as i64), x]))?;
@@ -308,7 +308,7 @@ impl<'a> VM<'a> {
         let mut vals = Vec::with_capacity(op as usize);
         for _ in 0..op { vals.push(self.pop()?); }
         vals.reverse();
-        for v in vals { iters.push(self.extract_iterable(v)?); }
+        for v in vals { iters.push(self.extract_iter(v, false)?); }
         let len = iters.iter().map(|v| v.len()).min().unwrap_or(0);
         let mut pairs: Vec<Val> = Vec::with_capacity(len);
         for i in 0..len {
@@ -370,50 +370,29 @@ impl<'a> VM<'a> {
             match self.heap.get(args[0]) {
                 HeapObj::List(v) => return Ok(v.borrow().clone()),
                 HeapObj::Tuple(v) => return Ok(v.clone()),
-                HeapObj::Set(v) => return Ok(v.borrow().iter().cloned().collect::<Vec<Val>>()),
+                HeapObj::Set(v) => return Ok(v.borrow().iter().cloned().collect()),
                 _ => {}
             }
         }
         Ok(args)
     }
 
-    /* Extracts Vec<Val> from list, tuple, or set heap objects. */
-
-    fn extract_iterable(&self, o: Val) -> Result<Vec<Val>, VmErr> {
+    /// Extracts Vec<Val> from list/tuple/set; optionally materializes Range.
+    /// Str is handled at callsite (it needs heap-allocated chars, not ints).
+    fn extract_iter(&self, o: Val, include_range: bool) -> Result<Vec<Val>, VmErr> {
         if !o.is_heap() { return Err(cold_type("object is not iterable")); }
         Ok(match self.heap.get(o) {
-            HeapObj::List(v) => v.borrow().clone(),
+            HeapObj::List(v)  => v.borrow().clone(),
             HeapObj::Tuple(v) => v.clone(),
-            HeapObj::Set(v) => v.borrow().iter().cloned().collect::<Vec<Val>>(),
-            _ => return Err(cold_type("object is not iterable")),
-        })
-    }
-
-    /* Like extract_iterable but also materializes Range objects. */
-
-    fn extract_iterable_full(&self, o: Val) -> Result<Vec<Val>, VmErr> {
-        if !o.is_heap() { return Err(VmErr::Type("list() argument must be iterable")); }
-        Ok(match self.heap.get(o) {
-            HeapObj::List(v) => v.borrow().clone(),
-            HeapObj::Tuple(v) => v.clone(),
-            HeapObj::Set(v) => v.borrow().iter().cloned().collect::<Vec<Val>>(),
-            HeapObj::Range(s, e, st) => {
+            HeapObj::Set(v)   => v.borrow().iter().cloned().collect(),
+            HeapObj::Range(s, e, st) if include_range => {
                 let (mut cur, end, step) = (*s, *e, *st);
-                let mut v = Vec::new();
-                if step > 0 { while cur < end { v.push(Val::int(cur)); cur += step; } }
-                else { while cur > end { v.push(Val::int(cur)); cur += step; } }
-                v
+                let mut out = Vec::new();
+                if step > 0 { while cur < end { out.push(Val::int(cur)); cur += step; } }
+                else        { while cur > end { out.push(Val::int(cur)); cur += step; } }
+                out
             }
-            HeapObj::Str(s) => {
-                let s = s.clone();
-                drop(s);
-                let s = match self.heap.get(o) { HeapObj::Str(s) => s.clone(), _ => unreachable!() };
-                s.chars().map(|c| {
-                    // Can't alloc here (caller must handle).
-                    Val::int(c as i64)
-                }).collect()
-            }
-            _ => return Err(VmErr::Type("list() argument must be iterable")),
+            _ => return Err(cold_type("object is not iterable")),
         })
     }
 
