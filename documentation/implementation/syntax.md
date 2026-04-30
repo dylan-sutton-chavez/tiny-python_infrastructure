@@ -98,9 +98,9 @@ This means `and` / `or` correctly preserve operand identity (returning the actua
 Every binding emits a fresh slot with an incremented version counter. The parser maintains a `HashMap<String, u32>` mapping each base name to its current version. Names in the chunk's `names` table are stored as `name_version`:
 
 ```python
-x = 1       # x_1
-x = 2       # x_2
-y = x       # y_1, references x_2
+x = 1 # x_1
+x = 2 # x_2
+y = x # y_1, references x_2
 ```
 
 ```text
@@ -121,12 +121,9 @@ Lookups on undefined names target version 0 (`x_0`), which is filled either by t
 At each control-flow boundary the parser pushes a `JoinNode { backup, then }` onto a stack:
 
 ```text
-enter_block()    -> snapshot current versions into JoinNode.backup
-                   (and reset to the same baseline for the if branch)
-mid_block()      -> snapshot post-then versions into JoinNode.then;
-                   restore baseline (max of backup, then-state) for else
-commit_block()   -> diff (then ∪ post) against (backup), emit Phi
-                   for each name that diverged
+enter_block() -> snapshot current versions into JoinNode.backup (and reset to the same baseline for the if branch).
+mid_block() -> snapshot post-then versions into JoinNode.then; restore baseline (max of backup, then-state) for else.
+commit_block() -> diff (then ∪ post) against (backup), emit Phi for each name that diverged.
 ```
 
 Each emitted `Phi` carries the *target* slot (the new version after the join) in its operand. The two source slots are stored separately in `chunk.phi_sources` and indexed by `chunk.phi_map[ip]` at runtime. This keeps `Instruction` at 4 bytes while supporting binary phis.
@@ -142,14 +139,14 @@ print(x)
 ```text
 LoadName cond_0
 JumpIfFalse else_label
-LoadConst 0     (1)
+LoadConst 0 *(1)
 StoreName x_1
 Jump end_label
 else_label:
-LoadConst 1     (2)
+LoadConst 1 *(2)
 StoreName x_2
 end_label:
-Phi x_3         (sources: x_1, x_2)
+Phi x_3 *(sources: x_1, x_2)
 LoadName x_3
 CallPrint 1
 ```
