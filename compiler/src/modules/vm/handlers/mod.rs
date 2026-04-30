@@ -1,7 +1,6 @@
 // vm/handlers/mod.rs
 
 pub(crate) mod arith;
-pub(crate) mod attr;
 pub(crate) mod data;
 pub(crate) mod function;
 pub(crate) mod methods;

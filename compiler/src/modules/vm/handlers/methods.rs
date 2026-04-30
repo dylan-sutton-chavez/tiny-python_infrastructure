@@ -70,6 +70,20 @@ fn title_case(s: &str) -> String {
         .join(" ")
 }
 
+impl<'a> VM<'a> {
+    pub(crate) fn handle_load_attr(&mut self, name_idx: u16, chunk: &SSAChunk) -> Result<(), VmErr> {
+        let name = chunk.names.get(name_idx as usize)
+            .ok_or(VmErr::Runtime("LoadAttr: bad name index"))?;
+        let obj = self.pop()?;
+        let ty = self.type_name(obj);
+        let method_id = lookup_method(ty, name.as_str())
+            .ok_or(VmErr::Type("'object' has no attribute"))?;
+        let bound = self.heap.alloc(HeapObj::BoundMethod(obj, method_id))?;
+        self.push(bound);
+        Ok(())
+    }
+}
+
 /// One macro that generates: enum, name lookup, dispatcher.
 /// Each row: (Variant, "name", category, |vm, recv, pos| body)
 /// Category `mutating` adds an automatic mark_impure() after the body.
