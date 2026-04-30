@@ -30,6 +30,8 @@ What the compiler intentionally does *not* do (kept honest):
 * No CSE, no GVN, no LICM, no inlining, no closed-form loop folding.
 * No dead-store elimination beyond what falls out of constant folding.
 * No IR — bytecode is the only representation.
+* `import` / `from ... import` parse but raise at runtime — the VM has no module system.
+* `class` / OOP — Edge Python targets functional edge computing; classes parse but `MakeClass` and `StoreAttr` raise at runtime. No method resolution, no inheritance, no instance state.
 
 ---
 

@@ -132,7 +132,7 @@ impl<'a> VM<'a> {
             OpCode::Global | OpCode::Nonlocal => self.mark_impure(),
             OpCode::TypeAlias => { self.pop()?; }
             OpCode::Import | OpCode::ImportFrom => {
-                return Err(VmErr::Runtime("import not supported in sandbox"));
+                return Err(VmErr::Runtime("imports are not supported"));
             }
             OpCode::Raise | OpCode::RaiseFrom => {
                 self.mark_impure();
