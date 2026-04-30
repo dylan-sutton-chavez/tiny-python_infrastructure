@@ -35,6 +35,18 @@ impl<'a> VM<'a> {
             OpCode::CallSet => self.call_set(operand),
             OpCode::CallPrint => { self.mark_impure(); self.call_print(operand) }
             OpCode::CallInput => { self.mark_impure(); self.call_input() }
+            OpCode::CallAll      => self.call_all(operand),
+            OpCode::CallAny      => self.call_any(operand),
+            OpCode::CallBin      => self.call_bin(),
+            OpCode::CallOct      => self.call_oct(),
+            OpCode::CallHex      => self.call_hex(),
+            OpCode::CallDivmod   => self.call_divmod(),
+            OpCode::CallPow      => self.call_pow(operand),
+            OpCode::CallRepr     => self.call_repr(),
+            OpCode::CallReversed => self.call_reversed(),
+            OpCode::CallCallable => self.call_callable(),
+            OpCode::CallId       => self.call_id(),
+            OpCode::CallHash     => self.call_hash(),
             _ => unreachable!("non-function opcode in handle_function"),
         }
     }

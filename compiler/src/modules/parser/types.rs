@@ -22,7 +22,8 @@ pub enum OpCode {
     BitNot, Shl, Shr, In, NotIn, Is, IsNot, UnpackSequence, BuildTuple, SetupWith, ExitWith, Yield, 
     Del, Assert, Global, Nonlocal, UnpackArgs, ListAppend, SetAdd, MapAdd, BuildSet, RaiseFrom, 
     UnpackEx, LoadEllipsis, Await, MakeCoroutine, YieldFrom, TypeAlias, StoreItem, Dup2, 
-    JumpIfFalseOrPop, JumpIfTrueOrPop, Dup, CallMethod, CallMethodArgs,
+    JumpIfFalseOrPop, JumpIfTrueOrPop, Dup, CallMethod, CallMethodArgs, CallAll, CallAny, CallBin, 
+    CallOct, CallHex, CallDivmod, CallPow, CallRepr, CallReversed, CallCallable, CallId, CallHash,
 }
 
 /* O(1) lookup table mapping Python builtin names to their corresponding OpCodes. */
@@ -51,6 +52,18 @@ pub(super) fn builtin(name: &str) -> Option<(OpCode, bool)> {
         "isinstance" => Some((OpCode::CallIsInstance, true)),
         "chr" => Some((OpCode::CallChr, true)),
         "ord" => Some((OpCode::CallOrd, true)),
+        "all"      => Some((OpCode::CallAll, true)),
+        "any"      => Some((OpCode::CallAny, true)),
+        "bin"      => Some((OpCode::CallBin, true)),
+        "oct"      => Some((OpCode::CallOct, true)),
+        "hex"      => Some((OpCode::CallHex, true)),
+        "divmod"   => Some((OpCode::CallDivmod, true)),
+        "pow"      => Some((OpCode::CallPow, true)),
+        "repr"     => Some((OpCode::CallRepr, true)),
+        "reversed" => Some((OpCode::CallReversed, true)),
+        "callable" => Some((OpCode::CallCallable, true)),
+        "id"       => Some((OpCode::CallId, true)),
+        "hash"     => Some((OpCode::CallHash, true)),
         _ => None,
     }
 }
@@ -262,7 +275,7 @@ impl OpCode {
             BuildList | BuildTuple | BuildDict | BuildSet | BuildSlice | BuildString => OpCategory::Build,
             GetItem | StoreItem | UnpackSequence | UnpackEx | FormatValue => OpCategory::Container,
             ListAppend | SetAdd | MapAdd => OpCategory::Comprehension,
-            Call | MakeFunction | MakeCoroutine | CallPrint | CallLen | CallAbs | CallStr | CallInt | CallRange | CallChr | CallType | CallFloat | CallBool | CallRound | CallMin | CallMax | CallSum | CallSorted | CallEnumerate | CallZip | CallList | CallTuple | CallDict | CallIsInstance | CallSet | CallInput | CallOrd | CallMethod | CallMethodArgs => OpCategory::Function,
+            Call | MakeFunction | MakeCoroutine | CallPrint | CallLen | CallAbs | CallStr | CallInt | CallRange | CallChr | CallType | CallFloat | CallBool | CallRound | CallMin | CallMax | CallSum | CallSorted | CallEnumerate | CallZip | CallList | CallTuple | CallDict | CallIsInstance | CallSet | CallInput | CallOrd | CallMethod | CallMethodArgs  | CallAll | CallAny | CallBin | CallOct | CallHex | CallDivmod | CallPow | CallRepr | CallReversed | CallCallable | CallId | CallHash => OpCategory::Function,
             Phi => OpCategory::Ssa,
             Yield => OpCategory::Yield,
             Assert | Del | Global | Nonlocal | TypeAlias | Import | ImportFrom | SetupExcept | PopExcept | Raise | RaiseFrom | Await | YieldFrom => OpCategory::Side,

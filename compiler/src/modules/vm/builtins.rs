@@ -9,6 +9,48 @@ use core::cell::RefCell;
 use alloc::{string::{String, ToString}, vec::Vec, vec, rc::Rc};
 use crate::modules::fx::FxHashSet as HashSet;
 
+fn i64_to_radix(n: i64, radix: u32, prefix: &str) -> String {
+    if n == 0 {
+        let mut s = String::with_capacity(prefix.len() + 1);
+        s.push_str(prefix); s.push('0'); return s;
+    }
+    let neg = n < 0;
+    let mut abs = (n as i128).unsigned_abs();
+    let mut buf = [0u8; 64];
+    let mut i = buf.len();
+    while abs > 0 {
+        i -= 1;
+        let d = (abs % radix as u128) as u8;
+        buf[i] = if d < 10 { b'0' + d } else { b'a' + d - 10 };
+        abs /= radix as u128;
+    }
+    let mut s = String::with_capacity(prefix.len() + buf.len() - i + 1);
+    if neg { s.push('-'); }
+    s.push_str(prefix);
+    s.push_str(unsafe { core::str::from_utf8_unchecked(&buf[i..]) });
+    s
+}
+
+fn bigint_to_radix(b: &BigInt, radix: u32, prefix: &str) -> String {
+    let mut out = String::new();
+    if b.neg { out.push('-'); }
+    out.push_str(prefix);
+    if b.is_zero() { out.push('0'); return out; }
+
+    let radix_big = BigInt::from_i64(radix as i64);
+    let mut work = b.abs();
+    let mut digits = Vec::<u8>::new();
+    while !work.is_zero() {
+        let (q, r) = work.divmod(&radix_big).unwrap();
+        let d = r.to_i64_checked().unwrap() as u8;
+        digits.push(if d < 10 { b'0' + d } else { b'a' + d - 10 });
+        work = q;
+    }
+    digits.reverse();
+    out.push_str(unsafe { core::str::from_utf8_unchecked(&digits) });
+    out
+}
+
 fn normalize_index(i: i64, len: usize) -> usize {
     (if i < 0 { len as i64 + i } else { i }) as usize
 }
@@ -595,5 +637,208 @@ impl<'a> VM<'a> {
             _ => return Err(cold_type("object does not support item assignment")),
         }
         Ok(())
+    }
+
+    // ─── Logical reductions ──────────────────────────────────────────
+
+    pub fn call_all(&mut self, op: u16) -> Result<(), VmErr> {
+        if op != 1 { return Err(cold_type("all() takes exactly 1 argument")); }
+        let o = self.pop()?;
+        let items = self.extract_iter(o, true)?;
+        for v in items {
+            if !self.truthy(v) {
+                self.push(Val::bool(false));
+                return Ok(());
+            }
+        }
+        self.push(Val::bool(true));
+        Ok(())
+    }
+
+    pub fn call_any(&mut self, op: u16) -> Result<(), VmErr> {
+        if op != 1 { return Err(cold_type("any() takes exactly 1 argument")); }
+        let o = self.pop()?;
+        let items = self.extract_iter(o, true)?;
+        for v in items {
+            if self.truthy(v) {
+                self.push(Val::bool(true));
+                return Ok(());
+            }
+        }
+        self.push(Val::bool(false));
+        Ok(())
+    }
+
+    // ─── Number formatting ───────────────────────────────────────────
+
+    pub fn call_bin(&mut self) -> Result<(), VmErr> {
+        let o = self.pop()?;
+        let s = self.int_to_radix_string(o, 2, "0b")?;
+        let v = self.heap.alloc(HeapObj::Str(s))?;
+        self.push(v); Ok(())
+    }
+    pub fn call_oct(&mut self) -> Result<(), VmErr> {
+        let o = self.pop()?;
+        let s = self.int_to_radix_string(o, 8, "0o")?;
+        let v = self.heap.alloc(HeapObj::Str(s))?;
+        self.push(v); Ok(())
+    }
+    pub fn call_hex(&mut self) -> Result<(), VmErr> {
+        let o = self.pop()?;
+        let s = self.int_to_radix_string(o, 16, "0x")?;
+        let v = self.heap.alloc(HeapObj::Str(s))?;
+        self.push(v); Ok(())
+    }
+
+    /// Converts int/BigInt to "<prefix><digits>" with optional sign.
+    fn int_to_radix_string(&self, v: Val, radix: u32, prefix: &str) -> Result<String, VmErr> {
+        if v.is_int() {
+            return Ok(i64_to_radix(v.as_int(), radix, prefix));
+        }
+        if v.is_heap()
+            && let HeapObj::BigInt(b) = self.heap.get(v) {
+                return Ok(bigint_to_radix(b, radix, prefix));
+        }
+        Err(cold_type("integer required"))
+    }
+
+    // ─── Arithmetic ──────────────────────────────────────────────────
+
+    pub fn call_divmod(&mut self) -> Result<(), VmErr> {
+        let b = self.pop()?;
+        let a = self.pop()?;
+        let (Some(ba), Some(bb)) = (self.to_bigint(a), self.to_bigint(b))
+            else { return Err(cold_type("divmod() requires integer operands")); };
+        let (q, r) = ba.divmod(&bb).ok_or(VmErr::ZeroDiv)?;
+        let qv = self.bigint_to_val(q)?;
+        let rv = self.bigint_to_val(r)?;
+        let val = self.heap.alloc(HeapObj::Tuple(vec![qv, rv]))?;
+        self.push(val); Ok(())
+    }
+
+    pub fn call_pow(&mut self, op: u16) -> Result<(), VmErr> {
+        let args = self.pop_n(op as usize)?;
+        match args.len() {
+            2 => {
+                let r = self.pow_2arg(args[0], args[1])?;
+                self.push(r);
+                Ok(())
+            }
+            3 => {
+                // Modular exponentiation: (a ** b) % c
+                let (Some(base), Some(modulus)) =
+                    (self.to_bigint(args[0]), self.to_bigint(args[2]))
+                    else { return Err(cold_type("pow() with 3 args requires integers")); };
+                if !args[1].is_int() {
+                    return Err(cold_type("pow() with 3 args requires integer exponent"));
+                }
+                let mut e = args[1].as_int();
+                if e < 0 { return Err(cold_value("pow() exponent must be non-negative")); }
+                if modulus.is_zero() { return Err(VmErr::ZeroDiv); }
+
+                let mut result = BigInt::from_i64(1);
+                let (_, mut base) = base.divmod(&modulus).unwrap();
+                while e > 0 {
+                    if e & 1 == 1 {
+                        let (_, r) = result.mul(&base).divmod(&modulus).unwrap();
+                        result = r;
+                    }
+                    let (_, b2) = base.mul(&base).divmod(&modulus).unwrap();
+                    base = b2;
+                    e >>= 1;
+                }
+                let r = self.bigint_to_val(result)?;
+                self.push(r);
+                Ok(())
+            }
+            _ => Err(cold_type("pow() takes 2 or 3 arguments")),
+        }
+    }
+
+    fn pow_2arg(&mut self, a: Val, b: Val) -> Result<Val, VmErr> {
+        if let Some(ba) = self.to_bigint(a) && b.is_int() {
+            let exp = b.as_int();
+            if exp >= 0 {
+                if exp > u32::MAX as i64 {
+                    return Err(cold_value("pow() exponent too large"));
+                }
+                return self.bigint_to_val(ba.pow_u32(exp as u32));
+            }
+            return Ok(Val::float(fpowi(ba.to_f64(), exp as i32)));
+        }
+        let to_f = |v: Val| -> Result<f64, VmErr> {
+            if v.is_int() { Ok(v.as_int() as f64) }
+            else if v.is_float() { Ok(v.as_float()) }
+            else { Err(cold_type("pow() requires numeric operands")) }
+        };
+        Ok(Val::float(fpowf(to_f(a)?, to_f(b)?)))
+    }
+
+    // ─── Introspection ───────────────────────────────────────────────
+
+    pub fn call_repr(&mut self) -> Result<(), VmErr> {
+        let o = self.pop()?;
+        let s = self.repr(o);
+        let v = self.heap.alloc(HeapObj::Str(s))?;
+        self.push(v); Ok(())
+    }
+
+    pub fn call_callable(&mut self) -> Result<(), VmErr> {
+        let o = self.pop()?;
+        let result = if o.is_heap() {
+            matches!(self.heap.get(o),
+                HeapObj::Func(..) | HeapObj::BoundMethod(..) | HeapObj::Type(_))
+        } else { false };
+        self.push(Val::bool(result));
+        Ok(())
+    }
+
+    pub fn call_id(&mut self) -> Result<(), VmErr> {
+        let o = self.pop()?;
+        // Use the NaN-boxed bit pattern as identity. Truncate to fit INT_MAX.
+        let id = ((o.0 as i64).abs()) & Val::INT_MAX;
+        self.push(Val::int(id));
+        Ok(())
+    }
+
+    pub fn call_hash(&mut self) -> Result<(), VmErr> {
+        use core::hash::{Hash, Hasher};
+        let o = self.pop()?;
+        let mut h = crate::modules::fx::FxHasher::default();
+        if o.is_int()        { o.as_int().hash(&mut h); }
+        else if o.is_float() { o.as_float().to_bits().hash(&mut h); }
+        else if o.is_bool()  { o.as_bool().hash(&mut h); }
+        else if o.is_none()  { 0u64.hash(&mut h); }
+        else if o.is_heap() {
+            match self.heap.get(o) {
+                HeapObj::Str(s) => s.hash(&mut h),
+                HeapObj::BigInt(b) => { b.neg.hash(&mut h); b.limbs.hash(&mut h); }
+                HeapObj::Tuple(items) => {
+                    for v in items { v.0.hash(&mut h); }
+                }
+                HeapObj::List(_) | HeapObj::Dict(_) | HeapObj::Set(_) => {
+                    return Err(cold_type("unhashable type"));
+                }
+                _ => o.0.hash(&mut h),
+            }
+        }
+        self.push(Val::int(h.finish() as i64 & Val::INT_MAX));
+        Ok(())
+    }
+
+    // ─── Sequence ops ────────────────────────────────────────────────
+
+    pub fn call_reversed(&mut self) -> Result<(), VmErr> {
+        let o = self.pop()?;
+        if !o.is_heap() { return Err(cold_type("reversed() requires a sequence")); }
+        let mut items = if let HeapObj::Str(s) = self.heap.get(o) {
+            let s = s.clone();
+            self.str_to_char_vals(&s)?
+        } else {
+            self.extract_iter(o, true)?
+        };
+        items.reverse();
+        let v = self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(items))))?;
+        self.push(v); Ok(())
     }
 }

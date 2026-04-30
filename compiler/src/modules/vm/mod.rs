@@ -538,7 +538,10 @@ impl<'a> VM<'a> {
             | OpCode::CallList | OpCode::CallTuple | OpCode::CallEnumerate | OpCode::CallIsInstance
             | OpCode::CallRange | OpCode::CallRound | OpCode::CallMin | OpCode::CallMax
             | OpCode::CallSum | OpCode::CallZip | OpCode::CallDict | OpCode::CallSet
-            | OpCode::CallInput | OpCode::MakeFunction | OpCode::MakeCoroutine => {
+            | OpCode::CallInput | OpCode::MakeFunction | OpCode::MakeCoroutine
+            | OpCode::CallAll | OpCode::CallAny | OpCode::CallBin | OpCode::CallOct
+            | OpCode::CallHex | OpCode::CallDivmod | OpCode::CallPow | OpCode::CallRepr
+            | OpCode::CallReversed | OpCode::CallCallable | OpCode::CallId | OpCode::CallHash => {
                 self.handle_function(ins.opcode, op, chunk, slots)?;
             }
 
