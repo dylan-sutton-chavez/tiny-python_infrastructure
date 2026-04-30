@@ -98,7 +98,7 @@ True
 
 ```python
 print("a,b,c".split(","))
-print("hello world".split())     # any whitespace
+print("hello world".split()) # any whitespace
 print(",".join(["a", "b", "c"]))
 print("hello".replace("l", "L"))
 ```
@@ -136,7 +136,7 @@ print(xs.count(2))
 
 ys = xs.copy()
 ys.append(99)
-print(xs)            # original unchanged
+print(xs) # original unchanged
 print(ys)
 ```
 
@@ -173,13 +173,13 @@ print(xs)
 ```python
 xs = [1, 2, 3, 2]
 
-xs.remove(2)         # first occurrence
+xs.remove(2) # first occurrence
 print(xs)
 
-popped = xs.pop()    # last
+popped = xs.pop() # last
 print(popped, xs)
 
-popped = xs.pop(0)   # by index
+popped = xs.pop(0) # by index
 print(popped, xs)
 ```
 
@@ -264,7 +264,7 @@ fallback
 ```python
 d = {}
 d.setdefault("a", 1)
-d.setdefault("a", 999)        # second call ignored
+d.setdefault("a", 999) # second call ignored
 print(d)
 ```
 

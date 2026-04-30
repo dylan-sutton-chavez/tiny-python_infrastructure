@@ -78,35 +78,49 @@ Mark-and-sweep with roots: stack, globals, iterator frames, current slot window,
 ## 7. Project Structure
 
 ```text
-src/
-├── lib.rs
-├── main.rs
-└── modules/
-    ├── fstr.rs
-    ├── fx.rs
-    ├── lexer/
-    │   ├── mod.rs
-    │   ├── scan.rs
-    │   └── tables.rs
-    ├── parser/
-    │   ├── mod.rs
-    │   ├── expr.rs
-    │   ├── stmt.rs
-    │   ├── control.rs
-    │   ├── literals.rs
-    │   └── types.rs
-    └── vm/
-        ├── mod.rs
-        ├── cache.rs
-        ├── optimizer.rs
-        ├── ops.rs
-        ├── types.rs
-        ├── builtins.rs
-        └── handlers/
-            ├── arith.rs
-            ├── data.rs
-            ├── function.rs
-            └── methods.rs
+├── Cargo.lock
+├── Cargo.toml
+├── README.md
+├── src
+│   ├── lib.rs
+│   ├── main.rs
+│   ├── modules
+│   │   ├── fstr.rs
+│   │   ├── fx.rs
+│   │   ├── lexer
+│   │   │   ├── mod.rs
+│   │   │   ├── scan.rs
+│   │   │   └── tables.rs
+│   │   ├── parser
+│   │   │   ├── control.rs
+│   │   │   ├── expr.rs
+│   │   │   ├── literals.rs
+│   │   │   ├── mod.rs
+│   │   │   ├── stmt.rs
+│   │   │   └── types.rs
+│   │   └── vm
+│   │       ├── builtins.rs
+│   │       ├── cache.rs
+│   │       ├── handlers
+│   │       │   ├── arith.rs
+│   │       │   ├── data.rs
+│   │       │   ├── function.rs
+│   │       │   ├── methods.rs
+│   │       │   └── mod.rs
+│   │       ├── mod.rs
+│   │       ├── ops.rs
+│   │       ├── optimizer.rs
+│   │       └── types.rs
+│   └── wasm.rs
+└── tests
+    ├── cases
+    │   ├── lexer.json
+    │   ├── parser.json
+    │   └── vm.json
+    ├── lexer.rs
+    ├── main.rs
+    ├── parser.rs
+    └── vm.rs
 ```
 
 ---
