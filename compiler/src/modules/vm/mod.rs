@@ -4,7 +4,6 @@ pub mod types;
 mod cache;
 mod ops;
 mod builtins;
-mod collections;
 mod handlers;
 pub mod optimizer;
 
