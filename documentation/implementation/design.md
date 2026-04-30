@@ -12,7 +12,7 @@ There is no AST and no IR: bytecode is the only intermediate representation betw
 ## Concepts
 
 - **Offset-based tokens**: Tokens carry `(start, end, kind)` indices into the source buffer. No string copies during lexing; identifier and string content is sliced lazily by the parser.
-- **Single-pass SSA codegen**: Variables are versioned per assignment (`x` → `x_1`, `x_2`). Control-flow joins emit explicit `Phi` opcodes resolved at runtime.
+- **Single-pass SSA codegen**: Variables are versioned per assignment (`x` -> `x_1`, `x_2`). Control-flow joins emit explicit `Phi` opcodes resolved at runtime.
 - **Token-threaded dispatch**: The instruction stream is `Vec<Instruction>` where each `Instruction` is `(opcode: OpCode, operand: u16)`. The hot loop is a flat `match` on the opcode variant. Rust lowers it to a jump table; this is *token threading*, not direct threading (computed-goto is not available in safe Rust).
 - **Per-instruction inline caching**: Each binary op records the type tags of its operands. After 4 stable hits the IC stores a typed `FastOp` (e.g. `AddInt`, `LtFloat`) used as a speculative fast path with a type-guard deopt.
 - **Template memoization**: Pure user functions cache results keyed by their argument tuple. After 2 hits the cached value short-circuits execution. Functions are statically classified as pure/impure during emission, and the runtime tightens the classification by observing `StoreItem`, `StoreAttr`, `Raise`, etc.

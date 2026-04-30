@@ -35,7 +35,7 @@ pub static SINGLE_TOK: [u8; 128] = { /* ... */ };
 pub const SINGLE_MAP: [TokenType; 24] = { /* ... */ };
 ```
 
-Identifiers, digits, and whitespace are scanned with a `scan_while(pred)` driver that loops over `BYTE_CLASS[b] & FLAG`. Single-character operators do `b → SINGLE_TOK[b] → SINGLE_MAP[i]` — two indexed loads, no branches.
+Identifiers, digits, and whitespace are scanned with a `scan_while(pred)` driver that loops over `BYTE_CLASS[b] & FLAG`. Single-character operators do `b -> SINGLE_TOK[b] -> SINGLE_MAP[i]` — two indexed loads, no branches.
 
 The keyword lookup is routed by `(length, first_byte)` to skip most `memcmp`s. Most keyword candidates terminate after a single match arm.
 
@@ -43,14 +43,14 @@ The keyword lookup is routed by `(length, first_byte)` to skip most `memcmp`s. M
 
 ```python
 42
-1_000_000        # underscore separators
-0xDEAD_BEEF      # hex
-0o777            # octal
-0b1010_1010      # binary
+1_000_000 # underscore separators
+0xDEAD_BEEF # hex
+0o777 # octal
+0b1010_1010 # binary
 3.14
-.5               # leading-dot float
-1e-5             # exponent
-3j               # complex (lexed; only real part survives at runtime)
+.5 # leading-dot float
+1e-5 # exponent
+3j # complex (lexed; only real part survives at runtime)
 ```
 
 The number scanner handles base prefixes, underscore separators, optional exponents, the leading-dot form, and the trailing `j` / `J` for complex literals.
@@ -58,15 +58,15 @@ The number scanner handles base prefixes, underscore separators, optional expone
 ## String prefixes
 
 ```python
-'plain'          # str
-b'bytes'         # bytes (lexed as String)
-r'raw\n'         # raw
-u'unicode'       # unicode
-br'rawbytes'     # raw bytes
-RB'mixed'        # any case combination
-f'fstring'       # f-string (separate token sequence)
-fr'raw fstring'  # raw f-string
-"""triple"""     # triple-quoted, single or double
+'plain' # str
+b'bytes' # bytes (lexed as String)
+r'raw\n' # raw
+u'unicode' # unicode
+br'rawbytes' # raw bytes
+RB'mixed' # any case combination
+f'fstring' # f-string (separate token sequence)
+fr'raw fstring' # raw f-string
+"""triple""" # triple-quoted, single or double
 ```
 
 A leading prefix is recognized before the opening quote by the identifier scanner and verified against `is_string_prefix` / `is_fstring_prefix`. Triple-quoted strings span newlines and bump `line` for each `\n` inside.
@@ -77,8 +77,7 @@ F-strings are decomposed into a sequence of tokens rather than being represented
 
 ```text
 f'a {x} b {y + 1}!'
-   │
-   ▼
+
 FstringStart
 FstringMiddle("a ")
 Lbrace
@@ -118,13 +117,13 @@ The `nesting` counter is bumped by `(`, `[`, `{` and decremented by `)`, `]`. Wh
 `match`, `case`, and `type` are keywords in some positions and identifiers in others. The lexer resolves the ambiguity by peeking at the *next* token:
 
 ```python
-match x:           # 'match' is a keyword
+match x: # 'match' is a keyword
     case 1: ...
 
-match = 5          # 'match' is an identifier
-case = True        # 'case' is an identifier
-type X = int       # 'type' is a keyword (alias declaration)
-type = None        # 'type' is an identifier
+match = 5 # 'match' is an identifier
+case = True # 'case' is an identifier
+type X = int # 'type' is a keyword (alias declaration)
+type = None # 'type' is an identifier
 ```
 
 If the token following `match` / `case` / `type` is one of `(`, `)`, `]`, `:`, `=`, `,`, `Newline`, or `EOF`, the soft keyword is downgraded to `Name`. Otherwise it stays a keyword.
@@ -153,7 +152,7 @@ A `Token` is 32 bytes:
 
 ```rust
 pub struct Token {
-    pub kind: TokenType,   // 1 byte + padding
+    pub kind: TokenType, // 1 byte + padding
     pub line: usize,
     pub start: usize,
     pub end: usize,

@@ -15,8 +15,8 @@ Each instruction is a tagged 4-byte record:
 
 ```rust
 pub struct Instruction {
-    pub opcode: OpCode,   // 1 byte (with #[repr(u8)] planned)
-    pub operand: u16,     // 2 bytes
+    pub opcode: OpCode, // 1 byte (with #[repr(u8)] planned)
+    pub operand: u16, // 2 bytes
 }
 ```
 
@@ -44,15 +44,15 @@ Operands are bounded to `u16::MAX` (65,535). The same cap applies to the size of
 `expr_bp(min_bp)` runs the Pratt loop. The atom dispatcher in `parse_atom` advances one token and routes by kind:
 
 ```text
-Name        → name() (handles assignment, walrus, calls)
-String      → emit Str constant; concatenate adjacent String tokens
-Int / Float → emit numeric constant; promote to BigInt if oversized
-True/False/None/Ellipsis → emit dedicated load opcode
-FstringStart → fstring()
-Lbrace      → brace_literal()  (dict, set, comprehension)
-Lsqb        → list_literal()   (list, comprehension)
-Lpar        → grouped expr, tuple, generator, or empty tuple
-Lambda      → parse_lambda()
+Name        -> name() (handles assignment, walrus, calls)
+String      -> emit Str constant; concatenate adjacent String tokens
+Int / Float -> emit numeric constant; promote to BigInt if oversized
+True/False/None/Ellipsis -> emit dedicated load opcode
+FstringStart -> fstring()
+Lbrace      -> brace_literal()  (dict, set, comprehension)
+Lsqb        -> list_literal()   (list, comprehension)
+Lpar        -> grouped expr, tuple, generator, or empty tuple
+Lambda      -> parse_lambda()
 ```
 
 After an atom, `postfix_tail()` handles trailers — subscript, attribute access, and call — which iterate until none apply. This is what lets expressions like `fns[0](-3)`, `obj.method()`, `(lambda x: x)(3)`, and `compose(f, g)(x)` parse uniformly.
@@ -84,10 +84,9 @@ Comparison chaining (`a < b < c`) is handled inline by `infix_bp`: when a compar
 
 ```text
 a and b
-   │
-   ▼
+
 LoadName a
-JumpIfFalseOrPop  →  end
+JumpIfFalseOrPop  ->  end
 LoadName b
 end:
 ```
@@ -122,11 +121,11 @@ Lookups on undefined names target version 0 (`x_0`), which is filled either by t
 At each control-flow boundary the parser pushes a `JoinNode { backup, then }` onto a stack:
 
 ```text
-enter_block()    → snapshot current versions into JoinNode.backup
+enter_block()    -> snapshot current versions into JoinNode.backup
                    (and reset to the same baseline for the if branch)
-mid_block()      → snapshot post-then versions into JoinNode.then;
+mid_block()      -> snapshot post-then versions into JoinNode.then;
                    restore baseline (max of backup, then-state) for else
-commit_block()   → diff (then ∪ post) against (backup), emit Phi
+commit_block()   -> diff (then ∪ post) against (backup), emit Phi
                    for each name that diverged
 ```
 
@@ -162,26 +161,26 @@ The runtime resolves `Phi` by reading whichever of the two source slots is `Some
 `stmt()` peeks the leading token and routes:
 
 ```text
-if          → if_stmt          (with elif chain, optional else)
-for         → for_stmt_inner   (sync iter, optional else)
-while       → while_stmt       (with break/continue patches)
-match       → match_stmt
-def         → func_def_inner
-class       → class_def        (parses; runtime raises)
-with        → with_stmt_inner  (multi-target, async variant)
-try         → try_stmt         (except, else, finally, raise)
-import      → import_stmt      (parses; runtime raises)
-from        → parse_from_stmt
-type        → type-alias declaration
-yield       → yield expr / yield from
-async       → async def / for / with
-@           → decorator stack + def
-return      → expr + ReturnValue
-raise       → expr + Raise / RaiseFrom
-break       → patched at loop end
-continue    → jump to current loop_start
-del / global / nonlocal / assert / pass → direct emit
-Name        → name_stmt (assignment, augmented, indexed, attribute, call)
+if          -> if_stmt          (with elif chain, optional else)
+for         -> for_stmt_inner   (sync iter, optional else)
+while       -> while_stmt       (with break/continue patches)
+match       -> match_stmt
+def         -> func_def_inner
+class       -> class_def        (parses; runtime raises)
+with        -> with_stmt_inner  (multi-target, async variant)
+try         -> try_stmt         (except, else, finally, raise)
+import      -> import_stmt      (parses; runtime raises)
+from        -> parse_from_stmt
+type        -> type-alias declaration
+yield       -> yield expr / yield from
+async       -> async def / for / with
+@           -> decorator stack + def
+return      -> expr + ReturnValue
+raise       -> expr + Raise / RaiseFrom
+break       -> patched at loop end
+continue    -> jump to current loop_start
+del / global / nonlocal / assert / pass -> direct emit
+Name        -> name_stmt (assignment, augmented, indexed, attribute, call)
 ```
 
 Each statement returns a bool indicating whether it left a value on the stack. The driver loop emits `PopTop` after expression-shaped statements (`x.method()`, `1 + 2` at module level) but not after statement-shaped ones (assignment, control flow).
@@ -201,7 +200,7 @@ self.with_fresh_chunk(|s| {
 
 Free variables in the body — names that aren't parameters and don't have a local binding — are looked up in the outer chunk's name table. The `MakeFunction` opcode at runtime captures matching slots from the enclosing scope into the function's `captures` list.
 
-After body compilation, `compile_body` inspects the body's instruction stream for opcodes that imply impurity (`StoreItem`, `StoreAttr`, `CallPrint`, `CallInput`, `Global`, `Nonlocal`, `Import`, `Raise`, `Yield`, `LoadAttr`) and sets `body.is_pure` accordingly. The runtime template-memoization layer uses this flag — pure functions get their `(args) → result` mapping cached after two hits.
+After body compilation, `compile_body` inspects the body's instruction stream for opcodes that imply impurity (`StoreItem`, `StoreAttr`, `CallPrint`, `CallInput`, `Global`, `Nonlocal`, `Import`, `Raise`, `Yield`, `LoadAttr`) and sets `body.is_pure` accordingly. The runtime template-memoization layer uses this flag — pure functions get their `(args) -> result` mapping cached after two hits.
 
 ## Type annotations
 

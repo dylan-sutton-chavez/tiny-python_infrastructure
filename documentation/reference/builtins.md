@@ -539,8 +539,8 @@ False
 | `tuple`      | 0 or 1     | from any iterable                          |
 | `set`        | 0 or 1     | from any iterable                          |
 | `dict`       | variadic   | kwargs and/or single mapping               |
-| `chr`        | 1          | int → 1-char string                        |
-| `ord`        | 1          | 1-char string → int                        |
+| `chr`        | 1          | int -> 1-char string                        |
+| `ord`        | 1          | 1-char string -> int                        |
 | `len`        | 1          | element count                              |
 | `range`      | 1, 2, or 3 | lazy integer sequence                      |
 | `sorted`     | 1          | new sorted list                            |

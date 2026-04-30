@@ -11,7 +11,7 @@ Three ways to get Edge Python running.
 
 The fastest path. No install, runs entirely client-side via WebAssembly.
 
-[Open the playground →](https://demo.edgepython.com)
+[Open the playground ->](https://demo.edgepython.com)
 
 ### Native binary
 
