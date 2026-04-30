@@ -165,21 +165,21 @@ const Editor = (() => {
         },
 
         // Backspace: delete empty pair, or snap indent to previous tab stop.
-        backspace: (text, caret) => {
-            if (caret === 0) return null;
-            if (PAIRS[text[caret - 1]] === text[caret]) {
-                return {
-                    text: text.slice(0, caret - 1) + text.slice(caret + 1),
-                    caret: caret - 1,
-                };
-            }
-            const lineStart = text.lastIndexOf('\n', caret - 1) + 1;
-            const before = text.slice(lineStart, caret);
-            if (!before.length || !/^[ \t]+$/.test(before)) return null;
-            const prevStop = Math.floor((before.length - 1) / TAB_SIZE) * TAB_SIZE;
-            const del = before.length - prevStop;
-            return { text: text.slice(0, caret - del) + text.slice(caret), caret: caret - del };
-        },
+            backspace: (text, caret) => {
+                if (caret === 0) return null;
+                if (PAIRS[text[caret - 1]] === text[caret]) {
+                    return {
+                        text: text.slice(0, caret - 1) + text.slice(caret + 1),
+                        caret: caret - 1,
+                    };
+                }
+                const lineStart = text.lastIndexOf('\n', caret - 1) + 1;
+                const before = text.slice(lineStart, caret);
+                if (!before.length || !/^[ \t\u00a0]+$/.test(before)) return null;
+                const prevStop = Math.floor((before.length - 1) / TAB_SIZE) * TAB_SIZE;
+                const del = before.length - prevStop;
+                return { text: text.slice(0, caret - del) + text.slice(caret), caret: caret - del };
+            },
     };
 
     const jar = CodeJar(el.ed,
