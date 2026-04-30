@@ -64,14 +64,12 @@ impl<'a> VM<'a> {
             let global = self.functions.len() as u32;
             self.functions.push(desc);
             indices.push(global);
-            self.build_function_table(&desc.1);  // recurse into body
+            self.build_function_table(&desc.1);
         }
         self.fn_index.insert(chunk as *const _, indices);
     }
 
     /// Materializa un iterable en `Vec<Val>` para spread posicional.
-    /// Soporta list, tuple, set y range. Cadena se omite a propósito —
-    /// quien quiera spread por carácter puede pasar `list("hola")`.
     fn iter_to_vec_for_spread(&self, v: Val) -> Result<Vec<Val>, VmErr> {
         if !v.is_heap() {
             return Err(VmErr::Type("argument after * must be an iterable"));
@@ -94,7 +92,6 @@ impl<'a> VM<'a> {
     }
 
     /// Materializa un mapping en pares (clave_str, valor) para spread por nombre.
-    /// Sólo dict; las claves deben ser str (semántica de Python).
     fn mapping_to_kw_pairs(&self, v: Val) -> Result<Vec<(Val, Val)>, VmErr> {
         if !v.is_heap() {
             return Err(VmErr::Type("argument after ** must be a mapping"));
@@ -113,11 +110,6 @@ impl<'a> VM<'a> {
         }
     }
 
-    /*
-    Fill Builtins
-        Initializes slot vector from globals for a given name table.
-    */
-
     fn fill_builtins(&self, names: &[String]) -> Vec<Option<Val>> {
         let mut slots = vec![None; names.len()];
         for (i, name) in names.iter().enumerate() {
@@ -128,11 +120,6 @@ impl<'a> VM<'a> {
         slots
     }
 
-    /*
-    Budget-Checked Jump
-        Decrements op budget, validates target, returns new ip.
-    */
-    
     #[inline]
     fn checked_jump(&mut self, target: usize, limit: usize) -> Result<usize, VmErr> {
         if self.budget == 0 { return Err(cold_budget()); }
@@ -141,16 +128,10 @@ impl<'a> VM<'a> {
         Ok(target)
     }
 
-    // Splits a heap string into individual character Val items.
     pub(crate) fn str_to_char_vals(&mut self, s: &str) -> Result<Vec<Val>, VmErr> {
         s.chars().map(|c| self.heap.alloc(HeapObj::Str(c.to_string()))).collect()
     }
 
-    /*
-    Iterator Frame Construction
-        Converts a heap object to the appropriate IterFrame for ForIter dispatch.
-    */
-    
     fn make_iter_frame(&mut self, obj: Val) -> Result<IterFrame, VmErr> {
         if !obj.is_heap() { return Err(cold_type("object is not iterable")); }
         Ok(match self.heap.get(obj) {
@@ -183,11 +164,6 @@ impl<'a> VM<'a> {
         })
     }
 
-    /*
-    Sequence Unpack
-        Destructures list, tuple, or string into exactly `expected` stack values.
-    */
-    
     fn exec_unpack_seq(&mut self, expected: usize) -> Result<(), VmErr> {
         let obj = self.pop()?;
         if !obj.is_heap() { return Err(cold_type("cannot unpack non-sequence")); }
@@ -211,11 +187,6 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    /*
-    SSA Phi Propagation
-        Merges two SSA branches into target slot and back-propagates through prev_slots chain.
-    */
-    
     fn exec_phi(op: u16, rip: usize, phi_map: &[usize], slots: &mut [Option<Val>], prev_slots: &[Option<u16>], phi_sources: &[(u16, u16)]) {
         let target = op as usize;
         let (ia, ib) = phi_sources[phi_map[rip]];
@@ -274,7 +245,6 @@ impl<'a> VM<'a> {
         self.exec(self.chunk, &mut slots)
     }
 
-    // Marks all reachable values from stack, globals, iterators and slots, then sweeps.
     fn collect(&mut self, current_slots: &[Option<Val>]) {
         for &v in &self.stack { self.heap.mark(v); }
         for &v in &self.with_stack { self.heap.mark(v); }
@@ -294,10 +264,7 @@ impl<'a> VM<'a> {
         (self.templates.count(), self.chunk.instructions.len())
     }
 
-    /*
-    Stack Helpers
-        Push, pop, pop2 and pop_n with underflow-safe error propagation.
-    */
+    /* Stack helpers */
 
     #[inline] pub(crate) fn push(&mut self, v: Val) { self.stack.push(v); }
 
@@ -308,15 +275,10 @@ impl<'a> VM<'a> {
         let b = self.pop()?; let a = self.pop()?; Ok((a, b))
     }
     #[inline] pub(crate) fn pop_n(&mut self, n: usize) -> Result<Vec<Val>, VmErr> {
-    let at = self.stack.len().checked_sub(n)
-        .ok_or(cold_runtime("stack underflow"))?;
+        let at = self.stack.len().checked_sub(n)
+            .ok_or(cold_runtime("stack underflow"))?;
         Ok(self.stack.split_off(at))
     }
-
-    /*
-    Const Conversion
-        Converts a parser-level Value into a runtime Val, allocating heap for strings.
-    */
 
     pub(crate) fn val_from(&mut self, v: &Value) -> Result<Val, VmErr> {
         Ok(match v {
@@ -335,21 +297,17 @@ impl<'a> VM<'a> {
         })
     }
 
-    /*
-    Fast-Path Execution
-        Peeks stack without popping; returns false with stack untouched to trigger deopt.
-    */
-
+    /// Fast-path executor; peeks stack without popping. Returns false (with
+    /// stack untouched) on type-guard miss so caller can deopt.
     #[inline]
     fn exec_fast(&mut self, fast: FastOp) -> Result<bool, VmErr> {
         let len = self.stack.len();
         if len < 2 { return Ok(false); }
-        
+
         let a = self.stack[len - 2];
         let b = self.stack[len - 1];
-        
+
         let result = match fast {
-            // Arithmetics
             FastOp::AddFloat if a.is_float() && b.is_float() => Val::float(a.as_float() + b.as_float()),
             FastOp::AddInt if a.is_int() && b.is_int() => {
                 let r = a.as_int() as i128 + b.as_int() as i128;
@@ -365,16 +323,14 @@ impl<'a> VM<'a> {
             }
             FastOp::MulFloat if a.is_float() && b.is_float() => Val::float(a.as_float() * b.as_float()),
 
-            // Comparisons (Symm Comparisons)
             FastOp::LtInt if a.is_int() && b.is_int() => Val::bool(a.as_int() < b.as_int()),
             FastOp::LtFloat if a.is_float() && b.is_float() => Val::bool(a.as_float() < b.as_float()),
-            FastOp::EqInt if a.is_int() && b.is_int() => Val::bool(a.as_int() == b.as_int()),            
+            FastOp::EqInt if a.is_int() && b.is_int() => Val::bool(a.as_int() == b.as_int()),
             FastOp::GtInt if a.is_int() && b.is_int() => Val::bool(a.as_int() > b.as_int()),
             FastOp::LtEqInt if a.is_int() && b.is_int() => Val::bool(a.as_int() <= b.as_int()),
             FastOp::GtEqInt if a.is_int() && b.is_int() => Val::bool(a.as_int() >= b.as_int()),
             FastOp::NotEqInt if a.is_int() && b.is_int() => Val::bool(a.as_int() != b.as_int()),
 
-            // String Operations
             FastOp::AddStr | FastOp::EqStr if a.is_heap() && b.is_heap() => {
                 let (sa, sb) = match (self.heap.get(a), self.heap.get(b)) {
                     (HeapObj::Str(x), HeapObj::Str(y)) => (x.clone(), y.clone()),
@@ -386,10 +342,10 @@ impl<'a> VM<'a> {
                         r.push_str(&sa); r.push_str(&sb);
                         self.heap.alloc(HeapObj::Str(r))?
                     }
-                    _ => Val::bool(sa == sb), // FastOp::EqStr
+                    _ => Val::bool(sa == sb),
                 }
             }
-            
+
             _ => return Ok(false),
         };
 
@@ -398,26 +354,20 @@ impl<'a> VM<'a> {
         Ok(true)
     }
 
-    /*
-    Main Dispatch Loop — Threaded Code
-        Single-tier dispatch over pre-compiled ThreadedOp array.
-        IC (inline cache) is checked inline for arith/compare ops.
-        No super-op tier — threading already eliminates dispatch overhead.
-    */
-
+    /// Main dispatch loop. Walks the fused instruction stream (LoadAttr+Call
+    /// already collapsed to CallMethod+CallMethodArgs). IC is checked inline
+    /// for hot arith/compare opcodes.
     pub(crate) fn exec(&mut self, chunk: &SSAChunk, slots: &mut [Option<Val>]) -> Result<Val, VmErr> {
         let slots_base = self.live_slots.len();
         let exc_base   = self.exception_stack.len();
         let key        = chunk as *const _;
 
-        // Get or compile threaded code + IC cache
         let mut cache = self.opcode_caches.remove(&key)
             .unwrap_or_else(|| OpcodeCache::new(chunk));
-
-        cache.ensure_threaded(chunk);
+        cache.ensure_fused(chunk);
 
         let result: Result<Val, VmErr> = (|| {
-            let n          = cache.threaded_ref().len();
+            let n          = cache.fused_ref().len();
             let mut ip     = 0usize;
             let prev_slots = chunk.prev_slots.as_slice();
 
@@ -427,7 +377,7 @@ impl<'a> VM<'a> {
                     return Ok(Val::none());
                 }
 
-                match self.dispatch_threaded(chunk, slots, &mut cache, &mut ip, n, prev_slots) {
+                match self.dispatch(chunk, slots, &mut cache, &mut ip, n, prev_slots) {
                     Ok(None) => {}
                     Ok(Some(v)) => {
                         self.live_slots.truncate(slots_base);
@@ -468,10 +418,9 @@ impl<'a> VM<'a> {
         result
     }
 
-    /// Fused LoadAttr+Call: resolves method on the object and calls it
-    /// directly without allocating a BoundMethod on the heap.
+    /// CallMethod: resolves the bound method on the receiver and calls it
+    /// directly, no BoundMethod heap alloc. Reads args from CallMethodArgs.
     fn exec_call_method(&mut self, attr_idx: u16, call_op: u16, chunk: &SSAChunk) -> Result<(), VmErr> {
-
         let raw = call_op as usize;
         let num_kw  = (raw >> 8) & 0xFF;
         let num_pos = raw & 0xFF;
@@ -485,13 +434,11 @@ impl<'a> VM<'a> {
         let kw_flat: Vec<Val> = stack_items.split_off(num_pos);
         let positional = stack_items;
 
-        // The object is on the stack (pushed before LoadAttr)
         let obj = self.pop()?;
         let ty = self.type_name(obj);
         let name = chunk.names.get(attr_idx as usize)
             .ok_or(VmErr::Runtime("CallMethod: bad name index"))?;
 
-        // Look up method — same binary search as handle_load_attr, but no heap alloc
         let method_id = handlers::attr::lookup_method(ty, name.as_str())
             .ok_or(VmErr::Type("'object' has no attribute"))?;
 
@@ -499,97 +446,74 @@ impl<'a> VM<'a> {
     }
 
     #[inline]
-    fn dispatch_threaded(
+    fn dispatch(
         &mut self, chunk: &SSAChunk, slots: &mut [Option<Val>],
         cache: &mut OpcodeCache, ip: &mut usize, n: usize,
         prev_slots: &[Option<u16>],
     ) -> Result<Option<Val>, VmErr> {
-        use threaded::ThreadedOp;
-
-        let top = cache.threaded_ref()[*ip];
+        let ins = cache.fused_ref()[*ip];
         let rip = *ip;
+        let op = ins.operand;
         *ip += 1;
 
-        match top {
+        match ins.opcode {
             // ── SHORT-CIRCUIT JUMPS ───────────────────────────────────
-            ThreadedOp::JumpIfFalseOrPop(target) => {
+            OpCode::JumpIfFalseOrPop => {
                 let v = *self.stack.last().ok_or(cold_runtime("stack underflow"))?;
-                if !self.truthy(v) { *ip = target as usize; }
+                if !self.truthy(v) { *ip = op as usize; }
                 else { self.pop()?; }
             }
-            ThreadedOp::JumpIfTrueOrPop(target) => {
+            OpCode::JumpIfTrueOrPop => {
                 let v = *self.stack.last().ok_or(cold_runtime("stack underflow"))?;
-                if self.truthy(v) { *ip = target as usize; }
+                if self.truthy(v) { *ip = op as usize; }
                 else { self.pop()?; }
             }
 
-            // ── HOT OPCODES ──────────────────────────────────────────
-            ThreadedOp::LoadName(slot) => {
-                self.push(slots[slot as usize].ok_or_else(|| VmErr::Name(chunk.names[slot as usize].clone()))?);
+            // ── HOT OPCODES ───────────────────────────────────────────
+            OpCode::LoadName => {
+                self.push(slots[op as usize].ok_or_else(|| VmErr::Name(chunk.names[op as usize].clone()))?);
             }
-            ThreadedOp::StoreName(dst) => {
-                self.handle_store(dst, slots, prev_slots)?;
+            OpCode::StoreName => {
+                self.handle_store(op, slots, prev_slots)?;
                 if self.heap.needs_gc() { self.collect(slots); }
             }
-            ThreadedOp::LoadConst(idx) => {
-                let v = chunk.constants.get(idx as usize)
+            OpCode::LoadConst => {
+                let v = chunk.constants.get(op as usize)
                     .ok_or(cold_runtime("constant index out of bounds"))
                     .and_then(|c| self.val_from(c))?;
                 self.push(v);
             }
 
             // Arith with IC
-            ThreadedOp::Add | ThreadedOp::Sub | ThreadedOp::Mul => {
+            OpCode::Add | OpCode::Sub | OpCode::Mul => {
                 if let Some(fast) = cache.get_fast(rip) {
                     if self.exec_fast(fast)? { return Ok(None); }
                     cache.invalidate(rip);
                 }
-                let opcode = match top {
-                    ThreadedOp::Add => OpCode::Add,
-                    ThreadedOp::Sub => OpCode::Sub,
-                    _ => OpCode::Mul,
-                };
-                self.handle_arith(opcode, rip, cache)?;
+                self.handle_arith(ins.opcode, rip, cache)?;
             }
-            ThreadedOp::Div | ThreadedOp::Mod | ThreadedOp::Pow
-            | ThreadedOp::FloorDiv | ThreadedOp::Minus => {
-                let opcode = match top {
-                    ThreadedOp::Div => OpCode::Div,
-                    ThreadedOp::Mod => OpCode::Mod,
-                    ThreadedOp::Pow => OpCode::Pow,
-                    ThreadedOp::FloorDiv => OpCode::FloorDiv,
-                    _ => OpCode::Minus,
-                };
-                self.handle_arith(opcode, rip, cache)?;
+            OpCode::Div | OpCode::Mod | OpCode::Pow | OpCode::FloorDiv | OpCode::Minus => {
+                self.handle_arith(ins.opcode, rip, cache)?;
             }
 
             // Compare with IC
-            ThreadedOp::Eq | ThreadedOp::Lt => {
+            OpCode::Eq | OpCode::Lt => {
                 if let Some(fast) = cache.get_fast(rip) {
                     if self.exec_fast(fast)? { return Ok(None); }
                     cache.invalidate(rip);
                 }
-                let opcode = if matches!(top, ThreadedOp::Eq) { OpCode::Eq } else { OpCode::Lt };
-                self.handle_compare(opcode, rip, cache)?;
+                self.handle_compare(ins.opcode, rip, cache)?;
             }
-            ThreadedOp::NotEq | ThreadedOp::Gt | ThreadedOp::LtEq | ThreadedOp::GtEq => {
-                let opcode = match top {
-                    ThreadedOp::NotEq => OpCode::NotEq,
-                    ThreadedOp::Gt    => OpCode::Gt,
-                    ThreadedOp::LtEq  => OpCode::LtEq,
-                    _                 => OpCode::GtEq,
-                };
-                self.handle_compare(opcode, rip, cache)?;
+            OpCode::NotEq | OpCode::Gt | OpCode::LtEq | OpCode::GtEq => {
+                self.handle_compare(ins.opcode, rip, cache)?;
             }
 
-            ThreadedOp::Jump(target) => {
-                *ip = self.checked_jump(target as usize, n)?;
-            }
-            ThreadedOp::JumpIfFalse(target) => {
+            OpCode::Jump => { *ip = self.checked_jump(op as usize, n)?; }
+            OpCode::JumpIfFalse => {
                 let v = self.pop()?;
-                if !self.truthy(v) { *ip = self.checked_jump(target as usize, n)?; }
+                if !self.truthy(v) { *ip = self.checked_jump(op as usize, n)?; }
             }
-            ThreadedOp::ForIter(end) => {
+            OpCode::ForIter => {
                 if self.budget == 0 { return Err(cold_budget()); }
                 self.budget -= 1;
                 if self.heap.needs_gc() { self.collect(slots); }
@@ -597,76 +521,64 @@ impl<'a> VM<'a> {
                     Some(item) => self.push(item),
                     None => {
                         self.iter_stack.pop();
-                        if end as usize > n { return Err(cold_runtime("jump target out of bounds")); }
-                        *ip = end as usize;
+                        if op as usize > n { return Err(cold_runtime("jump target out of bounds")); }
+                        *ip = op as usize;
                     }
                 }
             }
-            ThreadedOp::PopTop => { self.pop()?; }
-            ThreadedOp::ReturnValue => {
+            OpCode::PopTop => { self.pop()?; }
+            OpCode::ReturnValue => {
                 let result = if self.stack.is_empty() { Val::none() } else { self.pop()? };
                 return Ok(Some(result));
             }
 
-            // ── WARM OPCODES ─────────────────────────────────────────
-            ThreadedOp::GetItem => { self.get_item()?; }
-            ThreadedOp::Call(op) => self.handle_function(OpCode::Call, op, chunk, slots)?,
-            ThreadedOp::CallPrint(op) => self.handle_function(OpCode::CallPrint, op, chunk, slots)?,
-            ThreadedOp::CallLen => self.handle_function(OpCode::CallLen, 0, chunk, slots)?,
-            ThreadedOp::CallAbs => self.handle_function(OpCode::CallAbs, 0, chunk, slots)?,
-            ThreadedOp::CallStr => self.handle_function(OpCode::CallStr, 0, chunk, slots)?,
-            ThreadedOp::CallInt => self.handle_function(OpCode::CallInt, 0, chunk, slots)?,
-            ThreadedOp::CallFloat => self.handle_function(OpCode::CallFloat, 0, chunk, slots)?,
-            ThreadedOp::CallBool => self.handle_function(OpCode::CallBool, 0, chunk, slots)?,
-            ThreadedOp::CallType => self.handle_function(OpCode::CallType, 0, chunk, slots)?,
-            ThreadedOp::CallChr => self.handle_function(OpCode::CallChr, 0, chunk, slots)?,
-            ThreadedOp::CallOrd => self.handle_function(OpCode::CallOrd, 0, chunk, slots)?,
-            ThreadedOp::CallSorted => self.handle_function(OpCode::CallSorted, 0, chunk, slots)?,
-            ThreadedOp::CallList => self.handle_function(OpCode::CallList, 0, chunk, slots)?,
-            ThreadedOp::CallTuple => self.handle_function(OpCode::CallTuple, 0, chunk, slots)?,
-            ThreadedOp::CallEnumerate => self.handle_function(OpCode::CallEnumerate, 0, chunk, slots)?,
-            ThreadedOp::CallIsInstance => self.handle_function(OpCode::CallIsInstance, 0, chunk, slots)?,
-            ThreadedOp::CallRange(op) => self.handle_function(OpCode::CallRange, op, chunk, slots)?,
-            ThreadedOp::CallRound(op) => self.handle_function(OpCode::CallRound, op, chunk, slots)?,
-            ThreadedOp::CallMin(op) => self.handle_function(OpCode::CallMin, op, chunk, slots)?,
-            ThreadedOp::CallMax(op) => self.handle_function(OpCode::CallMax, op, chunk, slots)?,
-            ThreadedOp::CallSum(op) => self.handle_function(OpCode::CallSum, op, chunk, slots)?,
-            ThreadedOp::CallZip(op) => self.handle_function(OpCode::CallZip, op, chunk, slots)?,
-            ThreadedOp::CallDict(op) => self.handle_function(OpCode::CallDict, op, chunk, slots)?,
-            ThreadedOp::CallSet(op) => self.handle_function(OpCode::CallSet, op, chunk, slots)?,
-            ThreadedOp::CallInput => self.handle_function(OpCode::CallInput, 0, chunk, slots)?,
-            ThreadedOp::MakeFunction(op) => self.handle_function(OpCode::MakeFunction, op, chunk, slots)?,
-            ThreadedOp::MakeCoroutine(op) => self.handle_function(OpCode::MakeCoroutine, op, chunk, slots)?,
+            // ── WARM OPCODES ──────────────────────────────────────────
+            OpCode::GetItem => { self.get_item()?; }
 
-            ThreadedOp::GetIter(_) => {
+            OpCode::Call | OpCode::CallPrint | OpCode::CallLen | OpCode::CallAbs
+            | OpCode::CallStr | OpCode::CallInt | OpCode::CallFloat | OpCode::CallBool
+            | OpCode::CallType | OpCode::CallChr | OpCode::CallOrd | OpCode::CallSorted
+            | OpCode::CallList | OpCode::CallTuple | OpCode::CallEnumerate | OpCode::CallIsInstance
+            | OpCode::CallRange | OpCode::CallRound | OpCode::CallMin | OpCode::CallMax
+            | OpCode::CallSum | OpCode::CallZip | OpCode::CallDict | OpCode::CallSet
+            | OpCode::CallInput | OpCode::MakeFunction | OpCode::MakeCoroutine => {
+                self.handle_function(ins.opcode, op, chunk, slots)?;
+            }
+
+            OpCode::GetIter => {
                 let obj = self.pop()?;
                 let frame = self.make_iter_frame(obj)?;
                 self.iter_stack.push(frame);
             }
-            ThreadedOp::LoadTrue  => self.push(Val::bool(true)),
-            ThreadedOp::LoadFalse => self.push(Val::bool(false)),
-            ThreadedOp::LoadNone  => self.push(Val::none()),
-            ThreadedOp::Not => self.handle_logic(OpCode::Not)?,
+            OpCode::LoadTrue  => self.push(Val::bool(true)),
+            OpCode::LoadFalse => self.push(Val::bool(false)),
+            OpCode::LoadNone  => self.push(Val::none()),
+            OpCode::Not => self.handle_logic(OpCode::Not)?,
 
-            ThreadedOp::Phi { operand, rip: phi_rip } => {
-                Self::exec_phi(operand, phi_rip, &chunk.phi_map, slots, prev_slots, &chunk.phi_sources);
+            OpCode::Phi => {
+                Self::exec_phi(op, rip, &chunk.phi_map, slots, prev_slots, &chunk.phi_sources);
             }
 
-            ThreadedOp::LoadAttr(op) => self.handle_load_attr(op, chunk)?,
+            OpCode::LoadAttr => self.handle_load_attr(op, chunk)?,
 
-            ThreadedOp::CallMethod { attr_idx, call_op } => {
-                self.exec_call_method(attr_idx, call_op, chunk)?;
+            // ── FUSED METHOD CALL ─────────────────────────────────────
+            OpCode::CallMethod => {
+                // The next instruction is CallMethodArgs carrying the call op.
+                let call_op = cache.fused_ref()[*ip].operand;
+                *ip += 1; // consume CallMethodArgs
+                self.exec_call_method(op, call_op, chunk)?;
+            }
+            OpCode::CallMethodArgs => {
+                // Should never be reached on its own — always consumed by CallMethod.
+                return Err(cold_runtime("CallMethodArgs reached dispatch unpaired"));
             }
 
-            ThreadedOp::Nop => {}
-
-            ThreadedOp::Unreachable => {
+            // ── COLD OPCODES ──────────────────────────────────────────
+            OpCode::And | OpCode::Or => {
                 return Err(cold_runtime("And/Or reached VM dispatch (should be short-circuited)"));
             }
 
-            ThreadedOp::Generic { opcode, operand } => {
-                self.dispatch_generic(opcode, operand, slots)?;
-            }
+            other => self.dispatch_generic(other, op, slots)?,
         }
         Ok(None)
     }
@@ -715,10 +627,10 @@ impl<'a> VM<'a> {
                 });
             }
             OpCode::SetupWith => {
-                let _ = operand; // 0 sync, 1 async — semántica idéntica aquí
+                let _ = operand;
                 let cm = self.pop()?;
                 self.with_stack.push(cm);
-                self.push(cm); // dup para `as` o para que ExitWith lo descarte
+                self.push(cm);
             }
             OpCode::ExitWith => {
                 let _ = operand;

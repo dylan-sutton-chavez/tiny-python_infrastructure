@@ -1,9 +1,9 @@
 // vm/cache.rs
 
 use super::types::{Val, eq_vals_with_heap};
-use super::threaded::{self, ThreadedOp};
+use super::threaded;
 
-use crate::modules::parser::{OpCode, SSAChunk};
+use crate::modules::parser::{OpCode, SSAChunk, Instruction};
 use crate::modules::fx::FxHashMap as HashMap;
 
 use alloc::{vec, vec::Vec};
@@ -15,7 +15,7 @@ pub enum FastOp {
     AddInt, AddFloat, AddStr,
     SubInt, SubFloat,
     MulInt, MulFloat,
-    LtInt, LtFloat, 
+    LtInt, LtFloat,
     GtInt, LtEqInt, GtEqInt,
     EqInt, EqStr,
     NotEqInt
@@ -34,28 +34,28 @@ struct CacheSlot {
 
 pub struct OpcodeCache {
     slots: Vec<CacheSlot>,
-    threaded: Option<Vec<ThreadedOp>>,
+    fused: Option<Vec<Instruction>>,
 }
 
 impl OpcodeCache {
     pub fn new(chunk: &SSAChunk) -> Self {
         Self {
             slots: vec![CacheSlot::default(); chunk.instructions.len()],
-            threaded: None,
+            fused: None,
         }
     }
 
-    /// Compile threaded code on first access, return shared ref.
-    pub fn ensure_threaded(&mut self, chunk: &SSAChunk) -> &[ThreadedOp] {
-        if self.threaded.is_none() {
-            self.threaded = Some(threaded::compile(chunk));
+    /// Compile fused instruction stream on first access; reuse afterward.
+    pub fn ensure_fused(&mut self, chunk: &SSAChunk) -> &[Instruction] {
+        if self.fused.is_none() {
+            self.fused = Some(threaded::compile(chunk));
         }
-        self.threaded.as_ref().unwrap()
+        self.fused.as_ref().unwrap()
     }
 
-    /// Direct access to the threaded ops (must call ensure_threaded first).
-    pub fn threaded_ref(&self) -> &[ThreadedOp] {
-        self.threaded.as_ref().expect("threaded code not compiled")
+    /// Direct access (caller must have called `ensure_fused`).
+    pub fn fused_ref(&self) -> &[Instruction] {
+        self.fused.as_ref().expect("fused code not compiled")
     }
 
     pub fn record(&mut self, ip: usize, opcode: &OpCode, ta: u8, tb: u8) {
@@ -82,13 +82,13 @@ impl OpcodeCache {
 
     fn specialize(opcode: &OpCode, ta: u8, tb: u8) -> Option<FastOp> {
         match (opcode, ta, tb) {
-            (OpCode::Add, 1, 1) => Some(FastOp::AddInt), (OpCode::Add, 2, 2) => Some(FastOp::AddFloat),
-            (OpCode::Add, 5, 5) => Some(FastOp::AddStr), (OpCode::Sub, 1, 1) => Some(FastOp::SubInt),
-            (OpCode::Sub, 2, 2) => Some(FastOp::SubFloat), (OpCode::Mul, 1, 1) => Some(FastOp::MulInt),
-            (OpCode::Mul, 2, 2) => Some(FastOp::MulFloat), (OpCode::Lt, 1, 1) => Some(FastOp::LtInt),
-            (OpCode::Lt, 2, 2) => Some(FastOp::LtFloat), (OpCode::Eq, 1, 1) => Some(FastOp::EqInt),
-            (OpCode::Eq, 5, 5) => Some(FastOp::EqStr), (OpCode::Gt, 1, 1) => Some(FastOp::GtInt),
-            (OpCode::LtEq, 1, 1) => Some(FastOp::LtEqInt), (OpCode::GtEq, 1, 1) => Some(FastOp::GtEqInt),
+            (OpCode::Add, 1, 1) => Some(FastOp::AddInt),    (OpCode::Add, 2, 2) => Some(FastOp::AddFloat),
+            (OpCode::Add, 5, 5) => Some(FastOp::AddStr),    (OpCode::Sub, 1, 1) => Some(FastOp::SubInt),
+            (OpCode::Sub, 2, 2) => Some(FastOp::SubFloat),  (OpCode::Mul, 1, 1) => Some(FastOp::MulInt),
+            (OpCode::Mul, 2, 2) => Some(FastOp::MulFloat),  (OpCode::Lt, 1, 1) => Some(FastOp::LtInt),
+            (OpCode::Lt, 2, 2) => Some(FastOp::LtFloat),    (OpCode::Eq, 1, 1) => Some(FastOp::EqInt),
+            (OpCode::Eq, 5, 5) => Some(FastOp::EqStr),      (OpCode::Gt, 1, 1) => Some(FastOp::GtInt),
+            (OpCode::LtEq, 1, 1) => Some(FastOp::LtEqInt),  (OpCode::GtEq, 1, 1) => Some(FastOp::GtEqInt),
             (OpCode::NotEq, 1, 1) => Some(FastOp::NotEqInt), _ => None,
         }
     }
