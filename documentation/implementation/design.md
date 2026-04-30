@@ -75,11 +75,11 @@ For arithmetic and comparison opcodes, the loop first checks `cache.get_fast(ip)
 | Tag       | Pattern                                 | Notes                        |
 |-----------|-----------------------------------------|------------------------------|
 | Float     | any non-canonical IEEE-754              | Quiet NaN remapped           |
-| Int       | `QNAN | SIGN | i48`                     | ±2⁴⁷ inline; BigInt above    |
-| None      | `QNAN | 1`                              |                              |
-| True      | `QNAN | 2`                              |                              |
-| False     | `QNAN | 3`                              |                              |
-| Heap      | `QNAN | 4 | (i28 << 4)`                 | 28-bit index into `HeapPool` |
+| Int       | `QNAN \| SIGN \| i48`                   | ±2⁴⁷ inline; BigInt above    |
+| None      | `QNAN \| 1`                             |                              |
+| True      | `QNAN \| 2`                             |                              |
+| False     | `QNAN \| 3`                             |                              |
+| Heap      | `QNAN \| 4 \| (i28 << 4)`               | 28-bit index into `HeapPool` |
 
 The heap is an arena of `Option<HeapObj>` slots with a free list. Strings of 64 bytes or fewer are interned in a side hash. Integers above 2⁴⁷ are promoted to `BigInt`, a base-2³² little-endian limb array with Knuth Algorithm D for division. The garbage collector is a single-color mark-and-sweep that runs when `live > gc_threshold` or `alloc_count > max(live/4, 4096)`.
 

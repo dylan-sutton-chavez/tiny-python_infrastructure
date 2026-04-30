@@ -27,14 +27,14 @@ The operand is a 16-bit slot — its meaning depends on the opcode. Common shape
 | `LoadConst`          | constant pool index                                  |
 | `LoadName` / `StoreName` | name slot index                                  |
 | `Add`, `Sub`, ...    | unused (IC keyed by ip)                              |
-| `Call`               | `(num_kw << 8) | num_pos`                            |
+| `Call`               | `(num_kw << 8) \| num_pos`                           |
 | `BuildList` / `BuildTuple` / `BuildSet` | element count                     |
 | `BuildDict`          | key-value pair count                                 |
 | `BuildSlice`         | parts count (2 or 3)                                 |
 | `Jump` / `JumpIfFalse` | target instruction index                           |
 | `ForIter`            | jump target on iterator exhaustion                   |
 | `Phi`                | target slot; sources stored in `chunk.phi_sources`   |
-| `UnpackEx`           | `(before << 8) | after`                              |
+| `UnpackEx`           | `(before << 8) \| after`                             |
 | `MakeFunction`       | function index in `chunk.functions`                  |
 
 Operands are bounded to `u16::MAX` (65,535). The same cap applies to the size of the constant pool, name table, and instruction stream per chunk.
