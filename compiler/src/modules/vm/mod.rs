@@ -17,7 +17,6 @@ pub use types::{Val, HeapObj, HeapPool, VmErr, Limits};
 
 use types::*;
 use cache::{OpcodeCache, FastOp, Templates};
-use handlers::unsupported::unsupported;
 use alloc::{string::{String, ToString}, vec::Vec, vec};
 
 /* Stack, heap, iterators, yield buffer, templates and sandbox counters. */
@@ -660,7 +659,7 @@ impl<'a> VM<'a> {
             }
             OpCode::PopExcept => { self.exception_stack.pop(); }
             OpCode::MakeClass | OpCode::StoreAttr => {
-                return Err(unsupported(opcode));
+                return Err(VmErr::Runtime("objects not yet supported"));
             }
             _ => return Err(cold_runtime("unexpected opcode in generic dispatch")),
         }

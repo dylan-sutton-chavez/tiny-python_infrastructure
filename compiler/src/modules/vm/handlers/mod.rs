@@ -5,7 +5,6 @@ pub(crate) mod attr;
 pub(crate) mod data;
 pub(crate) mod function;
 pub(crate) mod methods;
-pub(crate) mod unsupported;
 
 pub(super) use crate::modules::vm::{
     VM, Val, VmErr, HeapObj, DictMap, cache, ops,
