@@ -234,6 +234,26 @@ impl<'a> VM<'a> {
                 vm.globals.insert(s!(str name, "_0"), type_obj);
             }
         }
+        // Register all built-in functions as first-class NativeFn values.
+        let builtin_fns: &[NativeFnId] = &[
+            NativeFnId::Print, NativeFnId::Len, NativeFnId::Abs, NativeFnId::Str,
+            NativeFnId::Int, NativeFnId::Float, NativeFnId::Bool, NativeFnId::Type,
+            NativeFnId::Chr, NativeFnId::Ord, NativeFnId::Range, NativeFnId::Round,
+            NativeFnId::Min, NativeFnId::Max, NativeFnId::Sum, NativeFnId::Sorted,
+            NativeFnId::Enumerate, NativeFnId::Zip, NativeFnId::List, NativeFnId::Tuple,
+            NativeFnId::Dict, NativeFnId::Set, NativeFnId::IsInstance, NativeFnId::Input,
+            NativeFnId::All, NativeFnId::Any, NativeFnId::Bin, NativeFnId::Oct,
+            NativeFnId::Hex, NativeFnId::Divmod, NativeFnId::Pow, NativeFnId::Repr,
+            NativeFnId::Reversed, NativeFnId::Callable, NativeFnId::Id, NativeFnId::Hash,
+            NativeFnId::Format, NativeFnId::Ascii, NativeFnId::GetAttr, NativeFnId::HasAttr,
+        ];
+        for &id in builtin_fns {
+            if let Ok(v) = vm.heap.alloc(HeapObj::NativeFn(id)) {
+                let name = id.name();
+                vm.globals.insert(name.to_string(), v);
+                vm.globals.insert(s!(str name, "_0"), v);
+            }
+        }
         vm
     }
 

@@ -59,6 +59,7 @@ impl<'a> VM<'a> {
             HeapObj::Func(_, _, _) => true,
             HeapObj::Slice(..) => true,
             HeapObj::BoundMethod(..) => true,
+            HeapObj::NativeFn(_) => true,
         }
     }
 
@@ -92,6 +93,7 @@ impl<'a> VM<'a> {
             HeapObj::Range(..) => "range",
             HeapObj::Slice(..) => "slice",
             HeapObj::BoundMethod(..) => "builtin_function_or_method",
+            HeapObj::NativeFn(_) => "builtin_function_or_method",
         }}
     }
 
@@ -132,6 +134,7 @@ impl<'a> VM<'a> {
             HeapObj::Tuple(t) => if t.len() == 1 { s!("(", str &self.repr(t[0]), ",)") } else { let mut o = s!(cap: 32; "("); self.append_reprs(&mut o, t.iter()); o.push(')'); o },
             HeapObj::Dict(d) => { let mut o = s!(cap: 32; "{"); for (i,(k,v)) in d.borrow().iter().enumerate() { if i>0 { o.push_str(", "); } o.push_str(&self.repr(k)); o.push_str(": "); o.push_str(&self.repr(v)); } o.push('}'); o },
             HeapObj::BoundMethod(_, id) => s!("<built-in method ", str id.name(), ">"),
+            HeapObj::NativeFn(id) => s!("<built-in function ", str id.name(), ">"),
             HeapObj::Set(s) => {
                 let mut items: Vec<Val> = s.borrow().iter().cloned().collect();
                 if items.is_empty() { return "set()".into(); }

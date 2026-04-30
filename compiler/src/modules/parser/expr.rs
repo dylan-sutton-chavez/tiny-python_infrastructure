@@ -364,11 +364,17 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
                     let (start, end) = (t.start, t.end);
                     let idx = self.chunk.push_name(&self.source[start..end]);
                     self.chunk.emit(OpCode::LoadAttr, idx);
-                    if matches!(self.peek(), Some(TokenType::Lpar)) {
-                        let (pos, kw) = self.parse_args();
-                        let encoded = ((kw & 0xFF) << 8) | (pos & 0xFF);
-                        self.chunk.emit(OpCode::Call, encoded);
-                    }
+                    // El `(...)` tras `.attr` lo recoge la rama Lpar de abajo en
+                    // la siguiente iteración; LoadAttr y Call quedan contiguos
+                    // para que cache::fuse_method_calls los siga fusionando.
+                }
+                Some(TokenType::Lpar) => {
+                    // Llamada tras cualquier trailer: fns[0](x), f()(x),
+                    // obj.attr[i](x). Sin esta rama el `(...)` se fugaba al
+                    // contexto exterior y se interpretaba como otra expresión.
+                    let (pos, kw) = self.parse_args();
+                    let encoded = ((kw & 0xFF) << 8) | (pos & 0xFF);
+                    self.chunk.emit(OpCode::Call, encoded);
                 }
                 _ => break
             }

@@ -375,20 +375,62 @@ impl<'a> VM<'a> {
             }
         } else { None };
 
-        let check = |t: Val, heap: &HeapPool| -> Result<bool, VmErr> {
+        // Extrae el nombre de tipo de un Val: acepta HeapObj::Type Y HeapObj::NativeFn.
+        // NativeFn es lo que realmente vive en globals["int"] porque el loop de builtin_fns
+        // sobreescribe al loop de BUILTIN_TYPES durante VM::new().
+        let type_name_of = |t: Val, heap: &HeapPool| -> Option<&'static str> {
+            if !t.is_heap() { return None; }
+            match heap.get(t) {
+                HeapObj::Type(_) => {
+                    // Comparamos por nombre de tipo del objeto t, no del name interno.
+                    // type_name() devuelve "type" para HeapObj::Type — usamos el campo.
+                    None  // manejado en check_one abajo con String comparison
+                }
+                HeapObj::NativeFn(id) => {
+                    let n = id.name();
+                    if matches!(n, "int"|"str"|"float"|"bool"|"list"|"tuple"|"dict"|"set") {
+                        Some(n)
+                    } else { None }
+                }
+                _ => None,
+            }
+        };
+
+        let check_one = |t: Val, heap: &HeapPool| -> Result<bool, VmErr> {
+            if !t.is_heap() {
+                return Err(VmErr::Type("isinstance() arg 2 must be a type or tuple of types"));
+            }
             match heap.get(t) {
                 HeapObj::Type(name) => Ok(
                     name == obj_ty
                     || (obj_ty == "bool" && name == "int")
                     || obj_as_str.as_deref() == Some(name.as_str())
                 ),
+                HeapObj::NativeFn(id) => {
+                    let name = id.name();
+                    if !matches!(name, "int"|"str"|"float"|"bool"|"list"|"tuple"|"dict"|"set") {
+                        return Err(VmErr::Type("isinstance() arg 2 must be a type or tuple of types"));
+                    }
+                    Ok(
+                        name == obj_ty
+                        || (obj_ty == "bool" && name == "int")
+                        || obj_as_str.as_deref() == Some(name)
+                    )
+                }
                 _ => Err(VmErr::Type("isinstance() arg 2 must be a type or tuple of types")),
             }
         };
 
+        if !arg2.is_heap() {
+            return Err(VmErr::Type("isinstance() arg 2 must be a type or tuple of types"));
+        }
+
         let result = match self.heap.get(arg2) {
-            HeapObj::Type(_) => check(arg2, &self.heap)?,
-            HeapObj::Tuple(items) => items.iter().any(|&t| check(t, &self.heap).unwrap_or(false)),
+            HeapObj::Type(_) | HeapObj::NativeFn(_) => check_one(arg2, &self.heap)?,
+            HeapObj::Tuple(items) => {
+                let items: Vec<Val> = items.clone();
+                items.iter().any(|&t| check_one(t, &self.heap).unwrap_or(false))
+            }
             _ => return Err(VmErr::Type("isinstance() arg 2 must be a type or tuple of types")),
         };
 
@@ -787,7 +829,8 @@ impl<'a> VM<'a> {
         let o = self.pop()?;
         let result = if o.is_heap() {
             matches!(self.heap.get(o),
-                HeapObj::Func(..) | HeapObj::BoundMethod(..) | HeapObj::Type(_))
+                HeapObj::Func(..) | HeapObj::BoundMethod(..) 
+                | HeapObj::Type(_) | HeapObj::NativeFn(_))
         } else { false };
         self.push(Val::bool(result));
         Ok(())
@@ -840,5 +883,88 @@ impl<'a> VM<'a> {
         items.reverse();
         let v = self.heap.alloc(HeapObj::List(Rc::new(RefCell::new(items))))?;
         self.push(v); Ok(())
+    }
+
+    // ─── format(value [, spec]) ─────────────────────────────────────
+
+    pub fn call_format(&mut self, op: u16) -> Result<(), VmErr> {
+        if op != 1 && op != 2 {
+            return Err(cold_type("format() takes 1 or 2 arguments"));
+        }
+        let _spec = if op == 2 { Some(self.pop()?) } else { None };
+        let val = self.pop()?;
+        // Edge Python ignores spec details for now — uses display.
+        // (Real format spec is just a small extension on top of this.)
+        let s = self.display(val);
+        let v = self.heap.alloc(HeapObj::Str(s))?;
+        self.push(v); Ok(())
+    }
+
+    // ─── ascii(obj) — repr but with non-ASCII escaped ───────────────
+
+    pub fn call_ascii(&mut self) -> Result<(), VmErr> {
+        let o = self.pop()?;
+        let r = self.repr(o);
+        let mut out = String::with_capacity(r.len());
+        for c in r.chars() {
+            if (c as u32) < 0x80 {
+                out.push(c);
+            } else if (c as u32) < 0x10000 {
+                out.push_str("\\u");
+                let hex = i64_to_radix(c as i64, 16, "");
+                for _ in 0..(4 - hex.len()) { out.push('0'); }
+                out.push_str(&hex);
+            } else {
+                out.push_str("\\U");
+                let hex = i64_to_radix(c as i64, 16, "");
+                for _ in 0..(8 - hex.len()) { out.push('0'); }
+                out.push_str(&hex);
+            }
+        }
+        let v = self.heap.alloc(HeapObj::Str(out))?;
+        self.push(v); Ok(())
+    }
+
+    // ─── getattr(obj, name [, default]) ─────────────────────────────
+
+    pub fn call_getattr(&mut self, op: u16) -> Result<(), VmErr> {
+        if op != 2 && op != 3 {
+            return Err(cold_type("getattr() takes 2 or 3 arguments"));
+        }
+        let default = if op == 3 { Some(self.pop()?) } else { None };
+        let name_val = self.pop()?;
+        let obj = self.pop()?;
+
+        let name = match (name_val.is_heap(), name_val.is_heap().then(|| self.heap.get(name_val))) {
+            (true, Some(HeapObj::Str(s))) => s.clone(),
+            _ => return Err(cold_type("getattr() name must be a string")),
+        };
+
+        let ty = self.type_name(obj);
+        if let Some(method_id) = super::handlers::methods::lookup_method(ty, &name) {
+            let bound = self.heap.alloc(HeapObj::BoundMethod(obj, method_id))?;
+            self.push(bound);
+            return Ok(());
+        }
+        if let Some(d) = default {
+            self.push(d);
+            return Ok(());
+        }
+        Err(cold_type("attribute not found"))
+    }
+
+    // ─── hasattr(obj, name) ─────────────────────────────────────────
+
+    pub fn call_hasattr(&mut self) -> Result<(), VmErr> {
+        let name_val = self.pop()?;
+        let obj = self.pop()?;
+        let name = match (name_val.is_heap(), name_val.is_heap().then(|| self.heap.get(name_val))) {
+            (true, Some(HeapObj::Str(s))) => s.clone(),
+            _ => return Err(cold_type("hasattr() name must be a string")),
+        };
+        let ty = self.type_name(obj);
+        let exists = super::handlers::methods::lookup_method(ty, &name).is_some();
+        self.push(Val::bool(exists));
+        Ok(())
     }
 }

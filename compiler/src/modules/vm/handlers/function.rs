@@ -118,6 +118,11 @@ impl<'a> VM<'a> {
             return self.exec_bound_method(recv, id, positional, kw_flat);
         }
 
+        if let HeapObj::NativeFn(id) = self.heap.get(callee) {
+            let id = *id;
+            return self.dispatch_native(id, positional, kw_flat);
+        }
+
         let (fi, captured_defaults, captured_env) = match self.heap.get(callee) {
             HeapObj::Func(i, d, c) => (*i, d.clone(), c.clone()),
             _ => return Err(cold_type("object is not callable")),
@@ -133,9 +138,8 @@ impl<'a> VM<'a> {
         self.depth += 1;
         let (params, body, _defaults, name_idx) = self.functions[fi];
         let name_idx = *name_idx;
-
         let mut fn_slots = self.fill_builtins(&body.names);
-
+        
         let mut body_map: HashMap<&str, usize> =
             HashMap::with_capacity_and_hasher(body.names.len(), Default::default());
         for (i, n) in body.names.iter().enumerate() { body_map.insert(n.as_str(), i); }
@@ -283,5 +287,88 @@ impl<'a> VM<'a> {
             self.push(result);
         }
         Ok(())
+    }
+
+    pub(crate) fn dispatch_native(
+        &mut self, id: super::super::types::NativeFnId,
+        positional: Vec<Val>, kw: Vec<Val>,
+    ) -> Result<(), VmErr> {
+        if !kw.is_empty() {
+            return Err(cold_type("native function takes no keyword arguments"));
+        }
+        let argc = positional.len() as u16;
+
+        use super::super::types::NativeFnId::*;
+
+        // Pre-validate fixed arity to keep the stack clean on error.
+        let expected: Option<u16> = match id {
+            Input => Some(0),
+            Len | Abs | Str | Int | Float | Bool | Type | Chr | Ord
+            | Sorted | Enumerate | List | Tuple | Bin | Oct | Hex
+            | Repr | Reversed | Callable | Id | Hash | Ascii => Some(1),
+            Divmod | IsInstance | HasAttr => Some(2),
+            _ => None,
+        };
+        if let Some(n) = expected
+            && argc != n {
+                return Err(cold_type("wrong number of arguments to builtin"));
+        }
+
+        for v in positional { self.push(v); }
+
+        match id {
+            // Variadic
+            Print => {
+                // call_print is statement-shaped: the dedicated CallPrint opcode
+                // is emitted by the parser without a trailing Pop. When dispatched
+                // indirectly via Call (e.g. `p = print; p(42)`), the parser does
+                // emit a Pop to discard the expression-statement value, so we
+                // must materialize Python's implicit `None` return here to keep
+                // the stack balanced.
+                self.call_print(argc)?;
+                self.push(Val::none());
+                Ok(())
+            }
+            Range => self.call_range(argc),
+            Round => self.call_round(argc),
+            Min => self.call_min(argc),
+            Max => self.call_max(argc),
+            Sum => self.call_sum(argc),
+            Zip => self.call_zip(argc),
+            Dict => self.call_dict(argc),
+            Set => self.call_set(argc),
+            Pow => self.call_pow(argc),
+            All => self.call_all(argc),
+            Any => self.call_any(argc),
+            GetAttr => self.call_getattr(argc),
+            Format => self.call_format(argc),
+            // 0/1/2-arg
+            Input => self.call_input(),
+            Len => self.call_len(),
+            Abs => self.call_abs(),
+            Str => self.call_str(),
+            Int => self.call_int(),
+            Float => self.call_float(),
+            Bool => self.call_bool(),
+            Type => self.call_type(),
+            Chr => self.call_chr(),
+            Ord => self.call_ord(),
+            Sorted => self.call_sorted(),
+            Enumerate => self.call_enumerate(),
+            List => self.call_list(),
+            Tuple => self.call_tuple(),
+            Bin => self.call_bin(),
+            Oct => self.call_oct(),
+            Hex => self.call_hex(),
+            Repr => self.call_repr(),
+            Reversed => self.call_reversed(),
+            Callable => self.call_callable(),
+            Id => self.call_id(),
+            Hash => self.call_hash(),
+            Ascii => self.call_ascii(),
+            Divmod => self.call_divmod(),
+            IsInstance => self.call_isinstance(),
+            HasAttr => self.call_hasattr(),
+        }
     }
 }
