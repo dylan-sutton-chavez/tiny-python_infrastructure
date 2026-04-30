@@ -480,5 +480,9 @@
   {"src": "print(hasattr('hello', 'xyz'))", "output": ["False"], "result": "None"},
   {"src": "print(hasattr([1,2], 'append'))", "output": ["True"], "result": "None"},
   {"src": "m = getattr('hi', 'upper')\nprint(m())", "output": ["HI"], "result": "None"},
-  {"src": "print(getattr('hi', 'xyz', 'default'))", "output": ["default"], "result": "None"}
+  {"src": "print(getattr('hi', 'xyz', 'default'))", "output": ["default"], "result": "None"},
+  {"src": "double = lambda n: n * 2\nsquare = lambda n: n * n\ndef compose(*fns):\n    def piped(x):\n        for f in fns:\n            x = f(x)\n        return x\n    return piped\npipeline = compose(double, square)\nprint([pipeline(x) for x in [1, 2, 3]])", "output": ["[4, 16, 36]"], "result": "None"},
+  {"src": "def outer(*args):\n    def inner():\n        return args\n    return inner\nprint(outer(1, 2, 3)())", "output": ["[1, 2, 3]"], "result": "None"},
+  {"src": "def make(x, y):\n    def get_y():\n        return y\n    return get_y\nprint(make(99, 'hi')())", "output": ["hi"], "result": "None"},
+  {"src": "def compose(f, g):\n    return lambda x: f(g(x))\ninc = lambda n: n + 1\ndbl = lambda n: n * 2\nprint(compose(inc, dbl)(5))", "output": ["11"], "result": "None"}
 ]

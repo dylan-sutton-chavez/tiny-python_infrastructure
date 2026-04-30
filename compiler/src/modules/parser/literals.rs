@@ -446,7 +446,13 @@ impl<'src, I: Iterator<Item = Token>> Parser<'src, I> {
 
     pub(super) fn compile_body(&mut self, params: &[String]) -> SSAChunk {
         let mut body = self.with_fresh_chunk(|s| {
-            for p in params { s.ssa_versions.insert(p.clone(), 0); }
+            for p in params {
+                s.ssa_versions.insert(p.clone(), 0);
+                
+                let bare = p.trim_start_matches('*');
+                let mut buf = [0u8; 128];
+                let _ = s.chunk.push_name(Self::ssa_name(bare, 0, &mut buf));
+            }
             s.compile_block_body();
         });
         body.is_pure = !body.instructions.iter().any(|i| matches!(

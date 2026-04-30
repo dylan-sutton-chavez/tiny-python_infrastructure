@@ -375,27 +375,6 @@ impl<'a> VM<'a> {
             }
         } else { None };
 
-        // Extrae el nombre de tipo de un Val: acepta HeapObj::Type Y HeapObj::NativeFn.
-        // NativeFn es lo que realmente vive en globals["int"] porque el loop de builtin_fns
-        // sobreescribe al loop de BUILTIN_TYPES durante VM::new().
-        let type_name_of = |t: Val, heap: &HeapPool| -> Option<&'static str> {
-            if !t.is_heap() { return None; }
-            match heap.get(t) {
-                HeapObj::Type(_) => {
-                    // Comparamos por nombre de tipo del objeto t, no del name interno.
-                    // type_name() devuelve "type" para HeapObj::Type — usamos el campo.
-                    None  // manejado en check_one abajo con String comparison
-                }
-                HeapObj::NativeFn(id) => {
-                    let n = id.name();
-                    if matches!(n, "int"|"str"|"float"|"bool"|"list"|"tuple"|"dict"|"set") {
-                        Some(n)
-                    } else { None }
-                }
-                _ => None,
-            }
-        };
-
         let check_one = |t: Val, heap: &HeapPool| -> Result<bool, VmErr> {
             if !t.is_heap() {
                 return Err(VmErr::Type("isinstance() arg 2 must be a type or tuple of types"));
