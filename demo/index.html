@@ -14,8 +14,8 @@
     <meta name="author" content="Dylan Sutton Chavez">
     <meta name="generator" content="Edge Python">
 
-    <title>Edge Python - Online Playground for a Python 3.13 Compiler in Rust</title>
-    <meta name="description" content="Run Python 3.13 in your browser. Edge Python is a single-pass SSA compiler with adaptive inline caching and template memoization, compiled to WebAssembly. Free, open source, no signup.">
+    <title>Edge Python - Online Playground for a Functional Python 3.13 Compiler in Rust</title>
+    <meta name="description" content="Run a functional subset of Python 3.13 in your browser. Edge Python is a single-pass SSA compiler with adaptive inline caching and template memoization, compiled to WebAssembly. Free, open source, no signup.">
     <link rel="canonical" href="https://demo.edgepython.com/">
 
     <link rel="modulepreload" href="./main.js">
@@ -40,7 +40,7 @@
 
 <body class="bg-[#161616] text-[#ffffff] h-screen flex p-4 gap-4 overflow-hidden">
 
-    <h1 class="sr-only">Edge Python — Online Python 3.13 Playground</h1>
+    <h1 class="sr-only">Edge Python — Online Functional Python 3.13 Playground</h1>
 
     <main class="flex-1 flex flex-col gap-4 min-h-0 min-w-0">
         <section class="flex items-stretch text-[12px] gap-2">
@@ -54,10 +54,6 @@
                     <span>GitHub</span>
                 </a>
             </nav>
-
-            <button button-show-sm class="bg-[#222222] hover:bg-[#2b2b2b] border border-[#2d2d2d] rounded-md flex items-center justify-center aspect-square transition">
-                <svg data-icon="./static/package.svg" class="size-4" aria-hidden="true" focusable="false"></svg>
-            </button>
         </section>
 
         <section aria-label="Code editor" class="w-full bg-[#222222] border border-[#2d2d2d] rounded-md flex flex-col flex-[70] basis-0 overflow-hidden min-h-0">
@@ -98,21 +94,6 @@
             <output id="term" class="code-font text-sm p-3 text-[#c2c2c2] flex-1 overflow-y-auto no-scrollbar whitespace-pre-wrap block"></output>
         </section>
     </main>
-
-    <aside data-hide-sm class="bg-[#222222] border border-[#2d2d2d] min-w-[270px] max-w-[370px] w-full rounded-md text-[#c2c2c2] text-[12px] px-3 py-2 flex flex-col h-full">
-        <div class="flex items-center gap-2 mb-4">
-            <span>Standard Packages</span>
-            <svg data-icon="./static/package.svg" class="size-4 ml-auto" aria-hidden="true" focusable="false"></svg>
-        </div>
-
-        <ul id="pkg-list" class="flex flex-col grow gap-3"></ul>
-
-        <footer class="text-center w-full text-xs py-2 mt-4">
-            <a href="https://edgepython.com/" target="_blank" class="text-zinc-500 underline">
-                <span>Documentation</span>
-            </a>
-        </footer>
-    </aside>
 
 </body>
 

@@ -11,7 +11,7 @@
       {
         "label": "GitHub",
         "href": "https://github.com/dylan-sutton-chavez/edge-python",
-        "icon": "github" 
+        "icon": "github"
       },
       {
         "label": "Demo",
@@ -21,6 +21,30 @@
   },
   "navigation": {
     "groups": [
+      {
+        "group": "Getting Started",
+        "pages": [
+          "getting-started/quickstart",
+          "getting-started/what-it-is"
+        ]
+      },
+      {
+        "group": "Language",
+        "pages": [
+          "language/syntax",
+          "language/data-types",
+          "language/control-flow",
+          "language/functions"
+        ]
+      },
+      {
+        "group": "Reference",
+        "pages": [
+          "reference/builtins",
+          "reference/methods",
+          "reference/limits-and-errors"
+        ]
+      },
       {
         "group": "Implementation",
         "pages": [

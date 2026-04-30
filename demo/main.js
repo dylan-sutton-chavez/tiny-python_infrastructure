@@ -7,14 +7,14 @@ const TAB_SIZE = 4;
 const DEV = !['demo.edgepython.com'].includes(location.hostname);
 const FETCH_OPTS = DEV ? { cache: 'no-store' } : undefined;
 
-const DEFAULT_CODE = `"""\nImplements a functional pipeline using function composition and list comprehensions.\nReference: Backus, J. (1978).\n"""\n\ndef double(n: int) -> int:\n    return n * 2\n\ndef square(n: int) -> int:\n    return n * n\n\ndef apply_pipeline(value: int, steps: list) -> int:\n    # Stop recursion when no steps remain\n    if not steps:\n        return value\n\n    first_fn = steps[0]\n    remaining_steps = steps[1:]\n\n    return apply_pipeline(first_fn(value), remaining_steps)\n\ndata: list[int] = [1, 2, 3]\npipeline: list = [double, square]\n\nresult = [apply_pipeline(x, pipeline) for x in data] # Use a list comprehension for efficient data transformation\n\nprint(f"Input: {data}")\nprint(f"Output: {result}")`;
+const DEFAULT_CODE = `"""\nFunctional pipeline using lambdas, closures and list comprehensions.\nReference: Backus, J. (1978).\n"""\n\ndouble = lambda n: n * 2\nsquare = lambda n: n * n\n\ndef compose(*fns):\n    def piped(x):\n        for f in fns:\n            x = f(x)\n        return x\n    return piped\n\npipeline = compose(double, square)\n\ndata = [1, 2, 3]\nresult = [pipeline(x) for x in data]\n\nprint(f"Input:  {data}")\nprint(f"Output: {result}")`;
 
 // DOM
 
 const $ = (id) => document.getElementById(id);
 const el = {
     ed: $('ed'), ln: $('ln'), btn: $('run'),
-    term: $('term'), status: $('status'), pkgList: $('pkg-list'),
+    term: $('term'), status: $('status'),
 };
 
 // Utils
@@ -49,7 +49,7 @@ const err = (t) => setStatus(t, 'text-[#d67f6d]');
 
 const Highlighter = (() => {
     const KW = new Set(['as','if','in','is','or','and','def','del','for','not','try','case','elif','else','from','pass','type','with','async','await','break','class','match','raise','while','yield','assert','except','global','import','lambda','return','finally','continue','nonlocal']);
-    const BI = new Set(['print','len','range','int','str','float','list','dict','tuple','set','bool','isinstance','issubclass','enumerate','zip','map','filter','abs','min','max','sum','round','pow','divmod','hash','id','repr','ord','chr','hex','oct','bin','open','input','iter','next','reversed','sorted','any','all','format','frozenset','bytearray','bytes','complex','memoryview','object','property','staticmethod','classmethod','super','slice','callable','getattr','setattr','hasattr','delattr','dir','vars','globals','locals','NotImplemented','Ellipsis','self','cls']);
+    const BI = new Set(['print','len','range','int','str','float','list','dict','tuple','set','bool','isinstance','enumerate','zip','abs','min','max','sum','round','pow','divmod','hash','id','repr','ord','chr','hex','oct','bin','input','reversed','sorted','any','all','format','ascii','callable','getattr','hasattr','type','self','cls']);
     const LIT = new Set(['True', 'False', 'None']);
     const CLASSES = [[KW, 'tk-kw'], [LIT, 'tk-lit'], [BI, 'tk-bi']];
 
@@ -165,21 +165,24 @@ const Editor = (() => {
         },
 
         // Backspace: delete empty pair, or snap indent to previous tab stop.
-            backspace: (text, caret) => {
-                if (caret === 0) return null;
-                if (PAIRS[text[caret - 1]] === text[caret]) {
-                    return {
-                        text: text.slice(0, caret - 1) + text.slice(caret + 1),
-                        caret: caret - 1,
-                    };
-                }
-                const lineStart = text.lastIndexOf('\n', caret - 1) + 1;
-                const before = text.slice(lineStart, caret);
-                if (!before.length || !/^[ \t\u00a0]+$/.test(before)) return null;
-                const prevStop = Math.floor((before.length - 1) / TAB_SIZE) * TAB_SIZE;
-                const del = before.length - prevStop;
-                return { text: text.slice(0, caret - del) + text.slice(caret), caret: caret - del };
-            },
+        backspace: (text, caret) => {
+            if (caret === 0) return null;
+            if (PAIRS[text[caret - 1]] === text[caret]) {
+                return {
+                    text: text.slice(0, caret - 1) + text.slice(caret + 1),
+                    caret: caret - 1,
+                };
+            }
+            const lineStart = text.lastIndexOf('\n', caret - 1) + 1;
+            const before = text.slice(lineStart, caret);
+            // contenteditable substitutes regular spaces with NBSP (U+00A0) on
+            // auto-indented lines after Enter. Without contemplating it the indent
+            // snap fails and backspace deletes one byte at a time.
+            if (!before.length || !/^[ \t\u00a0]+$/.test(before)) return null;
+            const prevStop = Math.floor((before.length - 1) / TAB_SIZE) * TAB_SIZE;
+            const del = before.length - prevStop;
+            return { text: text.slice(0, caret - del) + text.slice(caret), caret: caret - del };
+        },
     };
 
     const jar = CodeJar(el.ed,
@@ -227,35 +230,8 @@ const Editor = (() => {
     return { getCode: () => jar.toString() };
 })();
 
-// Packages
-
-const Packages = {
-    load: async () => {
-        if (!el.pkgList) return;
-        const pkgs = await fetch('./packages.json').then(r => r.json()).catch(() => []);
-        for (const pkg of pkgs) {
-            const icon = await fetchSvg(pkg.icon, { class: 'size-3.5', 'aria-hidden': 'true', focusable: 'false' });
-            const li = document.createElement('li');
-            li.className = 'bg-[#1c1c1c] border border-[#2d2d2d] rounded-md w-full';
-            li.innerHTML = `
-                <div class="flex items-center">
-                    <div class="px-2 py-2.5"><h3 class="text-[12px]">${pkg.name}</h3></div>
-                    <div class="flex items-center gap-2 ml-auto px-1.5">
-                        ${icon?.outerHTML ?? ''}
-                        <button disabled aria-label="Reload ${pkg['aria-label']}" class="bg-[#ffffff] p-[3.7px] rounded-full opacity-40 cursor-not-allowed">
-                            <svg data-icon="./static/cloud-download.svg" class="size-3.5" aria-hidden="true" focusable="false"></svg>
-                        </button>
-                    </div>
-                </div>`;
-            el.pkgList.appendChild(li);
-        }
-        await loadIcons(el.pkgList);
-    },
-};
-
 // Init
 
 el.btn.addEventListener('click', () => PythonWorker.run(Editor.getCode()));
 loadIcons();
 PythonWorker.load();
-Packages.load();
