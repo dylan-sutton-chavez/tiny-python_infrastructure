@@ -9,35 +9,6 @@ Edge Python is a compact bytecode compiler and stack VM for a functional subset 
 
 There is no AST and no IR: bytecode is the only intermediate representation between source and execution.
 
-## Pipeline
-
-```text
-source bytes
-   │
-   ▼
-┌──────────┐
-│  Lexer   │  LUT-driven scan, offsets into source, soft-keyword resolution
-└──────────┘
-   │ (start, end, kind) tokens
-   ▼
-┌──────────┐
-│  Parser  │  Pratt precedence, SSA versioning, Phi at joins
-└──────────┘
-   │ SSAChunk { instructions, constants, names, functions, classes }
-   ▼
-┌──────────┐
-│Optimizer │  Constant folding, dead-code compaction, jump remap
-└──────────┘
-   │ same SSAChunk, smaller
-   ▼
-┌──────────┐
-│    VM    │  Token-threaded dispatch, IC, template memoization, mark-sweep GC
-└──────────┘
-   │
-   ▼
-output buffer
-```
-
 ## Concepts
 
 - **Offset-based tokens**: Tokens carry `(start, end, kind)` indices into the source buffer. No string copies during lexing; identifier and string content is sliced lazily by the parser.
@@ -97,34 +68,35 @@ The heap is an arena of `Option<HeapObj>` slots with a free list. Strings of 64 
 
 ```text
 src/
-├── lib.rs
-├── main.rs
-└── modules/
-    ├── fstr.rs              format helpers without core::fmt
-    ├── fx.rs                FxHashMap / FxHashSet (no_std hasher)
-    ├── lexer/
-    │   ├── mod.rs           public Token / TokenType, lexer entry
-    │   ├── scan.rs          byte-level scanner state machine
-    │   └── tables.rs        BYTE_CLASS, SINGLE_TOK, keyword LUT
-    ├── parser/
-    │   ├── mod.rs           Parser struct, SSA join logic, error recovery
-    │   ├── expr.rs          Pratt precedence climbing, postfix tails
-    │   ├── stmt.rs          statement dispatch, name_stmt with augmented assign
-    │   ├── control.rs       if / for / while / try / with / match / import
-    │   ├── literals.rs      list / dict / set / fstring / call / params
-    │   └── types.rs         OpCode, SSAChunk, Diagnostic, Value
-    └── vm/
-        ├── mod.rs           VM struct, exec loop, dispatch, GC roots
-        ├── cache.rs         OpcodeCache (IC), Templates (memoization), method fusion
-        ├── optimizer.rs     constant folding pass + jump remap
-        ├── ops.rs           binop kernels, equality, truthiness, type tag
-        ├── types.rs         Val, HeapObj, BigInt, DictMap, VmErr, Limits
-        ├── builtins.rs      built-in function bodies (print, len, abs, ...)
-        └── handlers/
-            ├── arith.rs     Add, Sub, Mul, Div, Mod, Pow, FloorDiv, Minus, BitOps, Compare, Logic
-            ├── data.rs      Store, Build, Container, Comprehension, Yield, Side
-            ├── function.rs  Call, MakeFunction, exec_call, dispatch_native
-            └── methods.rs   string / list / dict method tables, dispatch_method
+ ├── main.rs
+ ├── modules
+ │   ├── fstr.rs
+ │   ├── fx.rs
+ │   ├── lexer
+ │   │   ├── mod.rs
+ │   │   ├── scan.rs
+ │   │   └── tables.rs
+ │   ├── parser
+ │   │   ├── control.rs
+ │   │   ├── expr.rs
+ │   │   ├── literals.rs
+ │   │   ├── mod.rs
+ │   │   ├── stmt.rs
+ │   │   └── types.rs
+ │   └── vm
+ │       ├── builtins.rs
+ │       ├── cache.rs
+ │       ├── handlers
+ │       │   ├── arith.rs
+ │       │   ├── data.rs
+ │       │   ├── function.rs
+ │       │   ├── methods.rs
+ │       │   └── mod.rs
+ │       ├── mod.rs
+ │       ├── ops.rs
+ │       ├── optimizer.rs
+ │       └── types.rs
+ └── wasm.rs
 ```
 
 ## Capabilities
