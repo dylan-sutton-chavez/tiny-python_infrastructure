@@ -1,8 +1,6 @@
 // vm/cache.rs
 
 use super::types::{Val, eq_vals_with_heap};
-use super::threaded;
-
 use crate::modules::parser::{OpCode, SSAChunk, Instruction};
 use crate::modules::fx::FxHashMap as HashMap;
 
@@ -48,7 +46,7 @@ impl OpcodeCache {
     /// Compile fused instruction stream on first access; reuse afterward.
     pub fn ensure_fused(&mut self, chunk: &SSAChunk) -> &[Instruction] {
         if self.fused.is_none() {
-            self.fused = Some(threaded::compile(chunk));
+            self.fused = Some(fuse_method_calls(chunk));
         }
         self.fused.as_ref().unwrap()
     }
@@ -140,4 +138,25 @@ impl Templates {
     pub fn count(&self) -> usize {
         self.map.values().flat_map(|v| v.iter()).filter(|e| e.hits >= TPL_THRESH).count()
     }
+}
+
+/// Fuses LoadAttr+Call into CallMethod+CallMethodArgs in-place. Replaces
+/// the two opcodes but keeps both operands and instruction count, so jump
+/// targets stay valid. Compiled once per chunk; cached above.
+fn fuse_method_calls(chunk: &SSAChunk) -> Vec<Instruction> {
+    let src = &chunk.instructions;
+    let n = src.len();
+    let mut out = src.clone();
+
+    let mut i = 0;
+    while i + 1 < n {
+        if src[i].opcode == OpCode::LoadAttr && src[i + 1].opcode == OpCode::Call {
+            out[i].opcode = OpCode::CallMethod;
+            out[i + 1].opcode = OpCode::CallMethodArgs;
+            i += 2;
+            continue;
+        }
+        i += 1;
+    }
+    out
 }
