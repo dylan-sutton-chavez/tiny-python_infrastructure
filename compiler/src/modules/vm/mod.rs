@@ -439,7 +439,7 @@ impl<'a> VM<'a> {
         let name = chunk.names.get(attr_idx as usize)
             .ok_or(VmErr::Runtime("CallMethod: bad name index"))?;
 
-        let method_id = handlers::attr::lookup_method(ty, name.as_str())
+        let method_id = handlers::methods::lookup_method(ty, name.as_str())
             .ok_or(VmErr::Type("'object' has no attribute"))?;
 
         self.exec_bound_method(obj, method_id, positional, kw_flat)

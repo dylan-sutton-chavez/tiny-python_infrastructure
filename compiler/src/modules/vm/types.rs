@@ -457,34 +457,7 @@ pub enum HeapObj {
     BoundMethod(Val, BuiltinMethodId),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BuiltinMethodId { 
-    ListAppend, DictKeys, DictValues, DictItems, StrUpper, StrLower, StrStrip, 
-    StrSplit, StrJoin, StrReplace, StrStartswith, StrEndswith, StrFind, StrCount, 
-    ListSort, ListReverse, ListPop, ListInsert, ListRemove, ListIndex, ListCount, 
-    DictGet, DictUpdate, DictPop, DictSetDefault, StrLstrip, StrRstrip, 
-    StrIsDigit, StrIsAlpha, StrIsAlnum, StrCapitalize, StrTitle, StrCenter, 
-    StrZfill, ListExtend, ListClear, ListCopy,
-}
-
-impl BuiltinMethodId {
-    const METHOD_NAMES: &'static [&'static str] = &[
-        "append", "keys", "values", "items",
-        "upper", "lower", "strip", "split", "join", "replace",
-        "startswith", "endswith", "find", "count",
-        "sort", "reverse", "pop", "insert", "remove", "index", "count",
-        "get", "update", "pop", "setdefault",
-        "lstrip", "rstrip", "isdigit", "isalpha", "isalnum",
-        "capitalize", "title", "center", "zfill",
-        "extend", "clear", "copy",
-    ];
-
-    #[inline]
-    pub fn name(self) -> &'static str {
-        Self::METHOD_NAMES[self as usize]
-    }
-}
-
+pub use crate::modules::vm::handlers::methods::BuiltinMethodId;
 
 /* Insertion-ordered dict backed by Vec with HashMap index for O(1) lookup. */
 
